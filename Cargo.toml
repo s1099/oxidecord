@@ -1,0 +1,11 @@
+[package]
+name = "oxidecord"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+gpui = "0.2.2"
+unicode-segmentation = "1.12.0"
+gpui-component = "0.4.0"
+anyhow = "1.0.100"
+twilight = "0.17.0"
