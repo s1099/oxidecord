@@ -5,7 +5,9 @@ edition = "2024"
 
 [dependencies]
 gpui = "0.2.2"
-unicode-segmentation = "1.12.0"
 gpui-component = "0.4.0"
 anyhow = "1.0.100"
-twilight = "0.17.0"
+twilight-http = "0.17"
+twilight-model = "0.17"
+tokio = { version = "1.48.0", features = ["full"] }
+gpui-router = "0.2.7"
