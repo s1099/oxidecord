@@ -1,6 +1,6 @@
 use std::sync::{Arc, Mutex};
 use twilight_http::Client as HttpClient;
-use twilight_model::id::marker::GuildMarker;
+use twilight_model::id::marker::{GuildMarker, ChannelMarker};
 use tokio::runtime::Handle;
 use std::sync::OnceLock;
 
@@ -19,11 +19,30 @@ pub struct GuildInfo {
     pub name: String,
 }
 
+#[derive(Clone)]
+pub struct ChannelInfo {
+    pub id: twilight_model::id::Id<ChannelMarker>,
+    pub name: String,
+}
+
+#[derive(Clone)]
+pub struct MessageInfo {
+    pub id: twilight_model::id::Id<twilight_model::id::marker::MessageMarker>,
+    pub content: String,
+    pub author_name: String,
+    pub author_id: twilight_model::id::Id<twilight_model::id::marker::UserMarker>,
+    pub timestamp: String,
+}
+
 pub struct AppState {
     pub current_view: View,
     pub token: Option<String>,
     pub http_client: Option<Arc<HttpClient>>,
     pub guilds: Vec<GuildInfo>,
+    pub selected_guild: Option<twilight_model::id::Id<GuildMarker>>,
+    pub channels: Vec<ChannelInfo>,
+    pub selected_channel: Option<twilight_model::id::Id<ChannelMarker>>,
+    pub messages: Vec<MessageInfo>,
     pub loading: bool,
     pub error: Option<String>,
 }
@@ -35,6 +54,10 @@ impl AppState {
             token: None,
             http_client: None,
             guilds: Vec::new(),
+            selected_guild: None,
+            channels: Vec::new(),
+            selected_channel: None,
+            messages: Vec::new(),
             loading: false,
             error: None,
         }
@@ -135,5 +158,142 @@ impl AppState {
                 }
             }
         });
+    }
+
+    pub fn fetch_channels(state: Arc<Mutex<AppState>>, guild_id: twilight_model::id::Id<GuildMarker>) {
+        {
+            let mut app = state.lock().unwrap();
+            app.selected_guild = Some(guild_id);
+            app.loading = true;
+            app.error = None;
+        }
+
+        let state_clone = state.clone();
+        let handle = RUNTIME_HANDLE.get().expect("Tokio runtime not initialized. Call AppState::init_runtime() first.");
+
+        let http_client = {
+            let app = state_clone.lock().unwrap();
+            app.http_client.clone()
+        };
+
+        if let Some(client) = http_client {
+            handle.spawn(async move {
+                match client.guild_channels(guild_id).await {
+                    Ok(response) => {
+                        match response.models().await {
+                            Ok(channels) => {
+                                if let Ok(mut state) = state_clone.lock() {
+                                    // Convert to ChannelInfo, filtering for text channels
+                                    state.channels = channels
+                                        .into_iter()
+                                        .filter_map(|ch| {
+                                            // Only include text channels (type 0)
+                                            if ch.kind == twilight_model::channel::ChannelType::GuildText {
+                                                Some(ChannelInfo {
+                                                    id: ch.id,
+                                                    name: ch.name.unwrap_or_else(|| "Unnamed".to_string()),
+                                                })
+                                            } else {
+                                                None
+                                            }
+                                        })
+                                        .collect();
+                                    state.loading = false;
+                                    state.error = None;
+                                }
+                            }
+                            Err(e) => {
+                                eprintln!("Error parsing channels: {:?}", e);
+                                if let Ok(mut state) = state_clone.lock() {
+                                    state.loading = false;
+                                    state.error = Some(format!("Error parsing channels: {}", e));
+                                }
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("Error fetching channels: {:?}", e);
+                        if let Ok(mut state) = state_clone.lock() {
+                            state.loading = false;
+                            state.error = Some(format!("Error fetching channels: {}", e));
+                        }
+                    }
+                }
+            });
+        } else {
+            if let Ok(mut app) = state_clone.lock() {
+                app.loading = false;
+                app.error = Some("HTTP client not available".to_string());
+            }
+        }
+    }
+
+    pub fn fetch_messages(state: Arc<Mutex<AppState>>, channel_id: twilight_model::id::Id<ChannelMarker>) {
+        {
+            let mut app = state.lock().unwrap();
+            app.selected_channel = Some(channel_id);
+            app.messages.clear(); // Clear old messages
+            app.loading = true;
+            app.error = None;
+        }
+
+        let state_clone = state.clone();
+        let handle = RUNTIME_HANDLE.get().expect("Tokio runtime not initialized. Call AppState::init_runtime() first.");
+
+        let http_client = {
+            let app = state_clone.lock().unwrap();
+            app.http_client.clone()
+        };
+
+        if let Some(client) = http_client {
+            handle.spawn(async move {
+                match client.channel_messages(channel_id).limit(50).await {
+                    Ok(response) => {
+                        match response.models().await {
+                            Ok(messages) => {
+                                if let Ok(mut state) = state_clone.lock() {
+                                    // Convert to MessageInfo
+                                    state.messages = messages
+                                        .into_iter()
+                                        .map(|msg| MessageInfo {
+                                            id: msg.id,
+                                            content: msg.content,
+                                            author_name: if msg.author.discriminator > 0 {
+                                                format!("{}#{:04}", msg.author.name, msg.author.discriminator)
+                                            } else {
+                                                msg.author.name.clone()
+                                            },
+                                            author_id: msg.author.id,
+                                            timestamp: format!("{}", msg.timestamp.as_secs()),
+                                        })
+                                        .collect();
+                                    state.loading = false;
+                                    state.error = None;
+                                }
+                            }
+                            Err(e) => {
+                                eprintln!("Error parsing messages: {:?}", e);
+                                if let Ok(mut state) = state_clone.lock() {
+                                    state.loading = false;
+                                    state.error = Some(format!("Error parsing messages: {}", e));
+                                }
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("Error fetching messages: {:?}", e);
+                        if let Ok(mut state) = state_clone.lock() {
+                            state.loading = false;
+                            state.error = Some(format!("Error fetching messages: {}", e));
+                        }
+                    }
+                }
+            });
+        } else {
+            if let Ok(mut app) = state_clone.lock() {
+                app.loading = false;
+                app.error = Some("HTTP client not available".to_string());
+            }
+        }
     }
 }
