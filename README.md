@@ -19,9 +19,11 @@ cargo run --release
 ``` 
 3. If needed, you can find the binary in `target/release` or `target/debug`
 
-## TODO
+### TODO
 - Render guild logos
-- Proper login screen
--
-
+- Proper login screen, webview login
+- User login support (only works with bot accounts right now)
+- DM's
+- Caching
 - Themes https://longbridge.github.io/gpui-component/docs/theme#theme-registry
+- Settings
