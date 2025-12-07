@@ -1,10 +1,11 @@
-use gpui::{AppContext, Context, Entity, IntoElement, ParentElement, Render, Styled, Window, div};
+use gpui::{Context, IntoElement, ParentElement, Render, Styled, Window, div, Entity, prelude::*};
 use gpui_component::button::*;
 use gpui_component::form::{field, v_form};
 use gpui_component::input::{Input, InputState};
 use gpui_component::Disableable;
 use std::sync::{Arc, Mutex};
 use crate::app::AppState;
+use crate::services::discord::DiscordService;
 
 pub struct LoginView {
     token: Entity<InputState>,
@@ -23,7 +24,7 @@ impl LoginView {
     pub fn login(&mut self, cx: &mut Context<Self>) {
         let token = self.token.read(cx).value();
         if !token.is_empty() {
-            AppState::login(self.app.clone(), token.to_string());
+            DiscordService::login(self.app.clone(), token.to_string());
             cx.notify();
         }
     }
@@ -54,11 +55,10 @@ impl Render for LoginView {
             form = form.child(
                 field().label_indent(false).child(
                     div()
-                        .text_color(gpui::rgb(0xff0000))
-                        .text_size(gpui::px(14.0))
-                        .px(gpui::px(12.0))
-                        .py(gpui::px(8.0))
-                        .bg(gpui::rgb(0xffeeee))
+                        .text_color(gpui::red())
+                        .text_sm()
+                        .px_3()
+                        .py_2()
                         .rounded_md()
                         .child(error_msg)
                 )
@@ -69,8 +69,7 @@ impl Render for LoginView {
             .flex()
             .items_center()
             .justify_center()
-            .w_full()
-            .h_full()
+            .size_full()
             .child(
                 div().w_112().child(form)
             )

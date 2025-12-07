@@ -1,4 +1,5 @@
 pub mod login;
-pub mod servers;
-pub mod channels;
-pub mod channel;
+pub mod channel_list;
+pub mod channel_messages;
+pub mod root;
+pub mod server_list;

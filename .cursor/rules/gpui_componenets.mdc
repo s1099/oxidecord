@@ -2,6 +2,8 @@
 alwaysApply: true
 ---
 The following components are in gpui_componenets so use them whenever required:
+Refer to https://longbridge.github.io/gpui-component/docs/components
+Use context7 mcp to fetch docs
 Accordion
 Alert
 Avatar
