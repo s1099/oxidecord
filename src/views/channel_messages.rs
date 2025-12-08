@@ -2,7 +2,7 @@ use gpui::{
     Context, IntoElement, ParentElement, Render, Styled, Window, div, px, size, Pixels, Size,
     prelude::*,
 };
-use chrono::{DateTime, Local, TimeZone};
+use chrono::{Local, TimeZone};
 use gpui_component::label::Label;
 use gpui_component::avatar::Avatar;
 use gpui_component::Sizable;
@@ -62,22 +62,29 @@ impl ChannelView {
         let messages = self.get_messages();
         let channel_name = self.get_channel_name();
 
-        // Calculate item sizes - messages can have variable height based on content
         let item_sizes = Rc::new(
             messages.iter()
                 .map(|msg| {
-                    // Base height for avatar + padding
+                    // Base height for avatar + padding + author name row
                     let base_height = 52.0;
-                    // Count actual newlines in the content
-                    let newline_count = msg.content.matches('\n').count() as f32;
-                    // Estimate additional lines based on character length (roughly 80 chars per line)
-                    // For each line segment between newlines, calculate potential wrapping
-                    let wrap_lines: f32 = msg.content
-                        .split('\n')
-                        .map(|line| (line.len() as f32 / 80.0).ceil().max(1.0))
-                        .sum();
-                    let total_lines = (newline_count + wrap_lines).max(1.0);
-                    let content_height = total_lines * 22.0; // line_height is 22px
+                    let line_height = 22.0;
+                    
+                    // Calculate content height based on line count
+                    // Split by newlines and estimate wrapping for each segment
+                    let total_lines: f32 = if msg.content.is_empty() {
+                        1.0
+                    } else {
+                        msg.content
+                            .split('\n')
+                            .map(|line| {
+                                // Each line segment is at least 1 line
+                                // Estimate additional wrapping based on ~80 chars per line
+                                (line.len() as f32 / 80.0).ceil().max(1.0)
+                            })
+                            .sum()
+                    };
+                    
+                    let content_height = total_lines * line_height;
                     size(px(1000.), px(base_height + content_height))
                 })
                 .collect::<Vec<Size<Pixels>>>()

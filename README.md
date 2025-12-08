@@ -20,6 +20,8 @@ cargo run --release
 3. If needed, you can find the binary in `target/release` or `target/debug`
 
 ### TODO
+- Fix message height calc
+- Image rendering
 - Render guild logos
 - Proper login screen, webview login
 - User login support (only works with bot accounts right now)
