@@ -2,6 +2,7 @@ use gpui::{
     Context, IntoElement, ParentElement, Render, Styled, Window, div, px, size, Pixels, Size,
     prelude::*,
 };
+use chrono::{DateTime, Local, TimeZone};
 use gpui_component::label::Label;
 use gpui_component::avatar::Avatar;
 use gpui_component::Sizable;
@@ -67,9 +68,16 @@ impl ChannelView {
                 .map(|msg| {
                     // Base height for avatar + padding
                     let base_height = 52.0;
-                    // Estimate additional height based on content length (roughly 50 chars per line)
-                    let content_lines = (msg.content.len() as f32 / 80.0).ceil().max(1.0);
-                    let content_height = content_lines * 20.0;
+                    // Count actual newlines in the content
+                    let newline_count = msg.content.matches('\n').count() as f32;
+                    // Estimate additional lines based on character length (roughly 80 chars per line)
+                    // For each line segment between newlines, calculate potential wrapping
+                    let wrap_lines: f32 = msg.content
+                        .split('\n')
+                        .map(|line| (line.len() as f32 / 80.0).ceil().max(1.0))
+                        .sum();
+                    let total_lines = (newline_count + wrap_lines).max(1.0);
+                    let content_height = total_lines * 22.0; // line_height is 22px
                     size(px(1000.), px(base_height + content_height))
                 })
                 .collect::<Vec<Size<Pixels>>>()
@@ -218,31 +226,31 @@ fn render_message(msg: MessageInfo) -> impl IntoElement {
 }
 
 fn format_timestamp(timestamp: &str) -> String {
-    // timestamp is in seconds since epoch, format it nicely
+    
     if let Ok(secs) = timestamp.parse::<i64>() {
-        use std::time::{SystemTime, UNIX_EPOCH, Duration};
+        let msg_time = Local.timestamp_opt(secs, 0).single();
+        let now = Local::now();
         
-        let datetime = UNIX_EPOCH + Duration::from_secs(secs as u64);
-        let now = SystemTime::now();
-        
-        if let Ok(elapsed) = now.duration_since(datetime) {
-            let elapsed_secs = elapsed.as_secs();
+        if let Some(msg_time) = msg_time {
+            let msg_date = msg_time.date_naive();
+            let today = now.date_naive();
+            let yesterday = today.pred_opt().unwrap_or(today);
             
-            if elapsed_secs < 60 {
-                return "Just now".to_string();
-            } else if elapsed_secs < 3600 {
-                let mins = elapsed_secs / 60;
-                return format!("{} min{} ago", mins, if mins == 1 { "" } else { "s" });
-            } else if elapsed_secs < 86400 {
-                let hours = elapsed_secs / 3600;
-                return format!("{} hour{} ago", hours, if hours == 1 { "" } else { "s" });
+            let time_str = msg_time.format("%-I:%M %p").to_string();
+            
+            if msg_date == today {
+                format!("Today at {}", time_str)
+            } else if msg_date == yesterday {
+                format!("Yesterday at {}", time_str)
             } else {
-                let days = elapsed_secs / 86400;
-                return format!("{} day{} ago", days, if days == 1 { "" } else { "s" });
+                msg_time.format("%m/%d/%Y").to_string()
             }
+        } else {
+            timestamp.to_string()
         }
+    } else {
+        timestamp.to_string()
     }
-    timestamp.to_string()
 }
 
 impl Render for ChannelView {
