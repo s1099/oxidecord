@@ -21,6 +21,28 @@ pub struct ChannelInfo {
     pub name: String,
 }
 
+#[derive(Clone, Debug)]
+pub struct AttachmentInfo {
+    pub url: String,
+    pub filename: String,
+    pub content_type: Option<String>,
+    pub width: Option<u64>,
+    pub height: Option<u64>,
+}
+
+impl AttachmentInfo {
+    pub fn is_image(&self) -> bool {
+        if let Some(ref content_type) = self.content_type {
+            content_type.starts_with("image/")
+        } else {
+            // Fallback to extension check
+            let lower = self.filename.to_lowercase();
+            lower.ends_with(".png") || lower.ends_with(".jpg") || lower.ends_with(".jpeg") 
+                || lower.ends_with(".gif") || lower.ends_with(".webp")
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct MessageInfo {
     pub id: twilight_model::id::Id<twilight_model::id::marker::MessageMarker>,
@@ -29,6 +51,7 @@ pub struct MessageInfo {
     pub author_id: twilight_model::id::Id<twilight_model::id::marker::UserMarker>,
     pub author_avatar_url: Option<String>,
     pub timestamp: String,
+    pub attachments: Vec<AttachmentInfo>,
 }
 
 pub struct AppState {

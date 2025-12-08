@@ -1,7 +1,7 @@
 use std::sync::{Arc, Mutex};
 use twilight_http::Client as HttpClient;
 use twilight_model::id::marker::{GuildMarker, ChannelMarker};
-use crate::app::{AppState, View, GuildInfo, ChannelInfo, MessageInfo};
+use crate::app::{AppState, View, GuildInfo, ChannelInfo, MessageInfo, AttachmentInfo};
 use crate::utils::get_runtime_handle;
 
 pub struct DiscordService;
@@ -181,6 +181,16 @@ impl DiscordService {
                                                                     hash
                                                                 )
                                                             });
+                                                            let attachments: Vec<AttachmentInfo> = msg.attachments
+                                                                .into_iter()
+                                                                .map(|att| AttachmentInfo {
+                                                                    url: att.url,
+                                                                    filename: att.filename,
+                                                                    content_type: att.content_type,
+                                                                    width: att.width,
+                                                                    height: att.height,
+                                                                })
+                                                                .collect();
                                                             MessageInfo {
                                                                 id: msg.id,
                                                                 content: msg.content,
@@ -192,6 +202,7 @@ impl DiscordService {
                                                                 author_id: msg.author.id,
                                                                 author_avatar_url: avatar_url,
                                                                 timestamp: format!("{}", msg.timestamp.as_secs()),
+                                                                attachments,
                                                             }
                                                         })
                                                         .collect();

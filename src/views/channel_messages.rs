@@ -1,6 +1,6 @@
 use gpui::{
     Context, IntoElement, ParentElement, Render, Styled, Window, div, px, size, Pixels, Size,
-    prelude::*,
+    prelude::*, img, ObjectFit,
 };
 use chrono::{Local, TimeZone};
 use gpui_component::label::Label;
@@ -10,9 +10,10 @@ use gpui_component::{
     v_virtual_list, VirtualListScrollHandle,
     scroll::{Scrollbar, ScrollbarState, ScrollbarAxis},
 };
+use gpui_component::skeleton::Skeleton;
 use std::sync::{Arc, Mutex};
 use std::rc::Rc;
-use crate::app::{AppState, MessageInfo};
+use crate::app::{AppState, MessageInfo, AttachmentInfo};
 use crate::views::channel_list::ChannelsView;
 use crate::views::server_list::ServerListView;
 
@@ -72,7 +73,7 @@ impl ChannelView {
                     // Calculate content height based on line count
                     // Split by newlines and estimate wrapping for each segment
                     let total_lines: f32 = if msg.content.is_empty() {
-                        1.0
+                        0.0
                     } else {
                         msg.content
                             .split('\n')
@@ -85,7 +86,39 @@ impl ChannelView {
                     };
                     
                     let content_height = total_lines * line_height;
-                    size(px(1000.), px(base_height + content_height))
+                    
+                    // Calculate image attachment heights
+                    let image_attachments: Vec<&AttachmentInfo> = msg.attachments.iter()
+                        .filter(|att| att.is_image())
+                        .collect();
+                    
+                    let images_height: f32 = image_attachments.iter()
+                        .map(|att| {
+                            // Calculate constrained dimensions (max 400x300)
+                            let max_width = 400.0_f32;
+                            let max_height = 300.0_f32;
+                            
+                            if let (Some(w), Some(h)) = (att.width, att.height) {
+                                let width = w as f32;
+                                let height = h as f32;
+                                let aspect = width / height;
+                                
+                                let (_, final_height) = if width > max_width {
+                                    (max_width, max_width / aspect)
+                                } else {
+                                    (width, height)
+                                };
+                                
+                                let final_height = final_height.min(max_height);
+                                final_height + 12.0 // Add margin
+                            } else {
+                                // Default loading placeholder height
+                                200.0 + 12.0
+                            }
+                        })
+                        .sum();
+                    
+                    size(px(1000.), px(base_height + content_height + images_height))
                 })
                 .collect::<Vec<Size<Pixels>>>()
         );
@@ -183,6 +216,12 @@ fn render_message(msg: MessageInfo) -> impl IntoElement {
             .with_size(px(40.))
     };
 
+    let image_attachments: Vec<AttachmentInfo> = msg.attachments
+        .iter()
+        .filter(|att| att.is_image())
+        .cloned()
+        .collect();
+
     div()
         .w_full()
         .flex()
@@ -222,13 +261,81 @@ fn render_message(msg: MessageInfo) -> impl IntoElement {
                                 .child(format_timestamp(&msg.timestamp))
                         )
                 )
-                .child(
-                    // Message content
-                    div()
-                        .text_color(gpui::rgb(0xdbdee1))
-                        .line_height(px(22.))
-                        .child(msg.content.clone())
+                .when(!msg.content.is_empty(), |this| {
+                    this.child(
+                        // Message content
+                        div()
+                            .text_color(gpui::rgb(0xdbdee1))
+                            .line_height(px(22.))
+                            .child(msg.content.clone())
+                    )
+                })
+                .children(
+                    image_attachments.into_iter().map(|attachment| {
+                        render_image_attachment(attachment)
+                    })
                 )
+        )
+}
+
+fn render_image_attachment(attachment: AttachmentInfo) -> impl IntoElement {
+    // Calculate constrained dimensions (max 400x300)
+    let max_width = 400.0_f32;
+    let max_height = 300.0_f32;
+    
+    let (display_width, display_height) = if let (Some(w), Some(h)) = (attachment.width, attachment.height) {
+        let width = w as f32;
+        let height = h as f32;
+        let aspect = width / height;
+        
+        let (final_width, final_height) = if width > max_width {
+            (max_width, max_width / aspect)
+        } else {
+            (width, height)
+        };
+        
+        let final_height = final_height.min(max_height);
+        let final_width = if final_height < (max_width / aspect) {
+            final_height * aspect
+        } else {
+            final_width
+        };
+        
+        (final_width, final_height)
+    } else {
+        // Default dimensions for unknown size
+        (300.0, 200.0)
+    };
+
+    div()
+        .mt_2()
+        .w(px(display_width))
+        .h(px(display_height))
+        .bg(gpui::rgb(0x262626))
+        .rounded(px(8.))
+        .overflow_hidden()
+        .relative()
+        .child(
+            // Loading skeleton placeholder
+            div()
+                .absolute()
+                .inset_0()
+                .flex()
+                .items_center()
+                .justify_center()
+                .child(
+                    Skeleton::new()
+                        .w_full()
+                        .h_full()
+                        .rounded(px(8.))
+                )
+        )
+        .child(
+            img(attachment.url.clone())
+                .w_full()
+                .h_full()
+                .object_fit(ObjectFit::Cover)
+                .rounded(px(8.))
         )
 }
 
