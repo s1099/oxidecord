@@ -3,7 +3,7 @@ use crate::services::discord::DiscordService;
 use gpui::{Context, IntoElement, ParentElement, Render, Styled, Window, px};
 use gpui_component::label::Label;
 use gpui_component::sidebar::{Sidebar, SidebarGroup, SidebarHeader, SidebarMenu, SidebarMenuItem};
-use gpui_component::{IconName, Side};
+use gpui_component::{IconName, Side, Sizable};
 use std::sync::{Arc, Mutex};
 
 pub struct ServerListView {
@@ -38,8 +38,8 @@ impl Render for ServerListView {
         let selected = self.get_selected_guild();
 
         Sidebar::new(Side::Left)
-            .width(px(80.))
-            .border_width(px(1.))
+            .w(px(80.))
+            .border_1()
             .collapsible(false)
             .header(SidebarHeader::new().child(Label::new("DM's")))
             .child(

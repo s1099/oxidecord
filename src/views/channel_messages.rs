@@ -1,15 +1,13 @@
 use gpui::{
-    Context, IntoElement, ParentElement, Render, Styled, Window, div, px, size, Pixels, Size,
-    prelude::*, img, ObjectFit,
+    Context, IntoElement, ParentElement, Render, Styled, Window, div, px,
+    prelude::*, img, ObjectFit, InteractiveElement,
 };
+use gpui_component::scroll::ScrollableElement;
 use chrono::{Local, TimeZone};
 use gpui_component::label::Label;
 use gpui_component::avatar::Avatar;
 use gpui_component::Sizable;
-use gpui_component::{
-    v_virtual_list, VirtualListScrollHandle,
-    scroll::{Scrollbar, ScrollbarState, ScrollbarAxis},
-};
+use gpui_component::StyledExt;
 use gpui_component::skeleton::Skeleton;
 use std::sync::{Arc, Mutex};
 use std::rc::Rc;
@@ -21,8 +19,6 @@ pub struct ChannelView {
     app: Arc<Mutex<AppState>>,
     channels_view: Option<gpui::Entity<ChannelsView>>,
     server_list_view: Option<gpui::Entity<ServerListView>>,
-    scroll_handle: VirtualListScrollHandle,
-    scroll_state: ScrollbarState,
 }
 
 impl ChannelView {
@@ -31,8 +27,6 @@ impl ChannelView {
             app,
             channels_view: None,
             server_list_view: None,
-            scroll_handle: VirtualListScrollHandle::new(),
-            scroll_state: ScrollbarState::default(),
         }
     }
 
@@ -63,66 +57,6 @@ impl ChannelView {
         let messages = self.get_messages();
         let channel_name = self.get_channel_name();
 
-        let item_sizes = Rc::new(
-            messages.iter()
-                .map(|msg| {
-                    // Base height for avatar + padding + author name row
-                    let base_height = 52.0;
-                    let line_height = 22.0;
-                    
-                    // Calculate content height based on line count
-                    // Split by newlines and estimate wrapping for each segment
-                    let total_lines: f32 = if msg.content.is_empty() {
-                        0.0
-                    } else {
-                        msg.content
-                            .split('\n')
-                            .map(|line| {
-                                // Each line segment is at least 1 line
-                                // Estimate additional wrapping based on ~80 chars per line
-                                (line.len() as f32 / 80.0).ceil().max(1.0)
-                            })
-                            .sum()
-                    };
-                    
-                    let content_height = total_lines * line_height;
-                    
-                    // Calculate image attachment heights
-                    let image_attachments: Vec<&AttachmentInfo> = msg.attachments.iter()
-                        .filter(|att| att.is_image())
-                        .collect();
-                    
-                    let images_height: f32 = image_attachments.iter()
-                        .map(|att| {
-                            // Calculate constrained dimensions (max 400x300)
-                            let max_width = 400.0_f32;
-                            let max_height = 300.0_f32;
-                            
-                            if let (Some(w), Some(h)) = (att.width, att.height) {
-                                let width = w as f32;
-                                let height = h as f32;
-                                let aspect = width / height;
-                                
-                                let (_, final_height) = if width > max_width {
-                                    (max_width, max_width / aspect)
-                                } else {
-                                    (width, height)
-                                };
-                                
-                                let final_height = final_height.min(max_height);
-                                final_height + 12.0 // Add margin
-                            } else {
-                                // Default loading placeholder height
-                                200.0 + 12.0
-                            }
-                        })
-                        .sum();
-                    
-                    size(px(1000.), px(base_height + content_height + images_height))
-                })
-                .collect::<Vec<Size<Pixels>>>()
-        );
-
         div()
             .flex()
             .flex_col()
@@ -149,7 +83,6 @@ impl ChannelView {
                     .flex_1()
                     .relative()
                     .min_h(px(0.))
-                    .overflow_hidden()
                     .child(
                         if messages.is_empty() {
                             div()
@@ -162,43 +95,21 @@ impl ChannelView {
                                         .text_color(gpui::rgb(0x949ba4))
                                         .child("No messages yet. Select a channel to see messages.")
                                 )
-                                .into_any()
+                                .into_any_element()
                         } else {
                             div()
+                                .flex()
+                                .flex_col()
+                                .id("messages-list")
+                                .overflow_y_scrollbar()
                                 .size_full()
-                                .relative()
-                                .child(
-                                    v_virtual_list(
-                                        cx.entity().clone(),
-                                        "messages-list",
-                                        item_sizes.clone(),
-                                        move |view, visible_range, _, _cx| {
-                                            let messages = view.get_messages();
-                                            
-                                            visible_range
-                                                .map(|ix| {
-                                                    let msg = &messages[ix];
-                                                    render_message(msg.clone())
-                                                })
-                                                .collect()
-                                        },
-                                    )
-                                    .track_scroll(&self.scroll_handle)
-                                    .py_4()
+                                .py_4()
+                                .children(
+                                    messages.into_iter().map(|msg| {
+                                        render_message(msg)
+                                    })
                                 )
-                                .child(
-                                    div()
-                                        .absolute()
-                                        .top_0()
-                                        .left_0()
-                                        .right_0()
-                                        .bottom_0()
-                                        .child(
-                                            Scrollbar::both(&self.scroll_state, &self.scroll_handle)
-                                                .axis(ScrollbarAxis::Vertical)
-                                        )
-                                )
-                                .into_any()
+                                .into_any_element()
                         }
                     )
             )

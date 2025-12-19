@@ -21,6 +21,7 @@ cargo run --release
 
 ### TODO
 - Fix message height calc
+- Loading states
 - Image rendering
 - Render guild logos
 - Proper login screen, webview login
