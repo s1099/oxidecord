@@ -20,13 +20,15 @@ cargo run --release
 3. If needed, you can find the binary in `target/release` or `target/debug`
 
 ### TODO
-- Fix message height calc
+- Fix image loading
+- Embeds
 - Loading states
 - Image rendering
 - Render guild logos
-- Proper login screen, webview login
 - User login support (only works with bot accounts right now)
+- Proper login screen, webview login
 - DM's
+- Videos
 - Caching
 - Themes https://longbridge.github.io/gpui-component/docs/theme#theme-registry
 - Settings

@@ -1,16 +1,15 @@
 use gpui::{
     Context, IntoElement, ParentElement, Render, Styled, Window, div, px,
-    prelude::*, img, ObjectFit, InteractiveElement,
+    prelude::*, img, ObjectFit, InteractiveElement, SharedUri,
 };
+use gpui_component::input::{Input, InputState, InputEvent};
 use gpui_component::scroll::ScrollableElement;
 use chrono::{Local, TimeZone};
 use gpui_component::label::Label;
 use gpui_component::avatar::Avatar;
 use gpui_component::Sizable;
-use gpui_component::StyledExt;
 use gpui_component::skeleton::Skeleton;
 use std::sync::{Arc, Mutex};
-use std::rc::Rc;
 use crate::app::{AppState, MessageInfo, AttachmentInfo};
 use crate::views::channel_list::ChannelsView;
 use crate::views::server_list::ServerListView;
@@ -19,14 +18,42 @@ pub struct ChannelView {
     app: Arc<Mutex<AppState>>,
     channels_view: Option<gpui::Entity<ChannelsView>>,
     server_list_view: Option<gpui::Entity<ServerListView>>,
+    input: gpui::Entity<InputState>,
+    _subscription: gpui::Subscription,
 }
 
 impl ChannelView {
-    pub fn new(_window: &mut Window, app: Arc<Mutex<AppState>>, _cx: &mut Context<Self>) -> Self {
+    pub fn new(window: &mut Window, app: Arc<Mutex<AppState>>, cx: &mut Context<Self>) -> Self {
+        let input = cx.new(|cx| InputState::new(window, cx).placeholder("Message #general"));
+        
+        let subscription = cx.subscribe_in(&input, window, |view, _input, event, window, cx| {
+             if let InputEvent::PressEnter { .. } = event {
+                 let text = view.input.read(cx).value().to_string();
+                 if !text.is_empty() {
+                    let (client, channel_id) = {
+                        let guard = view.app.lock().unwrap();
+                        (guard.http_client.clone(), guard.selected_channel)
+                    };
+
+                    if let (Some(client), Some(channel_id)) = (client, channel_id) {
+                        let text_clone = text.clone();
+                        crate::utils::get_runtime_handle().spawn(async move {
+                            if let Err(e) = client.create_message(channel_id).content(&text_clone).await {
+                                eprintln!("Failed to send message: {}", e);
+                            }
+                        });
+                    }
+                    view.input.update(cx, |state, cx| state.set_value("", window, cx));
+                 }
+             }
+        });
+
         Self {
             app,
             channels_view: None,
             server_list_view: None,
+            input,
+            _subscription: subscription,
         }
     }
 
@@ -53,9 +80,13 @@ impl ChannelView {
             .unwrap_or(false)
     }
 
-    fn render_message_view(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render_message_view(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let messages = self.get_messages();
         let channel_name = self.get_channel_name();
+
+        self.input.update(cx, |input, cx| {
+             input.set_placeholder(format!("Message {}", channel_name), window, cx);
+        });
 
         div()
             .flex()
@@ -113,6 +144,11 @@ impl ChannelView {
                         }
                     )
             )
+            .child(
+                div()
+                    .mb_1()
+                    .child(Input::new(&self.input).h_12())
+            )
     }
 }
 
@@ -141,7 +177,6 @@ fn render_message(msg: MessageInfo) -> impl IntoElement {
         .py_1()
         .hover(|s| s.bg(gpui::rgb(0x2e3035)))
         .child(
-            // Avatar column
             div()
                 .flex_shrink_0()
                 .pt_1()
@@ -242,7 +277,7 @@ fn render_image_attachment(attachment: AttachmentInfo) -> impl IntoElement {
                 )
         )
         .child(
-            img(attachment.url.clone())
+            img(SharedUri::from(attachment.url.clone()))
                 .w_full()
                 .h_full()
                 .object_fit(ObjectFit::Cover)
@@ -305,7 +340,7 @@ impl Render for ChannelView {
                     .child(view.render(window, cx))
             });
             
-            let message_view_el = self.render_message_view(cx);
+            let message_view_el = self.render_message_view(window, cx);
             
             div()
                 .flex()

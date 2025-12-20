@@ -3,7 +3,7 @@ use crate::services::discord::DiscordService;
 use gpui::{Context, IntoElement, ParentElement, Render, Styled, Window, px};
 use gpui_component::label::Label;
 use gpui_component::sidebar::{Sidebar, SidebarGroup, SidebarHeader, SidebarMenu, SidebarMenuItem};
-use gpui_component::{IconName, Side, Sizable};
+use gpui_component::{IconName, Side};
 use std::sync::{Arc, Mutex};
 
 pub struct ServerListView {
