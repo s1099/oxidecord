@@ -204,24 +204,34 @@ fn convert_message(message: twilight_model::channel::Message) -> Message {
     }
 }
 
-/// Fetches the most recent messages in a channel (oldest first) and invokes
-/// `on_done` with the result.
+/// How many messages one `fetch_messages` call requests; a response with
+/// fewer means the start of the channel's history was reached.
+pub const MESSAGE_PAGE_SIZE: usize = 50;
+
+/// Fetches a page of messages in a channel (oldest first) and invokes
+/// `on_done` with the result. With `before`, fetches the page of messages
+/// older than that message; otherwise fetches the most recent page.
 ///
 /// Runs on the background Tokio runtime; `on_done` is called from that
 /// runtime's thread, not the gpui foreground thread.
 pub fn fetch_messages(
     token: String,
     channel_id: Id<ChannelMarker>,
+    before: Option<Id<MessageMarker>>,
     on_done: impl FnOnce(Result<Vec<Message>, String>) + Send + 'static,
 ) {
     runtime_handle().spawn(async move {
         let result = async {
             let client = HttpClient::new(token);
-            let response = client
+            let request = client
                 .channel_messages(channel_id)
-                .limit(50)
-                .await
-                .map_err(|err| err.to_string())?;
+                .limit(MESSAGE_PAGE_SIZE as u16);
+            // `.before()` changes the request's type, so await per branch.
+            let response = match before {
+                Some(before) => request.before(before).await,
+                None => request.await,
+            }
+            .map_err(|err| err.to_string())?;
             let mut messages = response.models().await.map_err(|err| err.to_string())?;
 
             // The API returns newest first; the UI renders oldest first.

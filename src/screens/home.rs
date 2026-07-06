@@ -13,7 +13,7 @@ use gpui_component::{
     v_flex, ActiveTheme as _, Icon, IconName, Sizable as _,
 };
 use twilight_model::id::{
-    marker::{ChannelMarker, GuildMarker, UserMarker},
+    marker::{ChannelMarker, GuildMarker},
     Id,
 };
 
@@ -89,9 +89,13 @@ pub struct HomeScreen {
     messages: Vec<discord::Message>,
     messages_loading: bool,
     messages_error: Option<String>,
+    /// An older page is currently being fetched (scrolled to the top).
+    older_loading: bool,
+    /// The start of the channel's history has been reached; stop fetching.
+    reached_oldest: bool,
     send_error: Option<String>,
     message_input: Entity<InputState>,
-    messages_scroll: ScrollHandle,
+    messages_list: ListState,
 }
 
 impl HomeScreen {
@@ -110,6 +114,17 @@ impl HomeScreen {
         )
         .detach();
 
+        // Bottom-aligned like a chat log; items are measured lazily, and
+        // splicing older items in at the front keeps the scroll position.
+        let messages_list = ListState::new(0, ListAlignment::Bottom, px(512.));
+        let weak = cx.entity().downgrade();
+        messages_list.set_scroll_handler(move |event, _window, cx| {
+            // Nearing the oldest loaded message; fetch the previous page.
+            if event.visible_range.start <= 2 {
+                let _ = weak.update(cx, |this, cx| this.load_older_messages(cx));
+            }
+        });
+
         let mut this = Self {
             guilds: Vec::new(),
             selected_guild: None,
@@ -123,9 +138,11 @@ impl HomeScreen {
             messages: Vec::new(),
             messages_loading: false,
             messages_error: None,
+            older_loading: false,
+            reached_oldest: false,
             send_error: None,
             message_input,
-            messages_scroll: ScrollHandle::new(),
+            messages_list,
         };
         this.load_guilds(window, cx);
         this
@@ -251,7 +268,10 @@ impl HomeScreen {
             return;
         };
         self.messages.clear();
+        self.messages_list.reset(0);
         self.messages_error = None;
+        self.older_loading = false;
+        self.reached_oldest = false;
         self.send_error = None;
         self.messages_loading = true;
 
@@ -271,7 +291,7 @@ impl HomeScreen {
         };
 
         let (tx, rx) = futures::channel::oneshot::channel();
-        discord::fetch_messages(token, channel_id, move |result| {
+        discord::fetch_messages(token, channel_id, None, move |result| {
             let _ = tx.send(result);
         });
 
@@ -288,12 +308,74 @@ impl HomeScreen {
                 }
                 match result {
                     Ok(messages) => {
+                        this.reached_oldest = messages.len() < discord::MESSAGE_PAGE_SIZE;
                         this.messages = messages;
-                        this.messages_scroll.scroll_to_bottom();
+                        // Resetting also snaps the bottom-aligned list to the
+                        // newest message.
+                        this.messages_list.reset(this.messages.len());
                     }
                     Err(err) => this.messages_error = Some(err),
                 }
                 this.messages_loading = false;
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
+    /// Fetches the page of messages older than the oldest loaded one and
+    /// prepends it, keeping the current scroll position.
+    fn load_older_messages(&mut self, cx: &mut Context<Self>) {
+        if self.messages_loading || self.older_loading || self.reached_oldest {
+            return;
+        }
+        let Some(channel_id) = self.selected_channel else {
+            return;
+        };
+        let Some(oldest_id) = self.messages.first().map(|message| message.id) else {
+            return;
+        };
+        let Some(token) = discord::load_token() else {
+            return;
+        };
+
+        self.older_loading = true;
+        cx.notify();
+
+        let (tx, rx) = futures::channel::oneshot::channel();
+        discord::fetch_messages(token, channel_id, Some(oldest_id), move |result| {
+            let _ = tx.send(result);
+        });
+
+        cx.spawn(async move |this, cx| {
+            let Ok(result) = rx.await else {
+                return;
+            };
+
+            let _ = this.update(cx, |this, cx| {
+                // Drop the response if the channel changed or the messages
+                // were reloaded while this request was in flight.
+                if this.selected_channel != Some(channel_id)
+                    || this.messages.first().map(|message| message.id) != Some(oldest_id)
+                {
+                    return;
+                }
+                this.older_loading = false;
+                match result {
+                    Ok(older) => {
+                        if older.len() < discord::MESSAGE_PAGE_SIZE {
+                            this.reached_oldest = true;
+                        }
+                        let count = older.len();
+                        if count > 0 {
+                            this.messages.splice(0..0, older);
+                            this.messages_list.splice(0..0, count);
+                        }
+                    }
+                    // Keep the messages on screen; the fetch retries the next
+                    // time the user scrolls near the top.
+                    Err(_) => {}
+                }
                 cx.notify();
             });
         })
@@ -338,8 +420,14 @@ impl HomeScreen {
                 }
                 match result {
                     Ok(message) => {
+                        let ix = this.messages.len();
                         this.messages.push(message);
-                        this.messages_scroll.scroll_to_bottom();
+                        this.messages_list.splice(ix..ix, 1);
+                        // Past-the-end offsets clamp to the bottom.
+                        this.messages_list.scroll_to(ListOffset {
+                            item_ix: ix + 1,
+                            offset_in_item: px(0.),
+                        });
                     }
                     Err(err) => this.send_error = Some(err),
                 }
@@ -732,28 +820,38 @@ impl HomeScreen {
                 .into_any_element();
         }
 
-        let mut previous_author: Option<Id<UserMarker>> = None;
-        let rows: Vec<_> = self
-            .messages
-            .iter()
-            .map(|message| {
-                let show_header = previous_author != Some(message.author_id);
-                previous_author = Some(message.author_id);
-                self.render_message(message, show_header, cx)
-            })
-            .collect();
+        let entity = cx.entity();
+        let messages_list = list(self.messages_list.clone(), move |ix, _window, cx| {
+            entity.update(cx, |this, cx| this.render_message_item(ix, cx))
+        })
+        .flex_1()
+        .px_4()
+        .py_2();
 
-        v_flex()
-            .id("messages")
-            .flex_1()
-            .min_h_0()
-            .w_full()
-            .overflow_y_scroll()
-            .track_scroll(&self.messages_scroll)
-            .px_4()
-            .py_2()
-            .children(rows)
-            .into_any_element()
+        let mut container = v_flex().flex_1().min_h_0().w_full();
+        if self.older_loading {
+            container = container.child(
+                h_flex()
+                    .w_full()
+                    .py_1()
+                    .justify_center()
+                    .text_xs()
+                    .text_color(theme.muted_foreground)
+                    .child("Loading older messages..."),
+            );
+        }
+        container.child(messages_list).into_any_element()
+    }
+
+    fn render_message_item(&mut self, ix: usize, cx: &mut Context<Self>) -> AnyElement {
+        let Some(message) = self.messages.get(ix) else {
+            return div().into_any_element();
+        };
+        // Consecutive messages from the same author share one header.
+        let show_header = ix == 0
+            || self.messages.get(ix - 1).map(|previous| previous.author_id)
+                != Some(message.author_id);
+        self.render_message(message, show_header, cx)
     }
 
     fn render_message_bar(&self, cx: &Context<Self>) -> impl IntoElement {
