@@ -1,33 +1,47 @@
-mod app;
-mod views;
-mod services;
-mod utils;
+mod constants;
+mod discord;
+mod http;
+mod screens;
+
+use std::sync::Arc;
 
 use gpui::*;
 use gpui_component::Root;
-use app::AppState;
-use views::root::RootView;
-use std::sync::{Arc, Mutex};
+
+use crate::screens::app::AppScreen;
 
 fn main() {
-    utils::init_runtime();
-    
-    let app = Application::new();
+    // required for webview to work on windows
+    #[cfg(target_os = "windows")]
+    unsafe {
+        std::env::set_var("GPUI_DISABLE_DIRECT_COMPOSITION", "true");
+    }
+    let app = Application::new()
+        .with_assets(gpui_component_assets::Assets)
+        .with_http_client(Arc::new(http::ReqwestClient::new()));
 
-    app.run(move |cx| {
+    app.run(|cx: &mut App| {
         gpui_component::init(cx);
 
-        cx.spawn(async move |cx| {
-            let app_state = Arc::new(Mutex::new(AppState::new()));
-            
-            cx.open_window(WindowOptions::default(), |window, cx| {
-                let view = cx.new(|cx| RootView::new(window, app_state, cx));
+        let options = WindowOptions {
+            titlebar: Some(TitlebarOptions {
+                title: Some("Oxidecord".into()),
+                ..Default::default()
+            }),
+            // Open maximized; the bounds are the size to restore to when unmaximized.
+            window_bounds: Some(WindowBounds::Maximized(Bounds::centered(
+                None,
+                size(px(1200.), px(800.)),
+                cx,
+            ))),
+            window_min_size: Some(size(px(480.), px(520.))),
+            ..Default::default()
+        };
 
-                cx.new(|cx| Root::new(view, window, cx))
-            })?;
-
-            Ok::<_, anyhow::Error>(())
+        cx.open_window(options, move |window, cx| {
+            let app_view = cx.new(|cx| AppScreen::new(window, cx));
+            cx.new(|cx| Root::new(app_view, window, cx))
         })
-        .detach();
+        .expect("Failed to open window");
     });
 }

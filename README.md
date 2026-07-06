@@ -1,7 +1,6 @@
 ## Oxidecord
 
-WIP Cross platform native discord client built with gpui rust that aims to be blazing fast and have low memory footprint.
-
+WIP Cross platform native discord client built with rust gpui.
 Contribitions are welcome.
 
 ## Running
@@ -15,18 +14,16 @@ cd oxidecord
 ```bash
 cargo run # debug build
 # or
-cargo run --release
+cargo run --release # release build
 ``` 
-3. If needed, you can find the binary in `target/release` or `target/debug`
+3. Binary can be found in `target/release` or `target/debug`
 
 ### TODO
-- Fix image loading
+- Viewing channels
+- Viewing and sending messages
+- Store token securely instead of a plaintext file right now
 - Embeds
 - Loading states
-- Image rendering
-- Render guild logos
-- User login support (only works with bot accounts right now)
-- Proper login screen, webview login
 - DM's
 - Videos
 - Caching
