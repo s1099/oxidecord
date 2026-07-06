@@ -3,7 +3,11 @@ use std::sync::OnceLock;
 use serde::Deserialize;
 use tokio::runtime::Handle;
 use twilight_http::Client as HttpClient;
-use twilight_model::id::{marker::GuildMarker, Id};
+use twilight_model::channel::ChannelType;
+use twilight_model::id::{
+    marker::{ChannelMarker, GuildMarker},
+    Id,
+};
 
 static RUNTIME: OnceLock<Handle> = OnceLock::new();
 
@@ -73,6 +77,79 @@ pub fn fetch_guilds(
                         name: guild.name,
                         icon_url,
                     }
+                })
+                .collect::<Vec<_>>())
+        }
+        .await;
+
+        on_done(result);
+    });
+}
+
+/// The subset of Discord channel types the app knows how to display.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum ChannelKind {
+    Text,
+    Announcement,
+    Voice,
+    Stage,
+    Forum,
+    Category,
+}
+
+impl ChannelKind {
+    pub fn is_voice(self) -> bool {
+        matches!(self, Self::Voice | Self::Stage)
+    }
+}
+
+#[derive(Clone)]
+pub struct Channel {
+    pub id: Id<ChannelMarker>,
+    pub name: String,
+    pub kind: ChannelKind,
+    pub parent_id: Option<Id<ChannelMarker>>,
+    pub position: i32,
+}
+
+/// Fetches a guild's channels and invokes `on_done` with the result.
+///
+/// Runs on the background Tokio runtime; `on_done` is called from that
+/// runtime's thread, not the gpui foreground thread. Channel types the UI
+/// can't display (threads, directories, ...) are filtered out.
+pub fn fetch_channels(
+    token: String,
+    guild_id: Id<GuildMarker>,
+    on_done: impl FnOnce(Result<Vec<Channel>, String>) + Send + 'static,
+) {
+    runtime_handle().spawn(async move {
+        let result = async {
+            let client = HttpClient::new(token);
+            let response = client
+                .guild_channels(guild_id)
+                .await
+                .map_err(|err| err.to_string())?;
+            let channels = response.models().await.map_err(|err| err.to_string())?;
+
+            Ok(channels
+                .into_iter()
+                .filter_map(|channel| {
+                    let kind = match channel.kind {
+                        ChannelType::GuildText => ChannelKind::Text,
+                        ChannelType::GuildAnnouncement => ChannelKind::Announcement,
+                        ChannelType::GuildVoice => ChannelKind::Voice,
+                        ChannelType::GuildStageVoice => ChannelKind::Stage,
+                        ChannelType::GuildForum => ChannelKind::Forum,
+                        ChannelType::GuildCategory => ChannelKind::Category,
+                        _ => return None,
+                    };
+                    Some(Channel {
+                        id: channel.id,
+                        name: channel.name.unwrap_or_default(),
+                        kind,
+                        parent_id: channel.parent_id,
+                        position: channel.position.unwrap_or(0),
+                    })
                 })
                 .collect::<Vec<_>>())
         }

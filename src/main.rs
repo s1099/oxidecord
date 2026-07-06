@@ -1,3 +1,4 @@
+mod assets;
 mod constants;
 mod discord;
 mod http;
@@ -17,7 +18,7 @@ fn main() {
         std::env::set_var("GPUI_DISABLE_DIRECT_COMPOSITION", "true");
     }
     let app = Application::new()
-        .with_assets(gpui_component_assets::Assets)
+        .with_assets(assets::Assets)
         .with_http_client(Arc::new(http::ReqwestClient::new()));
 
     app.run(|cx: &mut App| {
