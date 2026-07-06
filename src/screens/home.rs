@@ -4,11 +4,16 @@ use std::sync::Arc;
 use gpui::prelude::FluentBuilder as _;
 use gpui::*;
 use gpui_component::{
-    avatar::Avatar, collapsible::Collapsible, divider::Divider, h_flex, tooltip::Tooltip, v_flex,
-    ActiveTheme as _, Icon, IconName,
+    avatar::Avatar,
+    collapsible::Collapsible,
+    divider::Divider,
+    h_flex,
+    input::{Input, InputEvent, InputState},
+    tooltip::Tooltip,
+    v_flex, ActiveTheme as _, Icon, IconName, Sizable as _,
 };
 use twilight_model::id::{
-    marker::{ChannelMarker, GuildMarker},
+    marker::{ChannelMarker, GuildMarker, UserMarker},
     Id,
 };
 
@@ -81,10 +86,30 @@ pub struct HomeScreen {
     collapsed_categories: HashSet<Id<ChannelMarker>>,
     channels_loading: bool,
     channels_error: Option<String>,
+    messages: Vec<discord::Message>,
+    messages_loading: bool,
+    messages_error: Option<String>,
+    send_error: Option<String>,
+    message_input: Entity<InputState>,
+    messages_scroll: ScrollHandle,
 }
 
 impl HomeScreen {
-    pub fn new(_window: &mut Window, cx: &mut Context<Self>) -> Self {
+    pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+        let message_input =
+            cx.new(|cx| InputState::new(window, cx).placeholder("Send a message"));
+
+        cx.subscribe_in(
+            &message_input,
+            window,
+            |this, _, event: &InputEvent, window, cx| {
+                if let InputEvent::PressEnter { .. } = event {
+                    this.send_current_message(window, cx);
+                }
+            },
+        )
+        .detach();
+
         let mut this = Self {
             guilds: Vec::new(),
             selected_guild: None,
@@ -95,12 +120,18 @@ impl HomeScreen {
             collapsed_categories: HashSet::new(),
             channels_loading: false,
             channels_error: None,
+            messages: Vec::new(),
+            messages_loading: false,
+            messages_error: None,
+            send_error: None,
+            message_input,
+            messages_scroll: ScrollHandle::new(),
         };
-        this.load_guilds(cx);
+        this.load_guilds(window, cx);
         this
     }
 
-    fn load_guilds(&mut self, cx: &mut Context<Self>) {
+    fn load_guilds(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some(token) = discord::load_token() else {
             self.loading = false;
             self.error = Some("No token found in auth.json. Please log in first.".into());
@@ -116,19 +147,19 @@ impl HomeScreen {
             let _ = tx.send(result);
         });
 
-        cx.spawn(async move |this, cx| {
+        cx.spawn_in(window, async move |this, cx| {
             let Ok(result) = rx.await else {
                 return;
             };
 
-            let _ = this.update(cx, |this, cx| {
+            let _ = this.update_in(cx, |this, window, cx| {
                 match result {
                     Ok(guilds) => {
                         let first = guilds.first().map(|guild| guild.id);
                         this.guilds = guilds;
                         this.error = None;
                         if let Some(guild_id) = first {
-                            this.select_guild(guild_id, cx);
+                            this.select_guild(guild_id, window, cx);
                         }
                     }
                     Err(err) => this.error = Some(err),
@@ -140,7 +171,12 @@ impl HomeScreen {
         .detach();
     }
 
-    fn select_guild(&mut self, guild_id: Id<GuildMarker>, cx: &mut Context<Self>) {
+    fn select_guild(
+        &mut self,
+        guild_id: Id<GuildMarker>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         if self.selected_guild == Some(guild_id) {
             return;
         }
@@ -163,12 +199,12 @@ impl HomeScreen {
             let _ = tx.send(result);
         });
 
-        cx.spawn(async move |this, cx| {
+        cx.spawn_in(window, async move |this, cx| {
             let Ok(result) = rx.await else {
                 return;
             };
 
-            let _ = this.update(cx, |this, cx| {
+            let _ = this.update_in(cx, |this, window, cx| {
                 // The user may have clicked another guild while this request
                 // was in flight; drop the stale response.
                 if this.selected_guild != Some(guild_id) {
@@ -178,16 +214,135 @@ impl HomeScreen {
                     Ok(channels) => {
                         this.channel_groups = build_channel_groups(channels);
                         // Default to the first text-like channel, like Discord.
-                        this.selected_channel = this
+                        let first = this
                             .channel_groups
                             .iter()
                             .flat_map(|group| &group.channels)
                             .find(|channel| !channel.kind.is_voice())
                             .map(|channel| channel.id);
+                        if let Some(channel_id) = first {
+                            this.select_channel(channel_id, window, cx);
+                        }
                     }
                     Err(err) => this.channels_error = Some(err),
                 }
                 this.channels_loading = false;
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
+    fn select_channel(
+        &mut self,
+        channel_id: Id<ChannelMarker>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.selected_channel == Some(channel_id) {
+            return;
+        }
+        self.selected_channel = Some(channel_id);
+        self.load_messages(window, cx);
+    }
+
+    fn load_messages(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(channel_id) = self.selected_channel else {
+            return;
+        };
+        self.messages.clear();
+        self.messages_error = None;
+        self.send_error = None;
+        self.messages_loading = true;
+
+        let placeholder = self
+            .selected_channel_info()
+            .map(|channel| format!("Message #{}", channel.name))
+            .unwrap_or_else(|| "Send a message".into());
+        self.message_input.update(cx, |input, cx| {
+            input.set_placeholder(placeholder, window, cx);
+        });
+        cx.notify();
+
+        let Some(token) = discord::load_token() else {
+            self.messages_loading = false;
+            self.messages_error = Some("No token found in auth.json.".into());
+            return;
+        };
+
+        let (tx, rx) = futures::channel::oneshot::channel();
+        discord::fetch_messages(token, channel_id, move |result| {
+            let _ = tx.send(result);
+        });
+
+        cx.spawn(async move |this, cx| {
+            let Ok(result) = rx.await else {
+                return;
+            };
+
+            let _ = this.update(cx, |this, cx| {
+                // The user may have clicked another channel while this request
+                // was in flight; drop the stale response.
+                if this.selected_channel != Some(channel_id) {
+                    return;
+                }
+                match result {
+                    Ok(messages) => {
+                        this.messages = messages;
+                        this.messages_scroll.scroll_to_bottom();
+                    }
+                    Err(err) => this.messages_error = Some(err),
+                }
+                this.messages_loading = false;
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
+    fn send_current_message(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(channel_id) = self.selected_channel else {
+            return;
+        };
+        let content = self.message_input.read(cx).value().trim().to_string();
+        if content.is_empty() {
+            return;
+        }
+
+        let Some(token) = discord::load_token() else {
+            self.send_error = Some("No token found in auth.json.".into());
+            cx.notify();
+            return;
+        };
+
+        self.message_input.update(cx, |input, cx| {
+            input.set_value("", window, cx);
+        });
+        self.send_error = None;
+        cx.notify();
+
+        let (tx, rx) = futures::channel::oneshot::channel();
+        discord::send_message(token, channel_id, content, move |result| {
+            let _ = tx.send(result);
+        });
+
+        cx.spawn(async move |this, cx| {
+            let Ok(result) = rx.await else {
+                return;
+            };
+
+            let _ = this.update(cx, |this, cx| {
+                // Drop the response if the user switched channels meanwhile.
+                if this.selected_channel != Some(channel_id) {
+                    return;
+                }
+                match result {
+                    Ok(message) => {
+                        this.messages.push(message);
+                        this.messages_scroll.scroll_to_bottom();
+                    }
+                    Err(err) => this.send_error = Some(err),
+                }
                 cx.notify();
             });
         })
@@ -269,8 +424,8 @@ impl HomeScreen {
                             .tooltip(move |window, cx| {
                                 Tooltip::new(guild_name.clone()).build(window, cx)
                             })
-                            .on_click(cx.listener(move |this, _, _, cx| {
-                                this.select_guild(guild_id, cx);
+                            .on_click(cx.listener(move |this, _, window, cx| {
+                                this.select_guild(guild_id, window, cx);
                             }))
                     })),
             )
@@ -303,9 +458,8 @@ impl HomeScreen {
                     .size_4(),
             )
             .child(div().flex_1().truncate().child(channel.name.clone()))
-            .on_click(cx.listener(move |this, _, _, cx| {
-                this.selected_channel = Some(channel_id);
-                cx.notify();
+            .on_click(cx.listener(move |this, _, window, cx| {
+                this.select_channel(channel_id, window, cx);
             }))
     }
 
@@ -440,6 +594,184 @@ impl HomeScreen {
             .child(list)
     }
 
+    fn render_channel_header(&self, channel: &Channel, cx: &Context<Self>) -> impl IntoElement {
+        let theme = cx.theme();
+
+        h_flex()
+            .h(px(48.))
+            .w_full()
+            .flex_shrink_0()
+            .px_4()
+            .gap_2()
+            .items_center()
+            .border_b_1()
+            .border_color(theme.border)
+            .child(
+                Icon::default()
+                    .path(channel_icon_path(channel.kind))
+                    .size_5()
+                    .text_color(theme.muted_foreground),
+            )
+            .child(
+                div()
+                    .flex_shrink_0()
+                    .font_weight(FontWeight::SEMIBOLD)
+                    .child(channel.name.clone()),
+            )
+            .when_some(
+                // show only the first line and let `truncate` elide the rest.
+                channel
+                    .topic
+                    .as_deref()
+                    .and_then(|topic| topic.lines().find(|line| !line.trim().is_empty()))
+                    .map(str::to_owned),
+                |this, topic| {
+                    this.child(Divider::vertical().h(px(24.))).child(
+                        div()
+                            .flex_1()
+                            .truncate()
+                            .text_sm()
+                            .text_color(theme.muted_foreground)
+                            .child(topic),
+                    )
+                },
+            )
+    }
+
+    fn render_message(
+        &self,
+        message: &discord::Message,
+        show_header: bool,
+        cx: &Context<Self>,
+    ) -> AnyElement {
+        let theme = cx.theme();
+
+        let content: AnyElement = if message.content.is_empty() {
+            div()
+                .italic()
+                .text_color(theme.muted_foreground)
+                .child("(no text content)")
+                .into_any_element()
+        } else {
+            div().child(message.content.clone()).into_any_element()
+        };
+
+        // Consecutive messages from the same author share one header, like
+        // Discord; align follow-ups with the content column (avatar + gap).
+        if !show_header {
+            return div()
+                .id(("message", message.id.get()))
+                .pl(px(52.))
+                .py(px(1.))
+                .text_sm()
+                .child(content)
+                .into_any_element();
+        }
+
+        let mut avatar = Avatar::new()
+            .name(message.author_name.clone())
+            .with_size(px(40.));
+        if let Some(avatar_url) = message.author_avatar_url.clone() {
+            avatar = avatar.src(avatar_url);
+        }
+
+        h_flex()
+            .id(("message", message.id.get()))
+            .mt_3()
+            .gap_3()
+            .items_start()
+            .child(avatar)
+            .child(
+                v_flex()
+                    .flex_1()
+                    .min_w_0()
+                    .gap(px(2.))
+                    .child(
+                        h_flex()
+                            .gap_2()
+                            .items_center()
+                            .child(
+                                div()
+                                    .text_sm()
+                                    .font_weight(FontWeight::SEMIBOLD)
+                                    .child(message.author_name.clone()),
+                            )
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(theme.muted_foreground)
+                                    .child(message.timestamp.clone()),
+                            ),
+                    )
+                    .child(div().text_sm().child(content)),
+            )
+            .into_any_element()
+    }
+
+    fn render_messages(&self, cx: &Context<Self>) -> AnyElement {
+        let theme = cx.theme();
+
+        if self.messages_loading {
+            return v_flex()
+                .flex_1()
+                .items_center()
+                .justify_center()
+                .text_color(theme.muted_foreground)
+                .child("Loading messages...")
+                .into_any_element();
+        }
+
+        if let Some(error) = &self.messages_error {
+            return v_flex()
+                .flex_1()
+                .items_center()
+                .justify_center()
+                .px_4()
+                .text_color(theme.danger)
+                .child(error.clone())
+                .into_any_element();
+        }
+
+        let mut previous_author: Option<Id<UserMarker>> = None;
+        let rows: Vec<_> = self
+            .messages
+            .iter()
+            .map(|message| {
+                let show_header = previous_author != Some(message.author_id);
+                previous_author = Some(message.author_id);
+                self.render_message(message, show_header, cx)
+            })
+            .collect();
+
+        v_flex()
+            .id("messages")
+            .flex_1()
+            .min_h_0()
+            .w_full()
+            .overflow_y_scroll()
+            .track_scroll(&self.messages_scroll)
+            .px_4()
+            .py_2()
+            .children(rows)
+            .into_any_element()
+    }
+
+    fn render_message_bar(&self, cx: &Context<Self>) -> impl IntoElement {
+        let theme = cx.theme();
+
+        v_flex()
+            .w_full()
+            .flex_shrink_0()
+            .px_4()
+            .pt_1()
+            .pb_4()
+            .gap_1()
+            .when_some(self.send_error.clone(), |this, error| {
+                this.child(div().text_xs().text_color(theme.danger).child(error))
+            })
+            .child(Input::new(&self.message_input))
+    }
+
     fn render_content(&self, cx: &Context<Self>) -> AnyElement {
         let theme = cx.theme();
 
@@ -463,39 +795,24 @@ impl HomeScreen {
                 .into_any_element();
         }
 
-        let selected_channel = self.selected_channel_info().cloned();
-
-        let title = match &selected_channel {
-            Some(channel) => channel.name.clone(),
-            None => self
-                .selected_guild
-                .and_then(|id| self.guilds.iter().find(|guild| guild.id == id))
-                .map(|guild| guild.name.clone())
-                .unwrap_or_else(|| "Select a server".into()),
+        let Some(channel) = self.selected_channel_info().cloned() else {
+            return v_flex()
+                .flex_1()
+                .h_full()
+                .items_center()
+                .justify_center()
+                .text_color(theme.muted_foreground)
+                .child("Select a channel")
+                .into_any_element();
         };
 
         v_flex()
             .flex_1()
             .h_full()
-            .items_center()
-            .justify_center()
-            .gap(px(8.))
-            .child(
-                h_flex()
-                    .gap_1()
-                    .items_center()
-                    .text_size(px(20.))
-                    .font_weight(FontWeight::SEMIBOLD)
-                    .when_some(selected_channel, |this, channel| {
-                        this.child(Icon::default().path(channel_icon_path(channel.kind)).size_5())
-                    })
-                    .child(title),
-            )
-            .child(
-                div()
-                    .text_color(theme.muted_foreground)
-                    .child("soonTM."),
-            )
+            .min_w_0()
+            .child(self.render_channel_header(&channel, cx))
+            .child(self.render_messages(cx))
+            .child(self.render_message_bar(cx))
             .into_any_element()
     }
 }

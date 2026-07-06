@@ -5,9 +5,10 @@ use tokio::runtime::Handle;
 use twilight_http::Client as HttpClient;
 use twilight_model::channel::ChannelType;
 use twilight_model::id::{
-    marker::{ChannelMarker, GuildMarker},
+    marker::{ChannelMarker, GuildMarker, MessageMarker, UserMarker},
     Id,
 };
+use twilight_model::util::Timestamp;
 
 static RUNTIME: OnceLock<Handle> = OnceLock::new();
 
@@ -110,6 +111,7 @@ pub struct Channel {
     pub kind: ChannelKind,
     pub parent_id: Option<Id<ChannelMarker>>,
     pub position: i32,
+    pub topic: Option<String>,
 }
 
 /// Fetches a guild's channels and invokes `on_done` with the result.
@@ -149,9 +151,111 @@ pub fn fetch_channels(
                         kind,
                         parent_id: channel.parent_id,
                         position: channel.position.unwrap_or(0),
+                        topic: channel.topic.filter(|topic| !topic.is_empty()),
                     })
                 })
                 .collect::<Vec<_>>())
+        }
+        .await;
+
+        on_done(result);
+    });
+}
+
+#[derive(Clone)]
+pub struct Message {
+    pub id: Id<MessageMarker>,
+    pub author_id: Id<UserMarker>,
+    pub author_name: String,
+    pub author_avatar_url: Option<String>,
+    pub content: String,
+    pub timestamp: String,
+}
+
+/// Formats a Discord timestamp as `YYYY-MM-DD HH:MM` (UTC).
+fn format_timestamp(timestamp: Timestamp) -> String {
+    // ISO 8601 form is `2021-08-10T11:16:37.020000+00:00`.
+    let iso = timestamp.iso_8601().to_string();
+    match (iso.get(..10), iso.get(11..16)) {
+        (Some(date), Some(time)) => format!("{date} {time}"),
+        _ => iso,
+    }
+}
+
+fn convert_message(message: twilight_model::channel::Message) -> Message {
+    let author_avatar_url = message.author.avatar.map(|hash| {
+        format!(
+            "https://cdn.discordapp.com/avatars/{}/{}.webp?size=80",
+            message.author.id, hash
+        )
+    });
+    let author_name = message
+        .author
+        .global_name
+        .unwrap_or_else(|| message.author.name.clone());
+
+    Message {
+        id: message.id,
+        author_id: message.author.id,
+        author_name,
+        author_avatar_url,
+        content: message.content,
+        timestamp: format_timestamp(message.timestamp),
+    }
+}
+
+/// Fetches the most recent messages in a channel (oldest first) and invokes
+/// `on_done` with the result.
+///
+/// Runs on the background Tokio runtime; `on_done` is called from that
+/// runtime's thread, not the gpui foreground thread.
+pub fn fetch_messages(
+    token: String,
+    channel_id: Id<ChannelMarker>,
+    on_done: impl FnOnce(Result<Vec<Message>, String>) + Send + 'static,
+) {
+    runtime_handle().spawn(async move {
+        let result = async {
+            let client = HttpClient::new(token);
+            let response = client
+                .channel_messages(channel_id)
+                .limit(50)
+                .await
+                .map_err(|err| err.to_string())?;
+            let mut messages = response.models().await.map_err(|err| err.to_string())?;
+
+            // The API returns newest first; the UI renders oldest first.
+            messages.reverse();
+            Ok(messages.into_iter().map(convert_message).collect::<Vec<_>>())
+        }
+        .await;
+
+        on_done(result);
+    });
+}
+
+/// Sends a message to a channel and invokes `on_done` with the created
+/// message.
+///
+/// Runs on the background Tokio runtime; `on_done` is called from that
+/// runtime's thread, not the gpui foreground thread.
+pub fn send_message(
+    token: String,
+    channel_id: Id<ChannelMarker>,
+    content: String,
+    on_done: impl FnOnce(Result<Message, String>) + Send + 'static,
+) {
+    runtime_handle().spawn(async move {
+        let result = async {
+            let client = HttpClient::new(token);
+            let response = client
+                .create_message(channel_id)
+                .content(&content)
+                .await
+                .map_err(|err| err.to_string())?;
+            let message = response.model().await.map_err(|err| err.to_string())?;
+
+            Ok(convert_message(message))
         }
         .await;
 

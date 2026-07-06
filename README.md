@@ -19,11 +19,9 @@ cargo run --release # release build
 3. Binary can be found in `target/release` or `target/debug`
 
 ### TODO
-- Viewing channels
-- Viewing and sending messages
 - Store token securely instead of a plaintext file right now
 - Embeds
-- Loading states
+- Better Loading states
 - DM's
 - Videos
 - Caching
