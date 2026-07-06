@@ -4,7 +4,8 @@ use std::sync::Arc;
 use gpui::prelude::FluentBuilder as _;
 use gpui::*;
 use gpui_component::{
-    avatar::Avatar, divider::Divider, h_flex, tooltip::Tooltip, v_flex, ActiveTheme as _, Icon,
+    avatar::Avatar, collapsible::Collapsible, divider::Divider, h_flex, tooltip::Tooltip, v_flex,
+    ActiveTheme as _, Icon, IconName,
 };
 use twilight_model::id::{
     marker::{ChannelMarker, GuildMarker},
@@ -13,16 +14,17 @@ use twilight_model::id::{
 
 use crate::discord::{self, Channel, ChannelKind, Guild};
 
-/// One row in the channel sidebar: either a category header or a channel.
-enum ChannelRow {
-    Category(Channel),
-    Channel(Channel),
+/// A category and its channels (or the uncategorized channels when
+/// `category` is `None`), in Discord's display order.
+struct ChannelGroup {
+    category: Option<Channel>,
+    channels: Vec<Channel>,
 }
 
-/// Flattens a guild's channels into sidebar rows in Discord's display order:
-/// uncategorized channels first, then each category (by position) followed by
-/// its children, with text-like channels before voice channels in each group.
-fn build_channel_rows(channels: Vec<Channel>) -> Vec<ChannelRow> {
+/// Groups a guild's channels for the sidebar in Discord's display order:
+/// uncategorized channels first, then each category (by position) with its
+/// children, text-like channels before voice channels in each group.
+fn build_channel_groups(channels: Vec<Channel>) -> Vec<ChannelGroup> {
     let (mut categories, mut others): (Vec<_>, Vec<_>) = channels
         .into_iter()
         .partition(|channel| channel.kind == ChannelKind::Category);
@@ -32,23 +34,31 @@ fn build_channel_rows(channels: Vec<Channel>) -> Vec<ChannelRow> {
 
     let category_ids: HashSet<_> = categories.iter().map(|category| category.id).collect();
 
-    let mut rows = Vec::new();
+    let mut groups = Vec::new();
     // Channels with no (known) parent category sit above all categories.
-    for channel in &others {
-        if channel.parent_id.is_none_or(|id| !category_ids.contains(&id)) {
-            rows.push(ChannelRow::Channel(channel.clone()));
-        }
+    let uncategorized: Vec<_> = others
+        .iter()
+        .filter(|channel| channel.parent_id.is_none_or(|id| !category_ids.contains(&id)))
+        .cloned()
+        .collect();
+    if !uncategorized.is_empty() {
+        groups.push(ChannelGroup {
+            category: None,
+            channels: uncategorized,
+        });
     }
     for category in categories {
-        let category_id = category.id;
-        rows.push(ChannelRow::Category(category));
-        for channel in &others {
-            if channel.parent_id == Some(category_id) {
-                rows.push(ChannelRow::Channel(channel.clone()));
-            }
-        }
+        let channels = others
+            .iter()
+            .filter(|channel| channel.parent_id == Some(category.id))
+            .cloned()
+            .collect();
+        groups.push(ChannelGroup {
+            category: Some(category),
+            channels,
+        });
     }
-    rows
+    groups
 }
 
 fn channel_icon_path(kind: ChannelKind) -> &'static str {
@@ -66,8 +76,9 @@ pub struct HomeScreen {
     selected_guild: Option<Id<GuildMarker>>,
     loading: bool,
     error: Option<String>,
-    channel_rows: Vec<ChannelRow>,
+    channel_groups: Vec<ChannelGroup>,
     selected_channel: Option<Id<ChannelMarker>>,
+    collapsed_categories: HashSet<Id<ChannelMarker>>,
     channels_loading: bool,
     channels_error: Option<String>,
 }
@@ -79,8 +90,9 @@ impl HomeScreen {
             selected_guild: None,
             loading: true,
             error: None,
-            channel_rows: Vec::new(),
+            channel_groups: Vec::new(),
             selected_channel: None,
+            collapsed_categories: HashSet::new(),
             channels_loading: false,
             channels_error: None,
         };
@@ -133,8 +145,9 @@ impl HomeScreen {
             return;
         }
         self.selected_guild = Some(guild_id);
-        self.channel_rows.clear();
+        self.channel_groups.clear();
         self.selected_channel = None;
+        self.collapsed_categories.clear();
         self.channels_error = None;
         self.channels_loading = true;
         cx.notify();
@@ -163,15 +176,14 @@ impl HomeScreen {
                 }
                 match result {
                     Ok(channels) => {
-                        this.channel_rows = build_channel_rows(channels);
+                        this.channel_groups = build_channel_groups(channels);
                         // Default to the first text-like channel, like Discord.
-                        this.selected_channel =
-                            this.channel_rows.iter().find_map(|row| match row {
-                                ChannelRow::Channel(channel) if !channel.kind.is_voice() => {
-                                    Some(channel.id)
-                                }
-                                _ => None,
-                            });
+                        this.selected_channel = this
+                            .channel_groups
+                            .iter()
+                            .flat_map(|group| &group.channels)
+                            .find(|channel| !channel.kind.is_voice())
+                            .map(|channel| channel.id);
                     }
                     Err(err) => this.channels_error = Some(err),
                 }
@@ -180,6 +192,14 @@ impl HomeScreen {
             });
         })
         .detach();
+    }
+
+    fn selected_channel_info(&self) -> Option<&Channel> {
+        let id = self.selected_channel?;
+        self.channel_groups
+            .iter()
+            .flat_map(|group| &group.channels)
+            .find(|channel| channel.id == id)
     }
 
     fn render_server_rail(&self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -256,15 +276,116 @@ impl HomeScreen {
             )
     }
 
+    fn render_channel_row(&self, channel: &Channel, cx: &Context<Self>) -> impl IntoElement {
+        let theme = cx.theme();
+        let channel_id = channel.id;
+        let is_selected = self.selected_channel == Some(channel_id);
+
+        h_flex()
+            .id(("channel", channel_id.get()))
+            .px_2()
+            .py(px(5.))
+            .gap_2()
+            .items_center()
+            .rounded(px(6.))
+            .cursor_pointer()
+            .text_sm()
+            .text_color(if is_selected {
+                theme.sidebar_accent_foreground
+            } else {
+                theme.muted_foreground
+            })
+            .when(is_selected, |this| this.bg(theme.sidebar_accent))
+            .hover(|this| this.bg(theme.sidebar_accent.opacity(0.5)))
+            .child(
+                Icon::default()
+                    .path(channel_icon_path(channel.kind))
+                    .size_4(),
+            )
+            .child(div().flex_1().truncate().child(channel.name.clone()))
+            .on_click(cx.listener(move |this, _, _, cx| {
+                this.selected_channel = Some(channel_id);
+                cx.notify();
+            }))
+    }
+
+    fn render_channel_group(&self, group: &ChannelGroup, cx: &Context<Self>) -> AnyElement {
+        let Some(category) = &group.category else {
+            return v_flex()
+                .gap(px(2.))
+                .children(
+                    group
+                        .channels
+                        .iter()
+                        .map(|channel| self.render_channel_row(channel, cx)),
+                )
+                .into_any_element();
+        };
+
+        let theme = cx.theme();
+        let category_id = category.id;
+        let collapsed = self.collapsed_categories.contains(&category_id);
+
+        let header = h_flex()
+            .id(("category", category_id.get()))
+            .mt_2()
+            .px_2()
+            .gap_1()
+            .items_center()
+            .cursor_pointer()
+            .text_xs()
+            .font_weight(FontWeight::SEMIBOLD)
+            .text_color(theme.muted_foreground)
+            .hover(|this| this.text_color(theme.sidebar_foreground))
+            .child(
+                Icon::new(if collapsed {
+                    IconName::ChevronRight
+                } else {
+                    IconName::ChevronDown
+                })
+                .size_3(),
+            )
+            .child(category.name.to_uppercase())
+            .on_click(cx.listener(move |this, _, _, cx| {
+                if !this.collapsed_categories.insert(category_id) {
+                    this.collapsed_categories.remove(&category_id);
+                }
+                cx.notify();
+            }));
+
+        let mut collapsible = Collapsible::new()
+            .open(!collapsed)
+            .gap(px(2.))
+            .child(header)
+            .content(
+                v_flex().gap(px(2.)).children(
+                    group
+                        .channels
+                        .iter()
+                        .map(|channel| self.render_channel_row(channel, cx)),
+                ),
+            );
+
+        // Like Discord, keep the selected channel visible when its category
+        // is collapsed.
+        if collapsed {
+            if let Some(selected) = group
+                .channels
+                .iter()
+                .find(|channel| Some(channel.id) == self.selected_channel)
+            {
+                collapsible = collapsible.child(self.render_channel_row(selected, cx));
+            }
+        }
+
+        collapsible.into_any_element()
+    }
+
     fn render_channel_sidebar(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = cx.theme();
         let sidebar_border = theme.sidebar_border;
         let muted = theme.muted_foreground;
-        let selected_bg = theme.sidebar_accent;
-        let selected_fg = theme.sidebar_accent_foreground;
-        let hover_bg = theme.sidebar_accent.opacity(0.5);
         let danger = theme.danger;
-        let selected_channel = self.selected_channel;
 
         let guild_name = self
             .selected_guild
@@ -286,47 +407,11 @@ impl HomeScreen {
         } else if let Some(error) = &self.channels_error {
             list = list.child(div().px_2().text_sm().text_color(danger).child(error.clone()));
         } else {
-            list = list.children(self.channel_rows.iter().map(|row| match row {
-                ChannelRow::Category(category) => h_flex()
-                    .mt_2()
-                    .px_2()
-                    .gap_1()
-                    .items_center()
-                    .text_xs()
-                    .font_weight(FontWeight::SEMIBOLD)
-                    .text_color(muted)
-                    .child(Icon::default().path(channel_icon_path(category.kind)).size_3())
-                    .child(category.name.to_uppercase())
-                    .into_any_element(),
-                ChannelRow::Channel(channel) => {
-                    let channel_id = channel.id;
-                    let is_selected = selected_channel == Some(channel_id);
-
-                    h_flex()
-                        .id(("channel", channel_id.get()))
-                        .px_2()
-                        .py(px(5.))
-                        .gap_2()
-                        .items_center()
-                        .rounded(px(6.))
-                        .cursor_pointer()
-                        .text_sm()
-                        .text_color(if is_selected { selected_fg } else { muted })
-                        .when(is_selected, |this| this.bg(selected_bg))
-                        .hover(|this| this.bg(hover_bg))
-                        .child(
-                            Icon::default()
-                                .path(channel_icon_path(channel.kind))
-                                .size_4(),
-                        )
-                        .child(div().flex_1().truncate().child(channel.name.clone()))
-                        .on_click(cx.listener(move |this, _, _, cx| {
-                            this.selected_channel = Some(channel_id);
-                            cx.notify();
-                        }))
-                        .into_any_element()
-                }
-            }));
+            list = list.children(
+                self.channel_groups
+                    .iter()
+                    .map(|group| self.render_channel_group(group, cx)),
+            );
         }
 
         v_flex()
@@ -378,12 +463,7 @@ impl HomeScreen {
                 .into_any_element();
         }
 
-        let selected_channel = self.selected_channel.and_then(|id| {
-            self.channel_rows.iter().find_map(|row| match row {
-                ChannelRow::Channel(channel) if channel.id == id => Some(channel.clone()),
-                _ => None,
-            })
-        });
+        let selected_channel = self.selected_channel_info().cloned();
 
         let title = match &selected_channel {
             Some(channel) => channel.name.clone(),
