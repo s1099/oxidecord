@@ -131,6 +131,10 @@ impl HomeScreen {
         };
         self.messages.clear();
         self.messages_list.reset(0);
+        // Release the previous channel's decoded images instead of letting them
+        // accumulate; the new channel repopulates the cache as it renders.
+        self.image_cache
+            .update(cx, |cache, cx| cache.clear(window, cx));
         self.messages_error = None;
         self.older_loading = false;
         self.reached_oldest = false;

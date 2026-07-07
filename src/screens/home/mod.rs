@@ -41,6 +41,9 @@ pub struct HomeScreen {
     send_error: Option<String>,
     message_input: Entity<InputState>,
     messages_list: ListState,
+    /// Owns the decoded bitmaps for the currently displayed messages' images.
+    /// Cleared on channel switch so image memory doesn't grow without bound.
+    image_cache: Entity<RetainAllImageCache>,
 }
 
 impl HomeScreen {
@@ -88,6 +91,7 @@ impl HomeScreen {
             send_error: None,
             message_input,
             messages_list,
+            image_cache: RetainAllImageCache::new(cx),
         };
         this.load_guilds(window, cx);
         this

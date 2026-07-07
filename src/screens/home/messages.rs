@@ -41,6 +41,30 @@ fn messages_skeleton() -> impl IntoElement {
         }))
 }
 
+/// Largest inline preview an image is scaled down to, in pixels. Discord uses
+/// similar bounds; the aspect ratio is preserved within them.
+const MAX_IMAGE_WIDTH: f32 = 400.;
+const MAX_IMAGE_HEIGHT: f32 = 300.;
+
+/// Renders one image attachment as a rounded, size-bounded preview.
+fn render_image_attachment(image: &discord::ImageAttachment) -> impl IntoElement {
+    let mut element = img(image.url.clone()).rounded(px(8.)).max_w(px(MAX_IMAGE_WIDTH));
+    match (image.width, image.height) {
+        // With intrinsic dimensions we can lay out the exact scaled box, so
+        // the message doesn't reflow once the image finishes loading.
+        (Some(width), Some(height)) if width > 0 && height > 0 => {
+            let (width, height) = (width as f32, height as f32);
+            let scale = (MAX_IMAGE_WIDTH / width)
+                .min(MAX_IMAGE_HEIGHT / height)
+                .min(1.);
+            element = element.w(px(width * scale)).h(px(height * scale));
+        }
+        // Otherwise just cap the box and let the image size itself.
+        _ => element = element.max_h(px(MAX_IMAGE_HEIGHT)),
+    }
+    element
+}
+
 impl HomeScreen {
     pub(super) fn render_channel_header(
         &self,
@@ -98,19 +122,31 @@ impl HomeScreen {
     ) -> AnyElement {
         let theme = cx.theme();
 
-        let content: AnyElement = if message.content.is_empty() {
-            div()
-                .italic()
-                .text_color(theme.muted_foreground)
-                .child("(no text content)")
-                .into_any_element()
-        } else {
-            div()
-                .w_full()
-                .min_w_0()
-                .child(message.content.clone())
-                .into_any_element()
-        };
+        let has_images = !message.images.is_empty();
+        let content: AnyElement = v_flex()
+            .w_full()
+            .min_w_0()
+            .gap_1()
+            // Show placeholder text only when there's nothing else to render.
+            .when(!message.content.is_empty(), |this| {
+                this.child(div().w_full().min_w_0().child(message.content.clone()))
+            })
+            .when(message.content.is_empty() && !has_images, |this| {
+                this.child(
+                    div()
+                        .italic()
+                        .text_color(theme.muted_foreground)
+                        .child("(no text content)"),
+                )
+            })
+            .when(has_images, |this| {
+                this.child(
+                    v_flex()
+                        .gap_1()
+                        .children(message.images.iter().map(render_image_attachment)),
+                )
+            })
+            .into_any_element();
 
         // Consecutive messages from the same author share one header, like
         // Discord; align follow-ups with the content column (avatar + gap).
@@ -207,7 +243,19 @@ impl HomeScreen {
                     .child(Spinner::new().small().color(theme.muted_foreground)),
             );
         }
-        container.child(messages_list).into_any_element()
+
+        // Route message images through our own cache instead of gpui's global
+        // asset cache (which never evicts). Child `img` elements pick this up
+        // via the cache stack. We clear it on channel switch, so image memory
+        // is bounded to the messages currently on screen.
+        image_cache(self.image_cache.clone())
+            .flex()
+            .flex_col()
+            .flex_1()
+            .min_h_0()
+            .w_full()
+            .child(container.child(messages_list))
+            .into_any_element()
     }
 
     fn render_message_item(&mut self, ix: usize, cx: &mut Context<Self>) -> AnyElement {
