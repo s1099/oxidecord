@@ -19,7 +19,7 @@ cargo run --release # release build
 3. Binary can be found in `target/release` or `target/debug`
 
 ### TODO
-- Sending & loading images
+- Sending images & fix memory leak with loading images
 - Store token securely instead of a plaintext file right now
 - Embeds
 - DM's

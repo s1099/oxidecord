@@ -77,8 +77,8 @@ impl LoginWebview {
                             let token = msg.body().trim_matches('"');
                             let file_content = format!(
                                 r#"{{
-  "userToken": "{}"
-}}"#,
+					"userToken": "{}"
+				}}"#,
                                 token
                             );
                             let _ = std::fs::write("auth.json", file_content);
@@ -88,9 +88,6 @@ impl LoginWebview {
                             let app_inner = app_capture.clone();
 
                             let _ = async_cx_inner.update(move |cx| {
-                                // Now that the token is saved, switch the main
-                                // window straight to Home instead of waiting for
-                                // a restart.
                                 let _ = cx.update_window(main_window, |_, window, cx| {
                                     let _ = app_inner
                                         .update(cx, |app, cx| app.show_home(window, cx));

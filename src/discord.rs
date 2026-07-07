@@ -170,6 +170,29 @@ pub struct Message {
     pub author_avatar_url: Option<String>,
     pub content: String,
     pub timestamp: String,
+    pub images: Vec<ImageAttachment>,
+}
+
+/// An image attachment on a message, ready to display inline.
+#[derive(Clone)]
+pub struct ImageAttachment {
+    pub url: String,
+    /// Intrinsic pixel dimensions, when Discord reports them. Used to size the
+    /// inline preview while preserving aspect ratio.
+    pub width: Option<u32>,
+    pub height: Option<u32>,
+}
+
+/// Whether an attachment is an image we can render inline. Prefers Discord's
+/// reported media type and falls back to the filename extension.
+fn is_image_attachment(attachment: &twilight_model::channel::Attachment) -> bool {
+    if let Some(content_type) = &attachment.content_type {
+        return content_type.starts_with("image/");
+    }
+    let name = attachment.filename.to_ascii_lowercase();
+    [".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"]
+        .iter()
+        .any(|ext| name.ends_with(ext))
 }
 
 /// Formats a Discord timestamp as `YYYY-MM-DD HH:MM` (UTC).
@@ -189,10 +212,25 @@ fn convert_message(message: twilight_model::channel::Message) -> Message {
             message.author.id, hash
         )
     });
+    // Prefer the author's per-guild nickname, then their global display name,
+    // then their username. `member` is present on messages fetched from a
+    // guild channel but not on ones we just sent, hence the fallbacks.
     let author_name = message
-        .author
-        .global_name
+        .member
+        .and_then(|member| member.nick)
+        .or(message.author.global_name)
         .unwrap_or_else(|| message.author.name.clone());
+
+    let images = message
+        .attachments
+        .iter()
+        .filter(|attachment| is_image_attachment(attachment))
+        .map(|attachment| ImageAttachment {
+            url: attachment.url.clone(),
+            width: attachment.width.map(|w| w as u32),
+            height: attachment.height.map(|h| h as u32),
+        })
+        .collect();
 
     Message {
         id: message.id,
@@ -201,6 +239,7 @@ fn convert_message(message: twilight_model::channel::Message) -> Message {
         author_avatar_url,
         content: message.content,
         timestamp: format_timestamp(message.timestamp),
+        images,
     }
 }
 
