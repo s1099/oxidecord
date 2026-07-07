@@ -1,0 +1,175 @@
+use gpui::prelude::FluentBuilder as _;
+use gpui::*;
+use gpui_component::{
+    collapsible::Collapsible, h_flex, v_flex, ActiveTheme as _, Icon, IconName,
+};
+
+use crate::discord::Channel;
+
+use super::channels::{channel_icon_path, ChannelGroup};
+use super::HomeScreen;
+
+impl HomeScreen {
+    fn render_channel_row(&self, channel: &Channel, cx: &Context<Self>) -> impl IntoElement {
+        let theme = cx.theme();
+        let channel_id = channel.id;
+        let is_selected = self.selected_channel == Some(channel_id);
+
+        h_flex()
+            .id(("channel", channel_id.get()))
+            .px_2()
+            .py(px(5.))
+            .gap_2()
+            .items_center()
+            .rounded(px(6.))
+            .cursor_pointer()
+            .text_sm()
+            .text_color(if is_selected {
+                theme.sidebar_accent_foreground
+            } else {
+                theme.muted_foreground
+            })
+            .when(is_selected, |this| this.bg(theme.sidebar_accent))
+            .hover(|this| this.bg(theme.sidebar_accent.opacity(0.5)))
+            .child(
+                Icon::default()
+                    .path(channel_icon_path(channel.kind))
+                    .size_4(),
+            )
+            .child(div().flex_1().truncate().child(channel.name.clone()))
+            .on_click(cx.listener(move |this, _, window, cx| {
+                this.select_channel(channel_id, window, cx);
+            }))
+    }
+
+    fn render_channel_group(&self, group: &ChannelGroup, cx: &Context<Self>) -> AnyElement {
+        let Some(category) = &group.category else {
+            return v_flex()
+                .gap(px(2.))
+                .children(
+                    group
+                        .channels
+                        .iter()
+                        .map(|channel| self.render_channel_row(channel, cx)),
+                )
+                .into_any_element();
+        };
+
+        let theme = cx.theme();
+        let category_id = category.id;
+        let collapsed = self.collapsed_categories.contains(&category_id);
+
+        let header = h_flex()
+            .id(("category", category_id.get()))
+            .mt_2()
+            .px_2()
+            .gap_1()
+            .items_center()
+            .cursor_pointer()
+            .text_xs()
+            .font_weight(FontWeight::SEMIBOLD)
+            .text_color(theme.muted_foreground)
+            .hover(|this| this.text_color(theme.sidebar_foreground))
+            .child(
+                Icon::new(if collapsed {
+                    IconName::ChevronRight
+                } else {
+                    IconName::ChevronDown
+                })
+                .size_3(),
+            )
+            .child(category.name.to_uppercase())
+            .on_click(cx.listener(move |this, _, _, cx| {
+                if !this.collapsed_categories.insert(category_id) {
+                    this.collapsed_categories.remove(&category_id);
+                }
+                cx.notify();
+            }));
+
+        let mut collapsible = Collapsible::new()
+            .open(!collapsed)
+            .gap(px(2.))
+            .child(header)
+            .content(
+                v_flex().gap(px(2.)).children(
+                    group
+                        .channels
+                        .iter()
+                        .map(|channel| self.render_channel_row(channel, cx)),
+                ),
+            );
+
+        // Like Discord, keep the selected channel visible when its category
+        // is collapsed.
+        if collapsed {
+            if let Some(selected) = group
+                .channels
+                .iter()
+                .find(|channel| Some(channel.id) == self.selected_channel)
+            {
+                collapsible = collapsible.child(self.render_channel_row(selected, cx));
+            }
+        }
+
+        collapsible.into_any_element()
+    }
+
+    pub(super) fn render_channel_sidebar(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let theme = cx.theme();
+        let sidebar_border = theme.sidebar_border;
+        let muted = theme.muted_foreground;
+        let danger = theme.danger;
+
+        let guild_name = self
+            .selected_guild
+            .and_then(|id| self.guilds.iter().find(|guild| guild.id == id))
+            .map(|guild| guild.name.clone())
+            .unwrap_or_default();
+
+        let mut list = v_flex()
+            .id("channel-list")
+            .flex_1()
+            .w_full()
+            .overflow_y_scroll()
+            .px_2()
+            .py_2()
+            .gap(px(2.));
+
+        if self.channels_loading {
+            list = list.child(div().px_2().text_sm().text_color(muted).child("Loading..."));
+        } else if let Some(error) = &self.channels_error {
+            list = list.child(div().px_2().text_sm().text_color(danger).child(error.clone()));
+        } else {
+            list = list.children(
+                self.channel_groups
+                    .iter()
+                    .map(|group| self.render_channel_group(group, cx)),
+            );
+        }
+
+        v_flex()
+            .w(px(240.))
+            .h_full()
+            .flex_shrink_0()
+            .bg(theme.sidebar)
+            .text_color(theme.sidebar_foreground)
+            .border_r_1()
+            .border_color(sidebar_border)
+            .child(
+                h_flex()
+                    .h(px(48.))
+                    .flex_shrink_0()
+                    .px_4()
+                    .items_center()
+                    .border_b_1()
+                    .border_color(sidebar_border)
+                    .child(
+                        div()
+                            .truncate()
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .child(guild_name),
+                    ),
+            )
+            .child(list)
+    }
+}
