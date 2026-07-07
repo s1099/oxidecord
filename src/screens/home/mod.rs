@@ -96,9 +96,7 @@ impl HomeScreen {
 
 impl Render for HomeScreen {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let sidebar = self
-            .selected_guild
-            .is_some()
+        let sidebar = (self.selected_guild.is_some() || self.loading)
             .then(|| self.render_channel_sidebar(cx).into_any_element());
 
         h_flex()

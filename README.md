@@ -22,7 +22,6 @@ cargo run --release # release build
 - Sending & loading images
 - Store token securely instead of a plaintext file right now
 - Embeds
-- Better Loading states
 - DM's
 - Videos
 - Caching

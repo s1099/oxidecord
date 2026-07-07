@@ -1,8 +1,8 @@
 use gpui::prelude::FluentBuilder as _;
 use gpui::*;
 use gpui_component::{
-    avatar::Avatar, divider::Divider, h_flex, input::Input, v_flex, ActiveTheme as _, Icon,
-    Sizable as _,
+    avatar::Avatar, divider::Divider, h_flex, input::Input, skeleton::Skeleton, spinner::Spinner,
+    v_flex, ActiveTheme as _, Icon, Sizable as _,
 };
 
 use crate::discord::{self, Channel};
@@ -10,9 +10,36 @@ use crate::discord::{self, Channel};
 use super::channels::channel_icon_path;
 use super::HomeScreen;
 
-/// Horizontal padding, in pixels, on either side of the message list. Applied
-/// per message rather than on the list, whose padding its items overflow.
+/// Horizontal padding, in pixels, on either side of the message list
 const MESSAGE_PADDING_X: f32 = 16.;
+
+/// A bottom-aligned column of placeholder message rows
+fn messages_skeleton() -> impl IntoElement {
+    const WIDTHS: [f32; 12] = [
+        420., 280., 360., 200., 480., 320., 260., 440., 300., 380., 220., 460.,
+    ];
+    v_flex()
+        .flex_1()
+        .w_full()
+        .justify_end()
+        .gap_4()
+        .py_2()
+        .children(WIDTHS.iter().map(|&content_width| {
+            h_flex()
+                .w_full()
+                .px(px(MESSAGE_PADDING_X))
+                .gap_3()
+                .items_start()
+                .child(Skeleton::new().size(px(40.)).rounded_full())
+                .child(
+                    v_flex()
+                        .flex_1()
+                        .gap_2()
+                        .child(Skeleton::new().w(px(120.)).h_4().rounded_md())
+                        .child(Skeleton::new().w(px(content_width)).h_4().rounded_md()),
+                )
+        }))
+}
 
 impl HomeScreen {
     pub(super) fn render_channel_header(
@@ -149,13 +176,7 @@ impl HomeScreen {
         let theme = cx.theme();
 
         if self.messages_loading {
-            return v_flex()
-                .flex_1()
-                .items_center()
-                .justify_center()
-                .text_color(theme.muted_foreground)
-                .child("Loading messages...")
-                .into_any_element();
+            return messages_skeleton().into_any_element();
         }
 
         if let Some(error) = &self.messages_error {
@@ -183,9 +204,7 @@ impl HomeScreen {
                     .w_full()
                     .py_1()
                     .justify_center()
-                    .text_xs()
-                    .text_color(theme.muted_foreground)
-                    .child("Loading older messages..."),
+                    .child(Spinner::new().small().color(theme.muted_foreground)),
             );
         }
         container.child(messages_list).into_any_element()
@@ -222,13 +241,7 @@ impl HomeScreen {
         let theme = cx.theme();
 
         if self.loading {
-            return v_flex()
-                .size_full()
-                .items_center()
-                .justify_center()
-                .text_color(theme.muted_foreground)
-                .child("Loading...")
-                .into_any_element();
+            return messages_skeleton().into_any_element();
         }
 
         if let Some(error) = &self.error {
@@ -242,14 +255,7 @@ impl HomeScreen {
         }
 
         let Some(channel) = self.selected_channel_info().cloned() else {
-            return v_flex()
-                .flex_1()
-                .h_full()
-                .items_center()
-                .justify_center()
-                .text_color(theme.muted_foreground)
-                .child("Select a channel")
-                .into_any_element();
+            return messages_skeleton().into_any_element();
         };
 
         v_flex()

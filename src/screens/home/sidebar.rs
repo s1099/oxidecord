@@ -1,7 +1,7 @@
 use gpui::prelude::FluentBuilder as _;
 use gpui::*;
 use gpui_component::{
-    collapsible::Collapsible, h_flex, v_flex, ActiveTheme as _, Icon, IconName,
+    collapsible::Collapsible, h_flex, skeleton::Skeleton, v_flex, ActiveTheme as _, Icon, IconName,
 };
 
 use crate::discord::Channel;
@@ -117,7 +117,6 @@ impl HomeScreen {
     pub(super) fn render_channel_sidebar(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = cx.theme();
         let sidebar_border = theme.sidebar_border;
-        let muted = theme.muted_foreground;
         let danger = theme.danger;
 
         let guild_name = self
@@ -135,8 +134,20 @@ impl HomeScreen {
             .py_2()
             .gap(px(2.));
 
-        if self.channels_loading {
-            list = list.child(div().px_2().text_sm().text_color(muted).child("Loading..."));
+        if self.channels_loading || self.loading {
+            const WIDTHS: [f32; 16] = [
+                120., 88., 104., 72., 132., 96., 116., 80., 124., 92., 108., 76., 128., 100.,
+                112., 84.,
+            ];
+            list = list.children(WIDTHS.iter().map(|&width| {
+                h_flex()
+                    .px_2()
+                    .py(px(5.))
+                    .gap_2()
+                    .items_center()
+                    .child(Skeleton::new().size_4().rounded_md())
+                    .child(Skeleton::new().w(px(width)).h_4().rounded_md())
+            }));
         } else if let Some(error) = &self.channels_error {
             list = list.child(div().px_2().text_sm().text_color(danger).child(error.clone()));
         } else {
