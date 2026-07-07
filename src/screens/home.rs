@@ -19,6 +19,10 @@ use twilight_model::id::{
 
 use crate::discord::{self, Channel, ChannelKind, Guild};
 
+/// Horizontal padding, in pixels, on either side of the message list. Applied
+/// per message rather than on the list, whose padding its items overflow.
+const MESSAGE_PADDING_X: f32 = 16.;
+
 /// A category and its channels (or the uncategorized channels when
 /// `category` is `None`), in Discord's display order.
 struct ChannelGroup {
@@ -741,15 +745,25 @@ impl HomeScreen {
                 .child("(no text content)")
                 .into_any_element()
         } else {
-            div().child(message.content.clone()).into_any_element()
+            div()
+                .w_full()
+                .min_w_0()
+                .child(message.content.clone())
+                .into_any_element()
         };
 
         // Consecutive messages from the same author share one header, like
         // Discord; align follow-ups with the content column (avatar + gap).
+        // The list itself can't pad its items (they overflow its padding), so
+        // each message carries its own horizontal padding and a full width with
+        // `min_w_0` so long lines wrap instead of running off the right edge.
         if !show_header {
             return div()
                 .id(("message", message.id.get()))
-                .pl(px(52.))
+                .w_full()
+                .min_w_0()
+                .pl(px(MESSAGE_PADDING_X + 52.))
+                .pr(px(MESSAGE_PADDING_X))
                 .py(px(1.))
                 .text_sm()
                 .child(content)
@@ -765,6 +779,8 @@ impl HomeScreen {
 
         h_flex()
             .id(("message", message.id.get()))
+            .w_full()
+            .px(px(MESSAGE_PADDING_X))
             .mt_3()
             .gap_3()
             .items_start()
@@ -791,7 +807,7 @@ impl HomeScreen {
                                     .child(message.timestamp.clone()),
                             ),
                     )
-                    .child(div().text_sm().child(content)),
+                    .child(div().w_full().min_w_0().text_sm().child(content)),
             )
             .into_any_element()
     }
@@ -825,7 +841,6 @@ impl HomeScreen {
             entity.update(cx, |this, cx| this.render_message_item(ix, cx))
         })
         .flex_1()
-        .px_4()
         .py_2();
 
         let mut container = v_flex().flex_1().min_h_0().w_full();
