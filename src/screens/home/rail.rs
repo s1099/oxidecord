@@ -6,11 +6,12 @@ use gpui_component::{
     avatar::Avatar, divider::Divider, tooltip::Tooltip, v_flex, ActiveTheme as _,
 };
 
-use super::HomeScreen;
+use super::{HomeScreen, View};
 
 impl HomeScreen {
     pub(super) fn render_server_rail(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let selected = self.selected_guild;
+        let in_dms = self.view == View::DirectMessages;
         let theme = cx.theme();
         let rail_bg = theme.sidebar;
         let rail_border = theme.sidebar_border;
@@ -30,19 +31,31 @@ impl HomeScreen {
             .border_color(rail_border)
             .child(
                 div()
-                    .size(px(48.))
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .rounded_full()
-                    .bg(logo_bg)
+                    .id("home-dms")
+                    .p(px(4.))
+                    .rounded(px(16.))
+                    .cursor_pointer()
+                    .when(in_dms, |this| this.bg(selected_bg))
                     .child(
-                        img(Arc::new(Image::from_bytes(
-                            ImageFormat::Svg,
-                            crate::constants::DISCORD_ICON.as_bytes().to_vec(),
-                        )))
-                        .size(px(28.)),
-                    ),
+                        div()
+                            .size(px(48.))
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .rounded_full()
+                            .bg(logo_bg)
+                            .child(
+                                img(Arc::new(Image::from_bytes(
+                                    ImageFormat::Svg,
+                                    crate::constants::DISCORD_ICON.as_bytes().to_vec(),
+                                )))
+                                .size(px(28.)),
+                            ),
+                    )
+                    .tooltip(|window, cx| Tooltip::new("Direct Messages").build(window, cx))
+                    .on_click(cx.listener(|this, _, window, cx| {
+                        this.open_direct_messages(window, cx);
+                    })),
             )
             .child(Divider::horizontal().w(px(32.)))
             .child(
@@ -56,7 +69,7 @@ impl HomeScreen {
                     .children(self.guilds.iter().map(|guild| {
                         let guild_id = guild.id;
                         let guild_name = guild.name.clone();
-                        let is_selected = selected == Some(guild_id);
+                        let is_selected = !in_dms && selected == Some(guild_id);
 
                         let mut avatar = Avatar::new().name(guild_name.clone());
                         if let Some(icon_url) = guild.icon_url.clone() {

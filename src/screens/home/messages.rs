@@ -8,7 +8,7 @@ use gpui_component::{
 use crate::discord::{self, Channel};
 
 use super::channels::channel_icon_path;
-use super::HomeScreen;
+use super::{HomeScreen, View};
 
 /// Horizontal padding, in pixels, on either side of the message list
 const MESSAGE_PADDING_X: f32 = 16.;
@@ -287,6 +287,10 @@ impl HomeScreen {
 
     pub(super) fn render_content(&self, cx: &Context<Self>) -> AnyElement {
         let theme = cx.theme();
+
+        if self.view == View::DirectMessages {
+            return self.render_dm_content(cx);
+        }
 
         if self.loading {
             return messages_skeleton().into_any_element();

@@ -7,7 +7,7 @@ use twilight_model::id::{
 use crate::discord::{self, Channel};
 
 use super::channels::build_channel_groups;
-use super::HomeScreen;
+use super::{HomeScreen, View};
 
 impl HomeScreen {
     pub(super) fn load_guilds(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -56,7 +56,19 @@ impl HomeScreen {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if self.selected_guild == Some(guild_id) {
+        let same_guild = self.selected_guild == Some(guild_id);
+        if self.view == View::Guild && same_guild {
+            return;
+        }
+        self.view = View::Guild;
+        // Returning from the DM view to the guild that's already loaded: switch
+        // back to its channels without refetching them, reopening a channel
+        // since the DM view cleared the previous selection.
+        if same_guild && !self.channel_groups.is_empty() {
+            if let Some(first) = self.first_text_channel() {
+                self.select_channel(first, window, cx);
+            }
+            cx.notify();
             return;
         }
         self.selected_guild = Some(guild_id);
@@ -92,14 +104,7 @@ impl HomeScreen {
                 match result {
                     Ok(channels) => {
                         this.channel_groups = build_channel_groups(channels);
-                        // Default to the first text-like channel, like Discord.
-                        let first = this
-                            .channel_groups
-                            .iter()
-                            .flat_map(|group| &group.channels)
-                            .find(|channel| !channel.kind.is_voice())
-                            .map(|channel| channel.id);
-                        if let Some(channel_id) = first {
+                        if let Some(channel_id) = this.first_text_channel() {
                             this.select_channel(channel_id, window, cx);
                         }
                     }
@@ -141,10 +146,16 @@ impl HomeScreen {
         self.send_error = None;
         self.messages_loading = true;
 
-        let placeholder = self
-            .selected_channel_info()
-            .map(|channel| format!("Message #{}", channel.name))
-            .unwrap_or_else(|| "Send a message".into());
+        let placeholder = match self.view {
+            View::DirectMessages => self
+                .selected_dm_info()
+                .map(|dm| format!("Message @{}", dm.name))
+                .unwrap_or_else(|| "Send a message".into()),
+            View::Guild => self
+                .selected_channel_info()
+                .map(|channel| format!("Message #{}", channel.name))
+                .unwrap_or_else(|| "Send a message".into()),
+        };
         self.message_input.update(cx, |input, cx| {
             input.set_placeholder(placeholder, window, cx);
         });
@@ -309,5 +320,15 @@ impl HomeScreen {
             .iter()
             .flat_map(|group| &group.channels)
             .find(|channel| channel.id == id)
+    }
+
+    /// The first text channel in display order used as the
+    /// default selection when entering a guild
+    fn first_text_channel(&self) -> Option<Id<ChannelMarker>> {
+        self.channel_groups
+            .iter()
+            .flat_map(|group| &group.channels)
+            .find(|channel| !channel.kind.is_voice())
+            .map(|channel| channel.id)
     }
 }

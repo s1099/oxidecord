@@ -2,6 +2,9 @@ use std::sync::OnceLock;
 
 use serde::Deserialize;
 use tokio::runtime::Handle;
+use twilight_http::request::Request;
+use twilight_http::response::marker::ListBody;
+use twilight_http::routing::Route;
 use twilight_http::Client as HttpClient;
 use twilight_model::channel::ChannelType;
 use twilight_model::id::{
@@ -155,6 +158,102 @@ pub fn fetch_channels(
                     })
                 })
                 .collect::<Vec<_>>())
+        }
+        .await;
+
+        on_done(result);
+    });
+}
+
+/// A 1:1 or group direct-message conversation from the user's DM list.
+#[derive(Clone)]
+pub struct DirectMessage {
+    pub id: Id<ChannelMarker>,
+    /// Display label: the other user for a DM, the group's name (or its
+    /// members' names) for a group DM.
+    pub name: String,
+    pub avatar_url: Option<String>,
+    /// Snowflake of the last message, used only to order conversations by
+    /// recency like Discord does. `None` (no messages yet) sorts last.
+    last_message_id: Option<u64>,
+}
+
+fn convert_dm(channel: twilight_model::channel::Channel) -> Option<DirectMessage> {
+    let last_message_id = channel.last_message_id.map(|id| id.get());
+    match channel.kind {
+        // 1:1 DM: a single recipient, the other user.
+        ChannelType::Private => {
+            let user = channel.recipients?.into_iter().next()?;
+            let avatar_url = user.avatar.map(|hash| {
+                format!(
+                    "https://cdn.discordapp.com/avatars/{}/{}.webp?size=80",
+                    user.id, hash
+                )
+            });
+            Some(DirectMessage {
+                id: channel.id,
+                name: user.global_name.unwrap_or(user.name),
+                avatar_url,
+                last_message_id,
+            })
+        }
+        // Group DM: a custom icon and name, each optional. Fall back to the
+        // joined recipient names when the group is unnamed, like Discord.
+        ChannelType::Group => {
+            let avatar_url = channel.icon.map(|hash| {
+                format!(
+                    "https://cdn.discordapp.com/channel-icons/{}/{}.webp?size=80",
+                    channel.id, hash
+                )
+            });
+            let name = channel
+                .name
+                .filter(|name| !name.is_empty())
+                .or_else(|| {
+                    let names = channel.recipients.as_ref()?;
+                    let joined = names
+                        .iter()
+                        .map(|user| user.global_name.clone().unwrap_or_else(|| user.name.clone()))
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    (!joined.is_empty()).then_some(joined)
+                })
+                .unwrap_or_else(|| "Group DM".to_string());
+            Some(DirectMessage {
+                id: channel.id,
+                name,
+                avatar_url,
+                last_message_id,
+            })
+        }
+        _ => None,
+    }
+}
+
+/// Fetches the current user's open DM and group-DM conversations, ordered
+/// most-recently-active first, and invokes `on_done` with the result.
+///
+/// twilight has no typed helper for `GET /users/@me/channels`, so this issues
+/// the route through the client's low-level request path. Runs on the
+/// background Tokio runtime; `on_done` is called from that runtime's thread.
+pub fn fetch_dms(
+    token: String,
+    on_done: impl FnOnce(Result<Vec<DirectMessage>, String>) + Send + 'static,
+) {
+    runtime_handle().spawn(async move {
+        let result = async {
+            let client = HttpClient::new(token);
+            let request = Request::from_route(&Route::GetUserPrivateChannels);
+            let response = client
+                .request::<ListBody<twilight_model::channel::Channel>>(request)
+                .await
+                .map_err(|err| err.to_string())?;
+            let channels = response.models().await.map_err(|err| err.to_string())?;
+
+            let mut dms: Vec<DirectMessage> =
+                channels.into_iter().filter_map(convert_dm).collect();
+            dms.sort_by_key(|dm| std::cmp::Reverse(dm.last_message_id));
+            Ok(dms)
         }
         .await;
 

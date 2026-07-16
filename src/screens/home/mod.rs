@@ -1,5 +1,7 @@
 mod channels;
 mod data;
+mod dm_data;
+mod dm_sidebar;
 mod messages;
 mod rail;
 mod sidebar;
@@ -17,17 +19,33 @@ use twilight_model::id::{
     Id,
 };
 
-use crate::discord::{self, Guild};
+use crate::discord::{self, DirectMessage, Guild};
 
 use channels::ChannelGroup;
 
+/// Which list occupies the sidebar: a guild's channels, or the DM list.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum View {
+    Guild,
+    DirectMessages,
+}
+
 pub struct HomeScreen {
+    view: View,
     guilds: Vec<Guild>,
     selected_guild: Option<Id<GuildMarker>>,
     loading: bool,
     error: Option<String>,
     channel_groups: Vec<ChannelGroup>,
     selected_channel: Option<Id<ChannelMarker>>,
+    /// The user's DM conversations, loaded lazily the first time the DM view is
+    /// opened. A selected DM reuses `selected_channel` and the message plumbing.
+    dms: Vec<DirectMessage>,
+    dms_loading: bool,
+    dms_error: Option<String>,
+    /// Set once the DM list has been fetched, so reopening the view doesn't
+    /// refetch it every time.
+    dms_loaded: bool,
     collapsed_categories: HashSet<Id<ChannelMarker>>,
     channels_loading: bool,
     channels_error: Option<String>,
@@ -74,12 +92,17 @@ impl HomeScreen {
         });
 
         let mut this = Self {
+            view: View::Guild,
             guilds: Vec::new(),
             selected_guild: None,
             loading: true,
             error: None,
             channel_groups: Vec::new(),
             selected_channel: None,
+            dms: Vec::new(),
+            dms_loading: false,
+            dms_error: None,
+            dms_loaded: false,
             collapsed_categories: HashSet::new(),
             channels_loading: false,
             channels_error: None,
@@ -100,8 +123,11 @@ impl HomeScreen {
 
 impl Render for HomeScreen {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let sidebar = (self.selected_guild.is_some() || self.loading)
-            .then(|| self.render_channel_sidebar(cx).into_any_element());
+        let sidebar = match self.view {
+            View::DirectMessages => Some(self.render_dm_sidebar(cx).into_any_element()),
+            View::Guild => (self.selected_guild.is_some() || self.loading)
+                .then(|| self.render_channel_sidebar(cx).into_any_element()),
+        };
 
         h_flex()
             .size_full()
