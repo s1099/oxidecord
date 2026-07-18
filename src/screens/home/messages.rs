@@ -1,8 +1,9 @@
 use gpui::prelude::FluentBuilder as _;
 use gpui::*;
 use gpui_component::{
-    ActiveTheme as _, Icon, Sizable as _, avatar::Avatar, divider::Divider, h_flex, input::Input,
-    skeleton::Skeleton, spinner::Spinner, v_flex,
+    ActiveTheme as _, Icon, IconName, Sizable as _, avatar::Avatar, button::Button,
+    button::ButtonVariants as _, divider::Divider, h_flex, input::Input, skeleton::Skeleton,
+    spinner::Spinner, v_flex,
 };
 
 use crate::discord::{self, Channel};
@@ -155,9 +156,8 @@ impl HomeScreen {
         // The list itself can't pad its items (they overflow its padding), so
         // each message carries its own horizontal padding and a full width with
         // `min_w_0` so long lines wrap instead of running off the right edge.
-        if !show_header {
-            return div()
-                .id(("message", message.id.get()))
+        let inner: AnyElement = if !show_header {
+            div()
                 .w_full()
                 .min_w_0()
                 .pl(px(MESSAGE_PADDING_X + 52.))
@@ -165,49 +165,105 @@ impl HomeScreen {
                 .py(px(1.))
                 .text_sm()
                 .child(content)
-                .into_any_element();
-        }
+                .into_any_element()
+        } else {
+            let mut avatar = Avatar::new()
+                .name(message.author_name.clone())
+                .with_size(px(40.));
+            if let Some(avatar_url) = message.author_avatar_url.clone() {
+                avatar = avatar.src(avatar_url);
+            }
 
-        let mut avatar = Avatar::new()
-            .name(message.author_name.clone())
-            .with_size(px(40.));
-        if let Some(avatar_url) = message.author_avatar_url.clone() {
-            avatar = avatar.src(avatar_url);
-        }
+            h_flex()
+                .w_full()
+                .pt(px(16.))
+                .px(px(MESSAGE_PADDING_X))
+                .gap_3()
+                .items_start()
+                .child(avatar)
+                .child(
+                    v_flex()
+                        .flex_1()
+                        .min_w_0()
+                        .gap(px(2.))
+                        .child(
+                            h_flex()
+                                .gap_2()
+                                .items_center()
+                                .child(
+                                    div()
+                                        .text_sm()
+                                        .font_weight(FontWeight::SEMIBOLD)
+                                        .child(message.author_name.clone()),
+                                )
+                                .child(
+                                    div()
+                                        .text_xs()
+                                        .text_color(theme.muted_foreground)
+                                        .child(message.timestamp.clone()),
+                                ),
+                        )
+                        .child(div().w_full().min_w_0().text_sm().child(content)),
+                )
+                .into_any_element()
+        };
 
-        h_flex()
+        // Wrap the row in a hover group: hovering anywhere over it highlights
+        // the whole width and reveals the floating action toolbar, like Discord.
+        let group_name = SharedString::from(format!("message-{}", message.id.get()));
+        div()
             .id(("message", message.id.get()))
+            .group(group_name.clone())
+            .relative()
             .w_full()
-            .pt(px(16.))
-            .px(px(MESSAGE_PADDING_X))
-            .gap_3()
-            .items_start()
-            .child(avatar)
-            .child(
-                v_flex()
-                    .flex_1()
-                    .min_w_0()
-                    .gap(px(2.))
-                    .child(
-                        h_flex()
-                            .gap_2()
-                            .items_center()
-                            .child(
-                                div()
-                                    .text_sm()
-                                    .font_weight(FontWeight::SEMIBOLD)
-                                    .child(message.author_name.clone()),
-                            )
-                            .child(
-                                div()
-                                    .text_xs()
-                                    .text_color(theme.muted_foreground)
-                                    .child(message.timestamp.clone()),
-                            ),
-                    )
-                    .child(div().w_full().min_w_0().text_sm().child(content)),
-            )
+            .min_w_0()
+            .hover(|this| this.bg(theme.accent.opacity(0.4)))
+            .child(inner)
+            .child(self.render_message_toolbar(message, &group_name, cx))
             .into_any_element()
+    }
+
+    /// The floating reply / more-actions toolbar shown at the top-right of a
+    /// message while it's hovered. Hidden by default and revealed via the
+    /// message's hover group.
+    fn render_message_toolbar(
+        &self,
+        message: &discord::Message,
+        group_name: &SharedString,
+        cx: &Context<Self>,
+    ) -> impl IntoElement {
+        let theme = cx.theme();
+
+        div()
+            .absolute()
+            .top(px(-16.))
+            .right(px(12.))
+            .invisible()
+            .group_hover(group_name.clone(), |this| this.visible())
+            .child(
+                h_flex()
+                    .gap(px(2.))
+                    .p(px(2.))
+                    .bg(theme.popover)
+                    .border_1()
+                    .border_color(theme.border)
+                    .rounded(px(8.))
+                    .shadow_md()
+                    .child(
+                        Button::new(("message-reply", message.id.get()))
+                            .icon(IconName::Undo2)
+                            .ghost()
+                            .small()
+                            .tooltip("Reply"),
+                    )
+                    .child(
+                        Button::new(("message-more", message.id.get()))
+                            .icon(IconName::Ellipsis)
+                            .ghost()
+                            .small()
+                            .tooltip("More"),
+                    ),
+            )
     }
 
     pub(super) fn render_messages(&self, cx: &Context<Self>) -> AnyElement {
