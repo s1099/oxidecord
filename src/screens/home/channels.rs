@@ -26,7 +26,11 @@ pub(super) fn build_channel_groups(channels: Vec<Channel>) -> Vec<ChannelGroup> 
     // Channels with no (known) parent category sit above all categories.
     let uncategorized: Vec<_> = others
         .iter()
-        .filter(|channel| channel.parent_id.is_none_or(|id| !category_ids.contains(&id)))
+        .filter(|channel| {
+            channel
+                .parent_id
+                .is_none_or(|id| !category_ids.contains(&id))
+        })
         .cloned()
         .collect();
     if !uncategorized.is_empty() {

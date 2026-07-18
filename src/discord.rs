@@ -2,14 +2,16 @@ use std::sync::OnceLock;
 
 use serde::Deserialize;
 use tokio::runtime::Handle;
+use twilight_gateway::{Event, EventTypeFlags, Intents, Shard, ShardId, StreamExt as _};
+use twilight_http::Client as HttpClient;
 use twilight_http::request::Request;
 use twilight_http::response::marker::ListBody;
 use twilight_http::routing::Route;
-use twilight_http::Client as HttpClient;
 use twilight_model::channel::ChannelType;
+use twilight_model::gateway::payload::incoming::MessageCreate;
 use twilight_model::id::{
-    marker::{ChannelMarker, GuildMarker, MessageMarker, UserMarker},
     Id,
+    marker::{ChannelMarker, GuildMarker, MessageMarker, UserMarker},
 };
 use twilight_model::util::Timestamp;
 
@@ -74,7 +76,10 @@ pub fn fetch_guilds(
                 .into_iter()
                 .map(|guild| {
                     let icon_url = guild.icon.map(|hash| {
-                        format!("https://cdn.discordapp.com/icons/{}/{}.webp?size=100&quality=lossless", guild.id, hash)
+                        format!(
+                            "https://cdn.discordapp.com/icons/{}/{}.webp?size=100&quality=lossless",
+                            guild.id, hash
+                        )
                     });
                     Guild {
                         id: guild.id,
@@ -213,7 +218,11 @@ fn convert_dm(channel: twilight_model::channel::Channel) -> Option<DirectMessage
                     let names = channel.recipients.as_ref()?;
                     let joined = names
                         .iter()
-                        .map(|user| user.global_name.clone().unwrap_or_else(|| user.name.clone()))
+                        .map(|user| {
+                            user.global_name
+                                .clone()
+                                .unwrap_or_else(|| user.name.clone())
+                        })
                         .collect::<Vec<_>>()
                         .join(", ");
                     (!joined.is_empty()).then_some(joined)
@@ -250,8 +259,7 @@ pub fn fetch_dms(
                 .map_err(|err| err.to_string())?;
             let channels = response.models().await.map_err(|err| err.to_string())?;
 
-            let mut dms: Vec<DirectMessage> =
-                channels.into_iter().filter_map(convert_dm).collect();
+            let mut dms: Vec<DirectMessage> = channels.into_iter().filter_map(convert_dm).collect();
             dms.sort_by_key(|dm| std::cmp::Reverse(dm.last_message_id));
             Ok(dms)
         }
@@ -299,7 +307,11 @@ fn preview_image_url(attachment: &twilight_model::channel::Attachment) -> String
         _ => (PREVIEW_MAX_WIDTH, PREVIEW_MAX_HEIGHT),
     };
     // proxy_url already carries a signed query string, so append with `&`.
-    let separator = if attachment.proxy_url.contains('?') { '&' } else { '?' };
+    let separator = if attachment.proxy_url.contains('?') {
+        '&'
+    } else {
+        '?'
+    };
     format!(
         "{}{separator}width={target_w}&height={target_h}",
         attachment.proxy_url
@@ -398,11 +410,65 @@ pub fn fetch_messages(
 
             // The API returns newest first; the UI renders oldest first.
             messages.reverse();
-            Ok(messages.into_iter().map(convert_message).collect::<Vec<_>>())
+            Ok(messages
+                .into_iter()
+                .map(convert_message)
+                .collect::<Vec<_>>())
         }
         .await;
 
         on_done(result);
+    });
+}
+
+/// A message received live over the gateway, tagged with the channel it
+/// belongs to so the UI can decide whether it's for the open conversation.
+pub struct IncomingMessage {
+    pub channel_id: Id<ChannelMarker>,
+    pub message: Message,
+}
+
+/// Opens a gateway websocket connection and invokes `on_message` for every
+/// `MESSAGE_CREATE` dispatch, giving the app real-time messages for whichever
+/// channel is currently open.
+///
+/// Runs on the background Tokio runtime; `on_message` is called from that
+/// runtime's thread, not the gpui foreground thread. It returns `false` to
+/// stop the connection (e.g. the receiving end went away), which ends the
+/// shard loop and drops the socket.
+///
+/// The shard reconnects and resumes on its own, so transient errors are
+/// skipped rather than treated as fatal.
+pub fn connect_gateway(
+    token: String,
+    mut on_message: impl FnMut(IncomingMessage) -> bool + Send + 'static,
+) {
+    runtime_handle().spawn(async move {
+        // Discord ignores the intents field for user tokens; a real user
+        // client receives every event its account can see. Request all intents
+        // so we mirror that and never filter events at this layer (the shard
+        // still requires a value in the IDENTIFY payload).
+        let mut shard = Shard::new(ShardId::ONE, token, Intents::all());
+
+        while let Some(item) = shard.next_event(EventTypeFlags::MESSAGE_CREATE).await {
+            let event = match item {
+                Ok(event) => event,
+                // Reconnects/resumes are handled by the shard internally; a
+                // receive error just means skip this one and keep listening.
+                Err(_) => continue,
+            };
+
+            if let Event::MessageCreate(message) = event {
+                let MessageCreate { message, .. } = *message;
+                let incoming = IncomingMessage {
+                    channel_id: message.channel_id,
+                    message: convert_message(message),
+                };
+                if !on_message(incoming) {
+                    break;
+                }
+            }
+        }
     });
 }
 

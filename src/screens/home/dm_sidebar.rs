@@ -1,7 +1,7 @@
 use gpui::prelude::FluentBuilder as _;
 use gpui::*;
 use gpui_component::{
-    avatar::Avatar, h_flex, skeleton::Skeleton, v_flex, ActiveTheme as _, Sizable as _,
+    ActiveTheme as _, Sizable as _, avatar::Avatar, h_flex, skeleton::Skeleton, v_flex,
 };
 
 use crate::discord::DirectMessage;
@@ -70,7 +70,13 @@ impl HomeScreen {
                     .child(Skeleton::new().w(px(width)).h_4().rounded_md())
             }));
         } else if let Some(error) = &self.dms_error {
-            list = list.child(div().px_2().text_sm().text_color(danger).child(error.clone()));
+            list = list.child(
+                div()
+                    .px_2()
+                    .text_sm()
+                    .text_color(danger)
+                    .child(error.clone()),
+            );
         } else if self.dms.is_empty() {
             list = list.child(
                 div()

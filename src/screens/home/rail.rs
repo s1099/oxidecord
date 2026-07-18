@@ -3,7 +3,7 @@ use std::sync::Arc;
 use gpui::prelude::FluentBuilder as _;
 use gpui::*;
 use gpui_component::{
-    avatar::Avatar, divider::Divider, tooltip::Tooltip, v_flex, ActiveTheme as _,
+    ActiveTheme as _, avatar::Avatar, divider::Divider, tooltip::Tooltip, v_flex,
 };
 
 use super::{HomeScreen, View};

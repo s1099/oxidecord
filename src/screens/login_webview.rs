@@ -1,5 +1,5 @@
-use gpui::*;
 use gpui::prelude::FluentBuilder as _;
+use gpui::*;
 use gpui_component::webview::WebView;
 use gpui_component::wry::WebViewBuilder;
 
@@ -89,8 +89,8 @@ impl LoginWebview {
 
                             let _ = async_cx_inner.update(move |cx| {
                                 let _ = cx.update_window(main_window, |_, window, cx| {
-                                    let _ = app_inner
-                                        .update(cx, |app, cx| app.show_home(window, cx));
+                                    let _ =
+                                        app_inner.update(cx, |app, cx| app.show_home(window, cx));
                                 });
                                 // Close the login popup.
                                 let _ = cx.update_window(window_handle_inner, |_, window, _| {
@@ -100,7 +100,7 @@ impl LoginWebview {
                         });
 
                     let wry_webview = builder.build(window).expect("Failed to build webview");
-                    
+
                     cx.new(|cx| {
                         let mut webview = WebView::new(wry_webview, window, cx);
                         webview.show();

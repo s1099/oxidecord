@@ -1,8 +1,8 @@
 use gpui::prelude::FluentBuilder as _;
 use gpui::*;
 use gpui_component::{
-    avatar::Avatar, divider::Divider, h_flex, input::Input, skeleton::Skeleton, spinner::Spinner,
-    v_flex, ActiveTheme as _, Icon, Sizable as _,
+    ActiveTheme as _, Icon, Sizable as _, avatar::Avatar, divider::Divider, h_flex, input::Input,
+    skeleton::Skeleton, spinner::Spinner, v_flex,
 };
 
 use crate::discord::{self, Channel};
@@ -48,7 +48,9 @@ const MAX_IMAGE_HEIGHT: f32 = 300.;
 
 /// Renders one image attachment as a rounded, size-bounded preview.
 fn render_image_attachment(image: &discord::ImageAttachment) -> impl IntoElement {
-    let mut element = img(image.url.clone()).rounded(px(8.)).max_w(px(MAX_IMAGE_WIDTH));
+    let mut element = img(image.url.clone())
+        .rounded(px(8.))
+        .max_w(px(MAX_IMAGE_WIDTH));
     match (image.width, image.height) {
         // With intrinsic dimensions we can lay out the exact scaled box, so
         // the message doesn't reflow once the image finishes loading.

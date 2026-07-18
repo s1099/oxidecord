@@ -10,13 +10,12 @@ use std::collections::HashSet;
 
 use gpui::*;
 use gpui_component::{
-    h_flex,
+    ActiveTheme as _, h_flex,
     input::{InputEvent, InputState},
-    ActiveTheme as _,
 };
 use twilight_model::id::{
-    marker::{ChannelMarker, GuildMarker},
     Id,
+    marker::{ChannelMarker, GuildMarker},
 };
 
 use crate::discord::{self, DirectMessage, Guild};
@@ -56,6 +55,10 @@ pub struct HomeScreen {
     older_loading: bool,
     /// The start of the channel's history has been reached; stop fetching.
     reached_oldest: bool,
+    /// Whether the newest message is currently in view. Used to decide if a
+    /// live message should snap the list to the bottom (following the
+    /// conversation) or be appended silently (the user is reading history).
+    at_bottom: bool,
     send_error: Option<String>,
     message_input: Entity<InputState>,
     messages_list: ListState,
@@ -66,8 +69,7 @@ pub struct HomeScreen {
 
 impl HomeScreen {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let message_input =
-            cx.new(|cx| InputState::new(window, cx).placeholder("Send a message"));
+        let message_input = cx.new(|cx| InputState::new(window, cx).placeholder("Send a message"));
 
         cx.subscribe_in(
             &message_input,
@@ -85,10 +87,15 @@ impl HomeScreen {
         let messages_list = ListState::new(0, ListAlignment::Bottom, px(512.));
         let weak = cx.entity().downgrade();
         messages_list.set_scroll_handler(move |event, _window, cx| {
-            // Nearing the oldest loaded message; fetch the previous page.
-            if event.visible_range.start <= 2 {
-                let _ = weak.update(cx, |this, cx| this.load_older_messages(cx));
-            }
+            let _ = weak.update(cx, |this, cx| {
+                // Track whether the newest message is on screen so live
+                // messages only auto-scroll when the user is at the bottom.
+                this.at_bottom = event.visible_range.end >= event.count;
+                // Nearing the oldest loaded message; fetch the previous page.
+                if event.visible_range.start <= 2 {
+                    this.load_older_messages(cx);
+                }
+            });
         });
 
         let mut this = Self {
@@ -111,12 +118,14 @@ impl HomeScreen {
             messages_error: None,
             older_loading: false,
             reached_oldest: false,
+            at_bottom: true,
             send_error: None,
             message_input,
             messages_list,
             image_cache: RetainAllImageCache::new(cx),
         };
         this.load_guilds(window, cx);
+        this.start_gateway(cx);
         this
     }
 }

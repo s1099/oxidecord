@@ -1505,7 +1505,7 @@ dependencies = [
  "libc",
  "option-ext",
  "redox_users 0.5.2",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -1730,7 +1730,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -4650,6 +4650,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tokio",
+ "twilight-gateway",
  "twilight-http",
  "twilight-model",
  "zed-reqwest",
@@ -5244,7 +5245,7 @@ dependencies = [
  "once_cell",
  "socket2",
  "tracing",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -5783,7 +5784,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys 0.12.1",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -5849,7 +5850,7 @@ dependencies = [
  "security-framework",
  "security-framework-sys",
  "webpki-root-certs",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -6815,7 +6816,7 @@ dependencies = [
  "getrandom 0.4.3",
  "once_cell",
  "rustix 1.1.4",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -7042,6 +7043,28 @@ dependencies = [
  "pin-project-lite",
  "slab",
  "tokio",
+]
+
+[[package]]
+name = "tokio-websockets"
+version = "0.13.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d52efb639344a7c6adb8e62c6f3d2c19c001ff1b79a5041ba1c6ed42e19c6aa5"
+dependencies = [
+ "base64",
+ "bytes",
+ "fastrand 2.4.1",
+ "futures-core",
+ "futures-sink",
+ "http",
+ "httparse",
+ "rustls-pki-types",
+ "rustls-platform-verifier",
+ "sha1_smol",
+ "simdutf8",
+ "tokio",
+ "tokio-rustls",
+ "tokio-util",
 ]
 
 [[package]]
@@ -7285,9 +7308,38 @@ dependencies = [
 ]
 
 [[package]]
+name = "twilight-gateway"
+version = "0.17.1"
+source = "git+https://github.com/s1099/twilight?branch=main#5efb5c6e30d5f5dca059ee1a68656eef85fdc780"
+dependencies = [
+ "bitflags 2.13.0",
+ "fastrand 2.4.1",
+ "futures-core",
+ "futures-sink",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tokio-websockets",
+ "tracing",
+ "twilight-gateway-queue",
+ "twilight-http",
+ "twilight-model",
+ "zstd-safe",
+]
+
+[[package]]
+name = "twilight-gateway-queue"
+version = "0.17.0"
+source = "git+https://github.com/s1099/twilight?branch=main#5efb5c6e30d5f5dca059ee1a68656eef85fdc780"
+dependencies = [
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "twilight-http"
 version = "0.17.1"
-source = "git+https://github.com/s1099/twilight?branch=main#3ffa5cda77db6e30d6d91d29c1b1f2b0bb2034b3"
+source = "git+https://github.com/s1099/twilight?branch=main#5efb5c6e30d5f5dca059ee1a68656eef85fdc780"
 dependencies = [
  "brotli-decompressor",
  "fastrand 2.4.1",
@@ -7310,7 +7362,7 @@ dependencies = [
 [[package]]
 name = "twilight-http-ratelimiting"
 version = "0.17.1"
-source = "git+https://github.com/s1099/twilight?branch=main#3ffa5cda77db6e30d6d91d29c1b1f2b0bb2034b3"
+source = "git+https://github.com/s1099/twilight?branch=main#5efb5c6e30d5f5dca059ee1a68656eef85fdc780"
 dependencies = [
  "hashbrown 0.16.1",
  "tokio",
@@ -7321,7 +7373,7 @@ dependencies = [
 [[package]]
 name = "twilight-model"
 version = "0.17.1"
-source = "git+https://github.com/s1099/twilight?branch=main#3ffa5cda77db6e30d6d91d29c1b1f2b0bb2034b3"
+source = "git+https://github.com/s1099/twilight?branch=main#5efb5c6e30d5f5dca059ee1a68656eef85fdc780"
 dependencies = [
  "bitflags 2.13.0",
  "serde",
@@ -7333,7 +7385,7 @@ dependencies = [
 [[package]]
 name = "twilight-validate"
 version = "0.17.0"
-source = "git+https://github.com/s1099/twilight?branch=main#3ffa5cda77db6e30d6d91d29c1b1f2b0bb2034b3"
+source = "git+https://github.com/s1099/twilight?branch=main#5efb5c6e30d5f5dca059ee1a68656eef85fdc780"
 dependencies = [
  "twilight-model",
 ]
@@ -7961,7 +8013,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.48.0",
 ]
 
 [[package]]
@@ -9062,6 +9114,25 @@ name = "zmij"
 version = "1.0.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b8848ee67ecc8aedbaf3e4122217aff892639231befc6a1b58d29fff4c2cabaa"
+
+[[package]]
+name = "zstd-safe"
+version = "7.2.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8f49c4d5f0abb602a93fb8736af2a4f4dd9512e36f7f570d66e65ff867ed3b9d"
+dependencies = [
+ "zstd-sys",
+]
+
+[[package]]
+name = "zstd-sys"
+version = "2.0.16+zstd.1.5.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "91e19ebc2adc8f83e43039e79776e3fda8ca919132d68a1fed6a5faca2683748"
+dependencies = [
+ "cc",
+ "pkg-config",
+]
 
 [[package]]
 name = "zune-core"

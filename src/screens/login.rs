@@ -1,9 +1,10 @@
 use gpui::*;
 use gpui_component::{
+    ActiveTheme as _,
     button::{Button, ButtonVariants as _},
     input::{Input, InputState},
     tab::{Tab, TabBar},
-    v_flex, ActiveTheme as _,
+    v_flex,
 };
 
 use crate::screens::app::AppScreen;
@@ -99,7 +100,10 @@ impl LoginScreen {
                     cx.open_window(webview_options, move |window, cx| {
                         let webview_view = cx.new(|cx| {
                             crate::screens::login_webview::LoginWebview::new(
-                                app, main_window, window, cx,
+                                app,
+                                main_window,
+                                window,
+                                cx,
                             )
                         });
                         cx.new(|cx| gpui_component::Root::new(webview_view, window, cx))
@@ -123,11 +127,7 @@ impl LoginScreen {
                             .text_color(cx.theme().muted_foreground)
                             .child("DISCORD TOKEN"),
                     )
-                    .child(
-                        Input::new(&self.token_input)
-                            .mask_toggle()
-                            .cleanable(true),
-                    ),
+                    .child(Input::new(&self.token_input).mask_toggle().cleanable(true)),
             )
             .child(
                 Button::new("btn-token-login")

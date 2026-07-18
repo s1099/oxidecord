@@ -1,13 +1,13 @@
 use gpui::prelude::FluentBuilder as _;
 use gpui::*;
 use gpui_component::{
-    collapsible::Collapsible, h_flex, skeleton::Skeleton, v_flex, ActiveTheme as _, Icon, IconName,
+    ActiveTheme as _, Icon, IconName, collapsible::Collapsible, h_flex, skeleton::Skeleton, v_flex,
 };
 
 use crate::discord::Channel;
 
-use super::channels::{channel_icon_path, ChannelGroup};
 use super::HomeScreen;
+use super::channels::{ChannelGroup, channel_icon_path};
 
 impl HomeScreen {
     fn render_channel_row(&self, channel: &Channel, cx: &Context<Self>) -> impl IntoElement {
@@ -136,8 +136,8 @@ impl HomeScreen {
 
         if self.channels_loading || self.loading {
             const WIDTHS: [f32; 16] = [
-                120., 88., 104., 72., 132., 96., 116., 80., 124., 92., 108., 76., 128., 100.,
-                112., 84.,
+                120., 88., 104., 72., 132., 96., 116., 80., 124., 92., 108., 76., 128., 100., 112.,
+                84.,
             ];
             list = list.children(WIDTHS.iter().map(|&width| {
                 h_flex()
@@ -149,7 +149,13 @@ impl HomeScreen {
                     .child(Skeleton::new().w(px(width)).h_4().rounded_md())
             }));
         } else if let Some(error) = &self.channels_error {
-            list = list.child(div().px_2().text_sm().text_color(danger).child(error.clone()));
+            list = list.child(
+                div()
+                    .px_2()
+                    .text_sm()
+                    .text_color(danger)
+                    .child(error.clone()),
+            );
         } else {
             list = list.children(
                 self.channel_groups
