@@ -278,6 +278,20 @@ pub struct Message {
     pub content: String,
     pub timestamp: String,
     pub images: Vec<ImageAttachment>,
+    /// The message this one is a reply to, when it references another. Carries
+    /// just enough to render the quoted preview above the message.
+    pub reply: Option<MessageReference>,
+}
+
+/// A compact snapshot of the message a reply points at, used to render the
+/// quoted preview line atop the reply.
+#[derive(Clone)]
+pub struct MessageReference {
+    pub author_name: String,
+    pub author_avatar_url: Option<String>,
+    /// A single-line preview of the referenced message's content. Empty when
+    /// the original had no text (e.g. an attachment-only message).
+    pub content: String,
 }
 
 /// An image attachment on a message, ready to display inline.
@@ -340,13 +354,34 @@ fn format_timestamp(timestamp: Timestamp) -> String {
     }
 }
 
-fn convert_message(message: twilight_model::channel::Message) -> Message {
-    let author_avatar_url = message.author.avatar.map(|hash| {
+/// Builds the CDN avatar URL for a user, when they have a custom avatar.
+fn avatar_url(user: &twilight_model::user::User) -> Option<String> {
+    user.avatar.map(|hash| {
         format!(
             "https://cdn.discordapp.com/avatars/{}/{}.webp?size=80",
-            message.author.id, hash
+            user.id, hash
         )
-    });
+    })
+}
+
+/// Extracts the referenced message into a compact preview. Referenced messages
+/// don't carry guild `member` data, so the author name falls back to the global
+/// display name and then the username.
+fn convert_reference(referenced: twilight_model::channel::Message) -> MessageReference {
+    let author_name = referenced
+        .author
+        .global_name
+        .clone()
+        .unwrap_or_else(|| referenced.author.name.clone());
+    MessageReference {
+        author_name,
+        author_avatar_url: avatar_url(&referenced.author),
+        content: referenced.content,
+    }
+}
+
+fn convert_message(message: twilight_model::channel::Message) -> Message {
+    let author_avatar_url = avatar_url(&message.author);
     // Prefer the author's per-guild nickname, then their global display name,
     // then their username. `member` is present on messages fetched from a
     // guild channel but not on ones we just sent, hence the fallbacks.
@@ -375,6 +410,9 @@ fn convert_message(message: twilight_model::channel::Message) -> Message {
         content: message.content,
         timestamp: format_timestamp(message.timestamp),
         images,
+        reply: message
+            .referenced_message
+            .map(|referenced| convert_reference(*referenced)),
     }
 }
 

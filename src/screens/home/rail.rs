@@ -18,6 +18,8 @@ impl HomeScreen {
         let logo_bg = rgb(0x313338);
         let selected_bg = theme.sidebar_accent;
 
+        // The whole rail — the DMs icon, its separator, and the guild list —
+        // scrolls as one column, so the icon isn't pinned above the list.
         v_flex()
             .id("server-rail")
             .w(px(72.))
@@ -25,10 +27,11 @@ impl HomeScreen {
             .flex_shrink_0()
             .items_center()
             .py_3()
-            .gap_3()
+            .gap_2()
             .bg(rail_bg)
             .border_r_1()
             .border_color(rail_border)
+            .overflow_y_scroll()
             .child(
                 div()
                     .id("home-dms")
@@ -58,38 +61,27 @@ impl HomeScreen {
                     })),
             )
             .child(Divider::horizontal().w(px(32.)))
-            .child(
-                v_flex()
-                    .id("guild-list")
-                    .flex_1()
-                    .w_full()
-                    .items_center()
-                    .gap_2()
-                    .overflow_y_scroll()
-                    .children(self.guilds.iter().map(|guild| {
-                        let guild_id = guild.id;
-                        let guild_name = guild.name.clone();
-                        let is_selected = !in_dms && selected == Some(guild_id);
+            .children(self.guilds.iter().map(|guild| {
+                let guild_id = guild.id;
+                let guild_name = guild.name.clone();
+                let is_selected = !in_dms && selected == Some(guild_id);
 
-                        let mut avatar = Avatar::new().name(guild_name.clone());
-                        if let Some(icon_url) = guild.icon_url.clone() {
-                            avatar = avatar.src(icon_url);
-                        }
+                let mut avatar = Avatar::new().name(guild_name.clone());
+                if let Some(icon_url) = guild.icon_url.clone() {
+                    avatar = avatar.src(icon_url);
+                }
 
-                        div()
-                            .id(("guild", guild_id.get()))
-                            .cursor_pointer()
-                            .p(px(4.))
-                            .rounded(px(16.))
-                            .when(is_selected, |this| this.bg(selected_bg))
-                            .child(avatar)
-                            .tooltip(move |window, cx| {
-                                Tooltip::new(guild_name.clone()).build(window, cx)
-                            })
-                            .on_click(cx.listener(move |this, _, window, cx| {
-                                this.select_guild(guild_id, window, cx);
-                            }))
-                    })),
-            )
+                div()
+                    .id(("guild", guild_id.get()))
+                    .cursor_pointer()
+                    .p(px(4.))
+                    .rounded(px(16.))
+                    .when(is_selected, |this| this.bg(selected_bg))
+                    .child(avatar)
+                    .tooltip(move |window, cx| Tooltip::new(guild_name.clone()).build(window, cx))
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        this.select_guild(guild_id, window, cx);
+                    }))
+            }))
     }
 }

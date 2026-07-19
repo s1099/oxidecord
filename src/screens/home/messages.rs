@@ -1,7 +1,7 @@
 use gpui::prelude::FluentBuilder as _;
 use gpui::*;
 use gpui_component::{
-    ActiveTheme as _, Icon, IconName, Sizable as _, avatar::Avatar, button::Button,
+    ActiveTheme as _, Icon, IconName, IconNamed as _, Sizable as _, avatar::Avatar, button::Button,
     button::ButtonVariants as _, divider::Divider, h_flex, input::Input, skeleton::Skeleton,
     spinner::Spinner, v_flex,
 };
@@ -117,6 +117,58 @@ impl HomeScreen {
             )
     }
 
+    /// The quoted "↱ <author> <preview>" line shown above a message that
+    /// replies to another, aligned with the message's content column.
+    fn render_reply_preview(
+        &self,
+        reference: &discord::MessageReference,
+        cx: &Context<Self>,
+    ) -> impl IntoElement {
+        let theme = cx.theme();
+
+        let mut avatar = Avatar::new()
+            .name(reference.author_name.clone())
+            .with_size(px(16.));
+        if let Some(avatar_url) = reference.author_avatar_url.clone() {
+            avatar = avatar.src(avatar_url);
+        }
+
+        h_flex()
+            .w_full()
+            .min_w_0()
+            .gap_1()
+            .items_center()
+            .text_xs()
+            .text_color(theme.muted_foreground)
+            .child(
+                Icon::default()
+                    .path(IconName::Undo2.path())
+                    .size_3()
+                    .flex_shrink_0(),
+            )
+            .child(avatar)
+            .child(
+                div()
+                    .flex_shrink_0()
+                    .font_weight(FontWeight::SEMIBOLD)
+                    .child(reference.author_name.clone()),
+            )
+            .child(if reference.content.is_empty() {
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .truncate()
+                    .italic()
+                    .child("Click to see attachment")
+            } else {
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .truncate()
+                    .child(reference.content.clone())
+            })
+    }
+
     fn render_message(
         &self,
         message: &discord::Message,
@@ -174,10 +226,9 @@ impl HomeScreen {
                 avatar = avatar.src(avatar_url);
             }
 
-            h_flex()
+            let header_row = h_flex()
                 .w_full()
-                .pt(px(16.))
-                .px(px(MESSAGE_PADDING_X))
+                .min_w_0()
                 .gap_3()
                 .items_start()
                 .child(avatar)
@@ -204,7 +255,24 @@ impl HomeScreen {
                                 ),
                         )
                         .child(div().w_full().min_w_0().text_sm().child(content)),
-                )
+                );
+
+            // A reply sits as a quoted line above the avatar+name row, indented
+            // to line up with the message content column, like Discord.
+            v_flex()
+                .w_full()
+                .min_w_0()
+                .pt(px(16.))
+                .px(px(MESSAGE_PADDING_X))
+                .gap(px(2.))
+                .when_some(message.reply.clone(), |this, reference| {
+                    this.child(
+                        div()
+                            .pl(px(52.))
+                            .child(self.render_reply_preview(&reference, cx)),
+                    )
+                })
+                .child(header_row)
                 .into_any_element()
         };
 
@@ -332,8 +400,11 @@ impl HomeScreen {
         let Some(message) = self.messages.get(ix) else {
             return div().into_any_element();
         };
-        // Consecutive messages from the same author share one header.
+        // Consecutive messages from the same author share one header, except
+        // replies always show theirs so the quoted preview has room to sit
+        // above the message, like Discord.
         let show_header = ix == 0
+            || message.reply.is_some()
             || self.messages.get(ix - 1).map(|previous| previous.author_id)
                 != Some(message.author_id);
         self.render_message(message, show_header, cx)
