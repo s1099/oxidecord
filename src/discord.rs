@@ -9,6 +9,7 @@ use twilight_http::response::marker::ListBody;
 use twilight_http::routing::Route;
 use twilight_model::channel::ChannelType;
 use twilight_model::gateway::payload::incoming::MessageCreate;
+use twilight_model::http::attachment::Attachment;
 use twilight_model::id::{
     Id,
     marker::{ChannelMarker, GuildMarker, MessageMarker, UserMarker},
@@ -563,12 +564,31 @@ pub fn send_message(
     channel_id: Id<ChannelMarker>,
     content: String,
     reply_to: Option<Id<MessageMarker>>,
+    attachments: Vec<(String, Vec<u8>)>,
     on_done: impl FnOnce(Result<Message, String>) + Send + 'static,
 ) {
     runtime_handle().spawn(async move {
         let result = async {
             let client = HttpClient::new(token);
-            let mut request = client.create_message(channel_id).content(&content);
+            // Attachment ids only need to be unique within this message, so the
+            // slice index works.
+            let attachments: Vec<Attachment> = attachments
+                .into_iter()
+                .enumerate()
+                .map(|(index, (filename, file))| {
+                    Attachment::from_bytes(filename, file, index as u64)
+                })
+                .collect();
+
+            // Discord requires at least one of content/attachments; both the
+            // content and attachments borrows must outlive the awaited request.
+            let mut request = client.create_message(channel_id);
+            if !content.is_empty() {
+                request = request.content(&content);
+            }
+            if !attachments.is_empty() {
+                request = request.attachments(&attachments);
+            }
             if let Some(message_id) = reply_to {
                 request = request.reply(message_id);
             }

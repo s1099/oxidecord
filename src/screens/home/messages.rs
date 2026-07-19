@@ -451,8 +451,48 @@ impl HomeScreen {
             .into_any_element()
     }
 
+    /// The row of removable thumbnails for images staged to be sent, shown
+    /// inside the composer above the input, like Discord's attachment tray.
+    fn render_attachment_previews(&self, cx: &Context<Self>) -> impl IntoElement {
+        let theme = cx.theme();
+
+        h_flex()
+            .w_full()
+            .flex_wrap()
+            .gap_2()
+            .px_3()
+            .pt_3()
+            .children(self.pending_attachments.iter().map(|attachment| {
+                let id = attachment.id;
+                div()
+                    .relative()
+                    .flex_shrink_0()
+                    .child(
+                        img(attachment.image.clone())
+                            .h(px(120.))
+                            .max_w(px(200.))
+                            .rounded(px(8.))
+                            .border_1()
+                            .border_color(theme.border),
+                    )
+                    .child(
+                        div().absolute().top(px(4.)).right(px(4.)).child(
+                            Button::new(("remove-attachment", id))
+                                .icon(IconName::Close)
+                                .danger()
+                                .xsmall()
+                                .tooltip("Remove attachment")
+                                .on_click(cx.listener(move |this, _, _window, cx| {
+                                    this.remove_attachment(id, cx);
+                                })),
+                        ),
+                    )
+            }))
+    }
+
     pub(super) fn render_message_bar(&self, cx: &Context<Self>) -> impl IntoElement {
         let theme = cx.theme();
+        let has_attachments = !self.pending_attachments.is_empty();
 
         v_flex()
             .w_full()
@@ -466,8 +506,9 @@ impl HomeScreen {
             })
             .child(
                 // Wrap the composer in our own rounded surface so the reply
-                // banner and input read as one control. The input's own border
-                // and bright focus ring are switched off in favour of this.
+                // banner, attachment tray, and input read as one control. The
+                // input's own border and bright focus ring are switched off in
+                // favour of this.
                 v_flex()
                     .w_full()
                     .rounded(px(8.))
@@ -477,6 +518,9 @@ impl HomeScreen {
                     .overflow_hidden()
                     .when_some(self.replying_to.clone(), |this, target| {
                         this.child(self.render_reply_banner(&target, cx))
+                    })
+                    .when(has_attachments, |this| {
+                        this.child(self.render_attachment_previews(cx))
                     })
                     .child(
                         Input::new(&self.message_input)

@@ -24,6 +24,14 @@ fn main() {
     app.run(|cx: &mut App| {
         gpui_component::init(cx);
 
+        // Bound with no context so it resolves ahead of the text input's own
+        // paste binding; the handler consumes the event only when an image is
+        // pasted into the composer and otherwise lets text paste through.
+        cx.bind_keys([
+            KeyBinding::new("ctrl-v", crate::screens::home::PasteAttachment, None),
+            KeyBinding::new("cmd-v", crate::screens::home::PasteAttachment, None),
+        ]);
+
         let options = WindowOptions {
             titlebar: Some(TitlebarOptions {
                 title: Some("Oxidecord".into()),

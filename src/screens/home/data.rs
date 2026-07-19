@@ -9,6 +9,19 @@ use crate::discord::{self, Channel};
 use super::channels::build_channel_groups;
 use super::{HomeScreen, View};
 
+/// The upload filename extension for a pasted image's format.
+fn image_extension(format: ImageFormat) -> &'static str {
+    match format {
+        ImageFormat::Png => "png",
+        ImageFormat::Jpeg => "jpg",
+        ImageFormat::Webp => "webp",
+        ImageFormat::Gif => "gif",
+        ImageFormat::Svg => "svg",
+        ImageFormat::Bmp => "bmp",
+        ImageFormat::Tiff => "tiff",
+    }
+}
+
 impl HomeScreen {
     pub(super) fn load_guilds(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some(token) = discord::load_token() else {
@@ -172,6 +185,7 @@ impl HomeScreen {
         self.at_bottom = true;
         self.send_error = None;
         self.replying_to = None;
+        self.pending_attachments.clear();
         self.messages_loading = true;
 
         let placeholder = match self.view {
@@ -287,12 +301,77 @@ impl HomeScreen {
         .detach();
     }
 
+    /// Handles the paste shortcut in the composer. If the clipboard holds an
+    /// image, it's staged as an attachment and the event is consumed. Otherwise
+    /// (plain text, or the composer isn't focused) propagation continues so the
+    /// text input's own paste handling runs as usual.
+    pub(super) fn on_paste_attachment(
+        &mut self,
+        _: &super::PasteAttachment,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        // Only intercept paste aimed at the message composer; let every other
+        // input (search, login, …) paste text normally.
+        if !self.message_input.focus_handle(cx).is_focused(window) {
+            cx.propagate();
+            return;
+        }
+        // No image on the clipboard: fall through to the input's text paste.
+        if !self.paste_attachment_from_clipboard(cx) {
+            cx.propagate();
+        }
+    }
+
+    /// Stages any image on the clipboard as an attachment, shown as a thumbnail
+    /// above the composer. Returns whether an image was staged.
+    pub(super) fn paste_attachment_from_clipboard(&mut self, cx: &mut Context<Self>) -> bool {
+        let Some(item) = cx.read_from_clipboard() else {
+            return false;
+        };
+
+        let mut added = false;
+        for entry in item.into_entries() {
+            let ClipboardEntry::Image(image) = entry else {
+                continue;
+            };
+            if image.bytes.is_empty() {
+                continue;
+            }
+            self.next_attachment_id += 1;
+            let filename = format!(
+                "image-{}.{}",
+                self.next_attachment_id,
+                image_extension(image.format)
+            );
+            self.pending_attachments.push(super::PendingAttachment {
+                id: self.next_attachment_id,
+                filename,
+                image: std::sync::Arc::new(image),
+            });
+            added = true;
+        }
+
+        if added {
+            cx.notify();
+        }
+        added
+    }
+
+    /// Removes a staged attachment by its id (the thumbnail's "×" button).
+    pub(super) fn remove_attachment(&mut self, id: u64, cx: &mut Context<Self>) {
+        self.pending_attachments
+            .retain(|attachment| attachment.id != id);
+        cx.notify();
+    }
+
     pub(super) fn send_current_message(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some(channel_id) = self.selected_channel else {
             return;
         };
         let content = self.message_input.read(cx).value().trim().to_string();
-        if content.is_empty() {
+        // Nothing to send: no text and no staged images.
+        if content.is_empty() && self.pending_attachments.is_empty() {
             return;
         }
 
@@ -303,6 +382,11 @@ impl HomeScreen {
         };
 
         let reply_to = self.replying_to.as_ref().map(|target| target.message_id);
+        let attachments: Vec<(String, Vec<u8>)> = self
+            .pending_attachments
+            .drain(..)
+            .map(|attachment| (attachment.filename, attachment.image.bytes.clone()))
+            .collect();
 
         self.message_input.update(cx, |input, cx| {
             input.set_value("", window, cx);
@@ -312,7 +396,7 @@ impl HomeScreen {
         cx.notify();
 
         let (tx, rx) = futures::channel::oneshot::channel();
-        discord::send_message(token, channel_id, content, reply_to, move |result| {
+        discord::send_message(token, channel_id, content, reply_to, attachments, move |result| {
             let _ = tx.send(result);
         });
 

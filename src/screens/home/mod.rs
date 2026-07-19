@@ -22,6 +22,16 @@ use crate::discord::{self, DirectMessage, Guild};
 
 use channels::ChannelGroup;
 
+actions!(
+    oxidecord,
+    [
+        /// Paste an image from the clipboard into the message composer as an
+        /// attachment. Bound to the paste shortcut so it runs ahead of the text
+        /// input's own paste, which only handles text.
+        PasteAttachment
+    ]
+);
+
 /// Which list occupies the sidebar: a guild's channels, or the DM list.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(super) enum View {
@@ -36,6 +46,18 @@ pub(super) enum View {
 pub(super) struct ReplyTarget {
     pub message_id: Id<MessageMarker>,
     pub author_name: String,
+}
+
+/// An image staged for sending, pasted from the clipboard and shown as a
+/// removable thumbnail above the composer until the message is sent.
+pub(super) struct PendingAttachment {
+    /// Unique within the composer; keys the thumbnail element and targets
+    /// removal.
+    pub id: u64,
+    /// The upload filename, derived from the image format (e.g. `image-1.png`).
+    pub filename: String,
+    /// The decoded image: rendered as the thumbnail and uploaded on send.
+    pub image: std::sync::Arc<Image>,
 }
 
 pub struct HomeScreen {
@@ -75,6 +97,12 @@ pub struct HomeScreen {
     /// Set while composing a reply; drives the "Replying to …" banner and is
     /// cleared when the reply is sent, dismissed, or the channel changes.
     replying_to: Option<ReplyTarget>,
+    /// Images pasted into the composer, shown as removable thumbnails and
+    /// uploaded when the message is sent. Cleared on send and on channel switch.
+    pending_attachments: Vec<PendingAttachment>,
+    /// Monotonic id source for `pending_attachments`, so each thumbnail has a
+    /// stable key even if the same image is pasted twice.
+    next_attachment_id: u64,
     message_input: Entity<InputState>,
     messages_list: ListState,
     /// Owns the decoded bitmaps for the currently displayed messages' images.
@@ -137,6 +165,8 @@ impl HomeScreen {
             at_bottom: true,
             send_error: None,
             replying_to: None,
+            pending_attachments: Vec::new(),
+            next_attachment_id: 0,
             message_input,
             messages_list,
             image_cache: RetainAllImageCache::new(cx),
@@ -159,6 +189,7 @@ impl Render for HomeScreen {
         h_flex()
             .size_full()
             .bg(cx.theme().background)
+            .on_action(cx.listener(Self::on_paste_attachment))
             .child(self.render_server_rail(cx))
             .children(sidebar)
             .child(self.render_content(cx))
