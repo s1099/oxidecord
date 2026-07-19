@@ -386,9 +386,9 @@ impl HomeScreen {
         v_flex()
             .w_full()
             .flex_shrink_0()
-            .px_4()
+            .px_2()
             .pt_1()
-            .pb_4()
+            .pb_2()
             .gap_1()
             .when_some(self.send_error.clone(), |this, error| {
                 this.child(div().text_xs().text_color(theme.danger).child(error))

@@ -278,6 +278,8 @@ impl HomeScreen {
             return;
         };
 
+        let reply_to = self.replying_to.as_ref().map(|target| target.message_id);
+
         self.message_input.update(cx, |input, cx| {
             input.set_value("", window, cx);
         });
@@ -286,7 +288,7 @@ impl HomeScreen {
         cx.notify();
 
         let (tx, rx) = futures::channel::oneshot::channel();
-        discord::send_message(token, channel_id, content, move |result| {
+        discord::send_message(token, channel_id, content, reply_to, move |result| {
             let _ = tx.send(result);
         });
 

@@ -34,7 +34,6 @@ pub(super) enum View {
 /// target when the reply is sent.
 #[derive(Clone)]
 pub(super) struct ReplyTarget {
-    #[allow(dead_code)]
     pub message_id: Id<MessageMarker>,
     pub author_name: String,
 }

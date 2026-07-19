@@ -481,16 +481,17 @@ pub fn send_message(
     token: String,
     channel_id: Id<ChannelMarker>,
     content: String,
+    reply_to: Option<Id<MessageMarker>>,
     on_done: impl FnOnce(Result<Message, String>) + Send + 'static,
 ) {
     runtime_handle().spawn(async move {
         let result = async {
             let client = HttpClient::new(token);
-            let response = client
-                .create_message(channel_id)
-                .content(&content)
-                .await
-                .map_err(|err| err.to_string())?;
+            let mut request = client.create_message(channel_id).content(&content);
+            if let Some(message_id) = reply_to {
+                request = request.reply(message_id);
+            }
+            let response = request.await.map_err(|err| err.to_string())?;
             let message = response.model().await.map_err(|err| err.to_string())?;
 
             Ok(convert_message(message))
