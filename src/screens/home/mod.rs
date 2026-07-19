@@ -15,7 +15,7 @@ use gpui_component::{
 };
 use twilight_model::id::{
     Id,
-    marker::{ChannelMarker, GuildMarker},
+    marker::{ChannelMarker, GuildMarker, MessageMarker},
 };
 
 use crate::discord::{self, DirectMessage, Guild};
@@ -27,6 +27,16 @@ use channels::ChannelGroup;
 pub(super) enum View {
     Guild,
     DirectMessages,
+}
+
+/// The message a pending reply is aimed at, shown as a banner above the
+/// message bar. Kept minimal: enough to label the banner and reference the
+/// target when the reply is sent.
+#[derive(Clone)]
+pub(super) struct ReplyTarget {
+    #[allow(dead_code)]
+    pub message_id: Id<MessageMarker>,
+    pub author_name: String,
 }
 
 pub struct HomeScreen {
@@ -60,6 +70,9 @@ pub struct HomeScreen {
     /// conversation) or be appended silently (the user is reading history).
     at_bottom: bool,
     send_error: Option<String>,
+    /// Set while composing a reply; drives the "Replying to …" banner and is
+    /// cleared when the reply is sent, dismissed, or the channel changes.
+    replying_to: Option<ReplyTarget>,
     message_input: Entity<InputState>,
     messages_list: ListState,
     /// Owns the decoded bitmaps for the currently displayed messages' images.
@@ -120,6 +133,7 @@ impl HomeScreen {
             reached_oldest: false,
             at_bottom: true,
             send_error: None,
+            replying_to: None,
             message_input,
             messages_list,
             image_cache: RetainAllImageCache::new(cx),

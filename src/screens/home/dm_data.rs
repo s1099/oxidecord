@@ -23,6 +23,7 @@ impl HomeScreen {
             .update(cx, |cache, cx| cache.clear(window, cx));
         self.messages_error = None;
         self.send_error = None;
+        self.replying_to = None;
         self.older_loading = false;
         self.reached_oldest = false;
         self.message_input.update(cx, |input, cx| {

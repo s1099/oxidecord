@@ -254,7 +254,19 @@ impl HomeScreen {
                             .icon(IconName::Undo2)
                             .ghost()
                             .small()
-                            .tooltip("Reply"),
+                            .tooltip("Reply")
+                            .on_click(cx.listener({
+                                let target = super::ReplyTarget {
+                                    message_id: message.id,
+                                    author_name: message.author_name.clone(),
+                                };
+                                move |this, _, window, cx| {
+                                    this.replying_to = Some(target.clone());
+                                    // Jump straight to composing, like Discord.
+                                    this.message_input.focus_handle(cx).focus(window);
+                                    cx.notify();
+                                }
+                            })),
                     )
                     .child(
                         Button::new(("message-more", message.id.get()))
@@ -327,6 +339,47 @@ impl HomeScreen {
         self.render_message(message, show_header, cx)
     }
 
+    /// The "Replying to <author>" strip that sits atop the composer while a
+    /// reply is pending, with a button to cancel the reply.
+    fn render_reply_banner(&self, target: &super::ReplyTarget, cx: &Context<Self>) -> AnyElement {
+        let theme = cx.theme();
+
+        h_flex()
+            .w_full()
+            .h(px(32.))
+            .px_3()
+            .items_center()
+            .justify_between()
+            .bg(theme.muted.opacity(0.5))
+            .border_b_1()
+            .border_color(theme.border)
+            .child(
+                h_flex()
+                    .gap_1()
+                    .text_xs()
+                    .text_color(theme.muted_foreground)
+                    .child("Replying to")
+                    .child(
+                        div()
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .text_color(theme.foreground)
+                            .child(target.author_name.clone()),
+                    ),
+            )
+            .child(
+                Button::new("cancel-reply")
+                    .icon(IconName::CircleX)
+                    .ghost()
+                    .xsmall()
+                    .tooltip("Cancel reply")
+                    .on_click(cx.listener(|this, _, _window, cx| {
+                        this.replying_to = None;
+                        cx.notify();
+                    })),
+            )
+            .into_any_element()
+    }
+
     pub(super) fn render_message_bar(&self, cx: &Context<Self>) -> impl IntoElement {
         let theme = cx.theme();
 
@@ -340,7 +393,26 @@ impl HomeScreen {
             .when_some(self.send_error.clone(), |this, error| {
                 this.child(div().text_xs().text_color(theme.danger).child(error))
             })
-            .child(Input::new(&self.message_input))
+            .child(
+                // Wrap the composer in our own rounded surface so the reply
+                // banner and input read as one control. The input's own border
+                // and bright focus ring are switched off in favour of this.
+                v_flex()
+                    .w_full()
+                    .rounded(px(8.))
+                    .bg(theme.secondary)
+                    .border_1()
+                    .border_color(theme.border)
+                    .overflow_hidden()
+                    .when_some(self.replying_to.clone(), |this, target| {
+                        this.child(self.render_reply_banner(&target, cx))
+                    })
+                    .child(
+                        Input::new(&self.message_input)
+                            .appearance(false)
+                            .focus_bordered(false),
+                    ),
+            )
     }
 
     pub(super) fn render_content(&self, cx: &Context<Self>) -> AnyElement {

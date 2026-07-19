@@ -147,6 +147,7 @@ impl HomeScreen {
         // live messages should follow along until the user scrolls up.
         self.at_bottom = true;
         self.send_error = None;
+        self.replying_to = None;
         self.messages_loading = true;
 
         let placeholder = match self.view {
@@ -281,6 +282,7 @@ impl HomeScreen {
             input.set_value("", window, cx);
         });
         self.send_error = None;
+        self.replying_to = None;
         cx.notify();
 
         let (tx, rx) = futures::channel::oneshot::channel();
