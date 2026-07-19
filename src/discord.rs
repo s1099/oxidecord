@@ -55,6 +55,49 @@ pub struct Guild {
     pub icon_url: Option<String>,
 }
 
+/// The signed-in user, shown in the sidebar account panel.
+#[derive(Clone)]
+pub struct CurrentUser {
+    /// Display name: the global display name when set, else the username.
+    pub name: String,
+    /// The `@handle` username.
+    pub username: String,
+    pub avatar_url: Option<String>,
+}
+
+/// Fetches the signed-in user (`GET /users/@me`) and invokes `on_done` with
+/// the result.
+///
+/// Runs on the background Tokio runtime; `on_done` is called from that
+/// runtime's thread, not the gpui foreground thread.
+pub fn fetch_current_user(
+    token: String,
+    on_done: impl FnOnce(Result<CurrentUser, String>) + Send + 'static,
+) {
+    runtime_handle().spawn(async move {
+        let result = async {
+            let client = HttpClient::new(token);
+            let response = client.current_user().await.map_err(|err| err.to_string())?;
+            let user = response.model().await.map_err(|err| err.to_string())?;
+            let avatar_url = user.avatar.map(|hash| {
+                format!(
+                    "https://cdn.discordapp.com/avatars/{}/{}.webp?size=80",
+                    user.id, hash
+                )
+            });
+            let name = user.global_name.clone().unwrap_or_else(|| user.name.clone());
+            Ok(CurrentUser {
+                name,
+                username: user.name,
+                avatar_url,
+            })
+        }
+        .await;
+
+        on_done(result);
+    });
+}
+
 /// Fetches the current user's guilds and invokes `on_done` with the result.
 ///
 /// Runs on the background Tokio runtime; `on_done` is called from that

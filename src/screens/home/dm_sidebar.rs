@@ -114,6 +114,7 @@ impl HomeScreen {
                     ),
             )
             .child(list)
+            .child(self.render_user_panel(cx))
     }
 
     fn render_dm_header(&self, dm: &DirectMessage, cx: &Context<Self>) -> impl IntoElement {

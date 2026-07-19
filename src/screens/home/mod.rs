@@ -41,6 +41,9 @@ pub(super) struct ReplyTarget {
 pub struct HomeScreen {
     view: View,
     guilds: Vec<Guild>,
+    /// The signed-in user, shown in the sidebar account panel. `None` until the
+    /// `GET /users/@me` fetch resolves (or if it fails).
+    current_user: Option<discord::CurrentUser>,
     selected_guild: Option<Id<GuildMarker>>,
     loading: bool,
     error: Option<String>,
@@ -113,6 +116,7 @@ impl HomeScreen {
         let mut this = Self {
             view: View::Guild,
             guilds: Vec::new(),
+            current_user: None,
             selected_guild: None,
             loading: true,
             error: None,
@@ -138,6 +142,7 @@ impl HomeScreen {
             image_cache: RetainAllImageCache::new(cx),
         };
         this.load_guilds(window, cx);
+        this.load_current_user(cx);
         this.start_gateway(cx);
         this
     }

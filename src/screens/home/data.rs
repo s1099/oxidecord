@@ -50,6 +50,30 @@ impl HomeScreen {
         .detach();
     }
 
+    /// Loads the signed-in user for the sidebar account panel. Best-effort:
+    /// on failure the panel just stays empty.
+    pub(super) fn load_current_user(&mut self, cx: &mut Context<Self>) {
+        let Some(token) = discord::load_token() else {
+            return;
+        };
+
+        let (tx, rx) = futures::channel::oneshot::channel();
+        discord::fetch_current_user(token, move |result| {
+            let _ = tx.send(result);
+        });
+
+        cx.spawn(async move |this, cx| {
+            let Ok(Ok(user)) = rx.await else {
+                return;
+            };
+            let _ = this.update(cx, |this, cx| {
+                this.current_user = Some(user);
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
     pub(super) fn select_guild(
         &mut self,
         guild_id: Id<GuildMarker>,
