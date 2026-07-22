@@ -75,13 +75,9 @@ impl LoginWebview {
                         .with_initialization_script(init_script)
                         .with_ipc_handler(move |msg| {
                             let token = msg.body().trim_matches('"');
-                            let file_content = format!(
-                                r#"{{
-					"userToken": "{}"
-				}}"#,
-                                token
-                            );
-                            let _ = std::fs::write("auth.json", file_content);
+                            if let Err(err) = crate::discord::save_token(token) {
+                                eprintln!("failed to save token to the credential store: {err}");
+                            }
 
                             let window_handle_inner = window_handle_capture.clone();
                             let async_cx_inner = async_cx_capture.clone();

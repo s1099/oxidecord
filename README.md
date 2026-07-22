@@ -18,10 +18,10 @@ cargo run --release # release build
 3. Binary can be found in `target/release` or `target/debug`
 
 ### TODO
-- Sending images
-- Store token securely instead of a plaintext file right now
+- App icon
+- Settings page
 - Embeds
 - Videos
+- Voice calls
 - Caching
-- Settings
 - Themes https://longbridge.github.io/gpui-component/docs/theme#theme-registry

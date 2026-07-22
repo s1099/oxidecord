@@ -1,6 +1,5 @@
-use std::sync::OnceLock;
+use std::sync::{OnceLock, RwLock};
 
-use serde::Deserialize;
 use tokio::runtime::Handle;
 use twilight_gateway::{Event, EventTypeFlags, Intents, Shard, ShardId, StreamExt as _};
 use twilight_http::Client as HttpClient;
@@ -35,18 +34,45 @@ pub fn runtime_handle() -> &'static Handle {
     })
 }
 
-#[derive(Deserialize)]
-struct AuthFile {
-    #[serde(rename = "userToken")]
-    user_token: String,
+const KEYRING_SERVICE: &str = "oxidecord";
+
+const KEYRING_USER: &str = "discord-token";
+
+/// In-process cache so the hot paths don't hit the OS credential store on
+/// every request. `None` means not loaded yet.
+static TOKEN_CACHE: RwLock<Option<Option<String>>> = RwLock::new(None);
+
+fn keyring_entry() -> keyring::Result<keyring::Entry> {
+    keyring::Entry::new(KEYRING_SERVICE, KEYRING_USER)
 }
 
-/// Reads the user's Discord token from `auth.json` in the working directory.
 pub fn load_token() -> Option<String> {
-    let content = std::fs::read_to_string("auth.json").ok()?;
-    serde_json::from_str::<AuthFile>(&content)
-        .ok()
-        .map(|auth| auth.user_token)
+    if let Some(cached) = TOKEN_CACHE.read().ok()?.as_ref() {
+        return cached.clone();
+    }
+
+    let token = match keyring_entry().and_then(|entry| entry.get_password()) {
+        Ok(token) => Some(token),
+        Err(keyring::Error::NoEntry) => None,
+        Err(err) => {
+            eprintln!("failed to read token from the credential store: {err}");
+            None
+        }
+    };
+
+    if let Ok(mut cache) = TOKEN_CACHE.write() {
+        *cache = Some(token.clone());
+    }
+    token
+}
+
+/// Stores the user's Discord token in the OS credential store, replacing token already there.
+pub fn save_token(token: &str) -> keyring::Result<()> {
+    keyring_entry()?.set_password(token)?;
+    if let Ok(mut cache) = TOKEN_CACHE.write() {
+        *cache = Some(Some(token.to_owned()));
+    }
+    Ok(())
 }
 
 #[derive(Clone)]
@@ -56,7 +82,6 @@ pub struct Guild {
     pub icon_url: Option<String>,
 }
 
-/// The signed-in user, shown in the sidebar account panel.
 #[derive(Clone)]
 pub struct CurrentUser {
     /// Display name: the global display name when set, else the username.
@@ -218,8 +243,6 @@ pub fn fetch_channels(
 #[derive(Clone)]
 pub struct DirectMessage {
     pub id: Id<ChannelMarker>,
-    /// Display label: the other user for a DM, the group's name (or its
-    /// members' names) for a group DM.
     pub name: String,
     pub avatar_url: Option<String>,
     /// Snowflake of the last message, used only to order conversations by
@@ -230,7 +253,6 @@ pub struct DirectMessage {
 fn convert_dm(channel: twilight_model::channel::Channel) -> Option<DirectMessage> {
     let last_message_id = channel.last_message_id.map(|id| id.get());
     match channel.kind {
-        // 1:1 DM: a single recipient, the other user.
         ChannelType::Private => {
             let user = channel.recipients?.into_iter().next()?;
             let avatar_url = user.avatar.map(|hash| {
@@ -246,8 +268,6 @@ fn convert_dm(channel: twilight_model::channel::Channel) -> Option<DirectMessage
                 last_message_id,
             })
         }
-        // Group DM: a custom icon and name, each optional. Fall back to the
-        // joined recipient names when the group is unnamed, like Discord.
         ChannelType::Group => {
             let avatar_url = channel.icon.map(|hash| {
                 format!(
@@ -338,7 +358,6 @@ pub struct MessageReference {
     pub content: String,
 }
 
-/// An image attachment on a message, ready to display inline.
 #[derive(Clone)]
 pub struct ImageAttachment {
     pub url: String,

@@ -43,7 +43,7 @@ impl HomeScreen {
 
         let Some(token) = discord::load_token() else {
             self.dms_loading = false;
-            self.dms_error = Some("No token found in auth.json.".into());
+            self.dms_error = Some("No token found. Please log in first.".into());
             return;
         };
 

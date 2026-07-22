@@ -26,7 +26,7 @@ impl HomeScreen {
     pub(super) fn load_guilds(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some(token) = discord::load_token() else {
             self.loading = false;
-            self.error = Some("No token found in auth.json. Please log in first.".into());
+            self.error = Some("No token found. Please log in first.".into());
             return;
         };
 
@@ -118,7 +118,7 @@ impl HomeScreen {
 
         let Some(token) = discord::load_token() else {
             self.channels_loading = false;
-            self.channels_error = Some("No token found in auth.json.".into());
+            self.channels_error = Some("No token found. Please log in first.".into());
             return;
         };
 
@@ -205,7 +205,7 @@ impl HomeScreen {
 
         let Some(token) = discord::load_token() else {
             self.messages_loading = false;
-            self.messages_error = Some("No token found in auth.json.".into());
+            self.messages_error = Some("No token found. Please log in first.".into());
             return;
         };
 
@@ -376,7 +376,7 @@ impl HomeScreen {
         }
 
         let Some(token) = discord::load_token() else {
-            self.send_error = Some("No token found in auth.json.".into());
+            self.send_error = Some("No token found. Please log in first.".into());
             cx.notify();
             return;
         };
