@@ -122,8 +122,17 @@ impl HomeScreen {
             return;
         };
 
+        // The guild list already carries the user's guild-wide permissions, so
+        // channel visibility only needs the member object on top of them.
+        let (base_permissions, owner) = self
+            .guilds
+            .iter()
+            .find(|guild| guild.id == guild_id)
+            .map(|guild| (guild.permissions, guild.owner))
+            .unwrap_or((discord::Permissions::empty(), false));
+
         let (tx, rx) = futures::channel::oneshot::channel();
-        discord::fetch_channels(token, guild_id, move |result| {
+        discord::fetch_channels(token, guild_id, base_permissions, owner, move |result| {
             let _ = tx.send(result);
         });
 
@@ -396,9 +405,16 @@ impl HomeScreen {
         cx.notify();
 
         let (tx, rx) = futures::channel::oneshot::channel();
-        discord::send_message(token, channel_id, content, reply_to, attachments, move |result| {
-            let _ = tx.send(result);
-        });
+        discord::send_message(
+            token,
+            channel_id,
+            content,
+            reply_to,
+            attachments,
+            move |result| {
+                let _ = tx.send(result);
+            },
+        );
 
         cx.spawn(async move |this, cx| {
             let Ok(result) = rx.await else {

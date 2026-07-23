@@ -4676,6 +4676,7 @@ dependencies = [
  "twilight-gateway",
  "twilight-http",
  "twilight-model",
+ "twilight-util",
  "zed-reqwest",
 ]
 
@@ -7422,6 +7423,14 @@ dependencies = [
  "serde-value",
  "serde_repr",
  "time",
+]
+
+[[package]]
+name = "twilight-util"
+version = "0.17.0"
+source = "git+https://github.com/s1099/twilight?branch=main#5efb5c6e30d5f5dca059ee1a68656eef85fdc780"
+dependencies = [
+ "twilight-model",
 ]
 
 [[package]]

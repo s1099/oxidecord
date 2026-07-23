@@ -14,6 +14,11 @@ use super::{HomeScreen, View};
 /// Horizontal padding, in pixels, on either side of the message list
 const MESSAGE_PADDING_X: f32 = 16.;
 
+/// Vertical gap, in pixels, between two consecutive author groups. Split evenly
+/// between the bottom of the group above and the top of the group below so each
+/// message's hover highlight extends symmetrically into the gap.
+const GROUP_GAP: f32 = 16.;
+
 /// A bottom-aligned column of placeholder message rows
 fn messages_skeleton() -> impl IntoElement {
     const WIDTHS: [f32; 12] = [
@@ -173,6 +178,7 @@ impl HomeScreen {
         &self,
         message: &discord::Message,
         show_header: bool,
+        next_starts_group: bool,
         cx: &Context<Self>,
     ) -> AnyElement {
         let theme = cx.theme();
@@ -208,13 +214,23 @@ impl HomeScreen {
         // The list itself can't pad its items (they overflow its padding), so
         // each message carries its own horizontal padding and a full width with
         // `min_w_0` so long lines wrap instead of running off the right edge.
+        // The gap between two author groups is split evenly: the last message of
+        // a group carries the bottom half and the first message of the next group
+        // carries the top half. That way each message's hover highlight extends
+        // symmetrically into the gap, instead of the whole gap sitting on top of
+        // (and only highlighting with) the message that starts the new group.
         let inner: AnyElement = if !show_header {
             div()
                 .w_full()
                 .min_w_0()
                 .pl(px(MESSAGE_PADDING_X + 52.))
                 .pr(px(MESSAGE_PADDING_X))
-                .py(px(1.))
+                .pt(px(1.))
+                .pb(px(if next_starts_group {
+                    GROUP_GAP / 2.
+                } else {
+                    1.
+                }))
                 .text_sm()
                 .child(content)
                 .into_any_element()
@@ -262,7 +278,12 @@ impl HomeScreen {
             v_flex()
                 .w_full()
                 .min_w_0()
-                .pt(px(16.))
+                .pt(px(GROUP_GAP / 2.))
+                .pb(px(if next_starts_group {
+                    GROUP_GAP / 2.
+                } else {
+                    0.
+                }))
                 .px(px(MESSAGE_PADDING_X))
                 .gap(px(2.))
                 .when_some(message.reply.clone(), |this, reference| {
@@ -407,7 +428,14 @@ impl HomeScreen {
             || message.reply.is_some()
             || self.messages.get(ix - 1).map(|previous| previous.author_id)
                 != Some(message.author_id);
-        self.render_message(message, show_header, cx)
+        // Whether the following message begins a new author group, which mirrors
+        // the `show_header` logic applied to `ix + 1`: it starts a group if it's a
+        // reply or has a different author than this message.
+        let next_starts_group = self
+            .messages
+            .get(ix + 1)
+            .is_some_and(|next| next.reply.is_some() || next.author_id != message.author_id);
+        self.render_message(message, show_header, next_starts_group, cx)
     }
 
     /// The "Replying to <author>" strip that sits atop the composer while a

@@ -8,12 +8,14 @@ use twilight_http::response::marker::ListBody;
 use twilight_http::routing::Route;
 use twilight_model::channel::ChannelType;
 use twilight_model::gateway::payload::incoming::MessageCreate;
+pub use twilight_model::guild::Permissions;
 use twilight_model::http::attachment::Attachment;
 use twilight_model::id::{
     Id,
-    marker::{ChannelMarker, GuildMarker, MessageMarker, UserMarker},
+    marker::{ChannelMarker, GuildMarker, MessageMarker, RoleMarker, UserMarker},
 };
 use twilight_model::util::Timestamp;
+use twilight_util::permission_calculator::PermissionCalculator;
 
 static RUNTIME: OnceLock<Handle> = OnceLock::new();
 
@@ -80,6 +82,13 @@ pub struct Guild {
     pub id: Id<GuildMarker>,
     pub name: String,
     pub icon_url: Option<String>,
+    /// The user's guild-wide permissions (from `@everyone` plus their roles,
+    /// before any channel overwrites). Discord hands these to us with the
+    /// guild list, so channel visibility can be resolved without refetching
+    /// the guild's roles.
+    pub permissions: Permissions,
+    /// Whether the current user owns this guild (owners bypass permissions).
+    pub owner: bool,
 }
 
 #[derive(Clone)]
@@ -111,7 +120,10 @@ pub fn fetch_current_user(
                     user.id, hash
                 )
             });
-            let name = user.global_name.clone().unwrap_or_else(|| user.name.clone());
+            let name = user
+                .global_name
+                .clone()
+                .unwrap_or_else(|| user.name.clone());
             Ok(CurrentUser {
                 name,
                 username: user.name,
@@ -154,6 +166,8 @@ pub fn fetch_guilds(
                         id: guild.id,
                         name: guild.name,
                         icon_url,
+                        permissions: guild.permissions,
+                        owner: guild.owner,
                     }
                 })
                 .collect::<Vec<_>>())
@@ -193,22 +207,56 @@ pub struct Channel {
 
 /// Fetches a guild's channels and invokes `on_done` with the result.
 ///
+/// Only channels the current user can view (holds the `VIEW_CHANNEL`
+/// permission on) are returned; the rest are the channels Discord itself
+/// hides from the sidebar. `base_permissions` and `owner` come from the guild
+/// list (see [`Guild`]) and are the user's guild-wide permissions, so the only
+/// per-guild extra request here is the member object — which of their roles
+/// apply — used to resolve each channel's overwrites locally.
+///
 /// Runs on the background Tokio runtime; `on_done` is called from that
 /// runtime's thread, not the gpui foreground thread. Channel types the UI
 /// can't display (threads, directories, ...) are filtered out.
 pub fn fetch_channels(
     token: String,
     guild_id: Id<GuildMarker>,
+    base_permissions: Permissions,
+    owner: bool,
     on_done: impl FnOnce(Result<Vec<Channel>, String>) + Send + 'static,
 ) {
     runtime_handle().spawn(async move {
         let result = async {
             let client = HttpClient::new(token);
-            let response = client
-                .guild_channels(guild_id)
+
+            // The member object tells us which roles the user has, so
+            // role-specific channel overwrites can be matched.
+            let member = client
+                .current_user_guild_member(guild_id)
+                .await
+                .map_err(|err| err.to_string())?
+                .model()
                 .await
                 .map_err(|err| err.to_string())?;
-            let channels = response.models().await.map_err(|err| err.to_string())?;
+            let channels = client
+                .guild_channels(guild_id)
+                .await
+                .map_err(|err| err.to_string())?
+                .models()
+                .await
+                .map_err(|err| err.to_string())?;
+
+            let user_id = member.user.id;
+            // We already know the user's aggregate guild-wide permissions, so
+            // seed the calculator with those as the `@everyone` baseline and
+            // list the member's roles with empty permissions — the roles are
+            // only needed by id, to match channel overwrites, not to recompute
+            // the baseline.
+            let member_roles: Vec<(Id<RoleMarker>, Permissions)> = member
+                .roles
+                .iter()
+                .filter(|id| id.get() != guild_id.get())
+                .map(|id| (*id, Permissions::empty()))
+                .collect();
 
             Ok(channels
                 .into_iter()
@@ -222,6 +270,24 @@ pub fn fetch_channels(
                         ChannelType::GuildCategory => ChannelKind::Category,
                         _ => return None,
                     };
+
+                    // Apply the channel's own overwrites to the baseline and
+                    // drop the channel if the user can't even view it.
+                    let overwrites = channel.permission_overwrites.as_deref().unwrap_or(&[]);
+                    let mut calculator = PermissionCalculator::new(
+                        guild_id,
+                        user_id,
+                        base_permissions,
+                        &member_roles,
+                    );
+                    if owner {
+                        calculator = calculator.owner_id(user_id);
+                    }
+                    let permissions = calculator.in_channel(channel.kind, overwrites);
+                    if !permissions.contains(Permissions::VIEW_CHANNEL) {
+                        return None;
+                    }
+
                     Some(Channel {
                         id: channel.id,
                         name: channel.name.unwrap_or_default(),

@@ -40,11 +40,16 @@ pub(super) fn build_channel_groups(channels: Vec<Channel>) -> Vec<ChannelGroup> 
         });
     }
     for category in categories {
-        let channels = others
+        let channels: Vec<_> = others
             .iter()
             .filter(|channel| channel.parent_id == Some(category.id))
             .cloned()
             .collect();
+        // A category whose every channel was filtered out (e.g. the user can't
+        // view any of them) shouldn't appear as an empty header.
+        if channels.is_empty() {
+            continue;
+        }
         groups.push(ChannelGroup {
             category: Some(category),
             channels,
