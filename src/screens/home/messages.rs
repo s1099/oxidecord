@@ -1,3 +1,6 @@
+use std::ops::Range;
+use std::sync::LazyLock;
+
 use gpui::prelude::FluentBuilder as _;
 use gpui::*;
 use gpui_component::{
@@ -5,11 +8,95 @@ use gpui_component::{
     button::ButtonVariants as _, divider::Divider, h_flex, input::Input, skeleton::Skeleton,
     spinner::Spinner, v_flex,
 };
+use regex::Regex;
 
 use crate::discord::{self, Channel};
 
 use super::channels::channel_icon_path;
 use super::{HomeScreen, View};
+
+/// Matches `http`/`https` URLs, running each up to the next whitespace or
+/// angle bracket. Trailing prose punctuation is trimmed separately.
+static URL_REGEX: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"https?://[^\s<>]+").expect("valid url regex"));
+
+/// An `http`/`https` URL found in message text: the byte range it occupies in
+/// the content and the link target itself.
+struct Link {
+    range: Range<usize>,
+    url: String,
+}
+
+/// Finds every `http`/`https` URL in `text`, returning each as the byte range
+/// it occupies plus the URL string, in order of appearance. Trailing
+/// punctuation that usually belongs to the surrounding prose rather than the
+/// link (a sentence's period, a wrapping paren, ...) is left out of the match.
+fn find_links(text: &str) -> Vec<Link> {
+    URL_REGEX
+        .find_iter(text)
+        .map(|m| {
+            let url = m.as_str().trim_end_matches(|c| {
+                matches!(
+                    c,
+                    '.' | ',' | ';' | ':' | '!' | '?' | ')' | ']' | '}' | '"' | '\''
+                )
+            });
+            Link {
+                range: m.start()..m.start() + url.len(),
+                url: url.to_string(),
+            }
+        })
+        .collect()
+}
+
+/// Renders message text with any `http`/`https` URLs shown in the theme's link
+/// colour, underlined, and clickable — a click opens the URL in the default
+/// browser. Text without links renders as a plain string.
+fn render_message_text(id: u64, content: &str, link_color: Hsla) -> AnyElement {
+    let links = find_links(content);
+    if links.is_empty() {
+        return div()
+            .w_full()
+            .min_w_0()
+            .child(content.to_string())
+            .into_any_element();
+    }
+
+    let highlight = HighlightStyle {
+        color: Some(link_color),
+        underline: Some(UnderlineStyle {
+            thickness: px(1.),
+            color: Some(link_color),
+            wavy: false,
+        }),
+        ..Default::default()
+    };
+    let ranges: Vec<Range<usize>> = links.iter().map(|link| link.range.clone()).collect();
+    let urls: Vec<String> = links.into_iter().map(|link| link.url).collect();
+    let highlights: Vec<(Range<usize>, HighlightStyle)> = ranges
+        .iter()
+        .map(|range| (range.clone(), highlight))
+        .collect();
+
+    // `with_highlights` computes the plain runs from the ambient text style at
+    // layout time, so the non-link text keeps the surrounding size and colour;
+    // only the link ranges get the highlight overlaid.
+    let styled = StyledText::new(content.to_string()).with_highlights(highlights);
+    div()
+        .w_full()
+        .min_w_0()
+        .child(
+            InteractiveText::new(("message-content", id), styled).on_click(
+                ranges,
+                move |ix, _window, cx| {
+                    if let Some(url) = urls.get(ix) {
+                        cx.open_url(url);
+                    }
+                },
+            ),
+        )
+        .into_any_element()
+}
 
 /// Horizontal padding, in pixels, on either side of the message list
 const MESSAGE_PADDING_X: f32 = 16.;
@@ -190,7 +277,11 @@ impl HomeScreen {
             .gap_1()
             // Show placeholder text only when there's nothing else to render.
             .when(!message.content.is_empty(), |this| {
-                this.child(div().w_full().min_w_0().child(message.content.clone()))
+                this.child(render_message_text(
+                    message.id.get(),
+                    &message.content,
+                    theme.link,
+                ))
             })
             .when(message.content.is_empty() && !has_images, |this| {
                 this.child(

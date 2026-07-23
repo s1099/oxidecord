@@ -4670,6 +4670,7 @@ dependencies = [
  "gpui-component-assets",
  "keyring",
  "lb-wry",
+ "regex",
  "serde",
  "serde_json",
  "tokio",
