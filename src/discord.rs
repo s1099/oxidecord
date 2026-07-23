@@ -505,7 +505,24 @@ fn convert_reference(referenced: twilight_model::channel::Message) -> MessageRef
     MessageReference {
         author_name,
         author_avatar_url: avatar_url(&referenced.author),
-        content: referenced.content,
+        content: single_line_preview(&referenced.content),
+    }
+}
+
+/// Condense a message's content into a single line preview for the reply quote.
+fn single_line_preview(content: &str) -> String {
+    const MAX_LEN: usize = 150;
+
+    let first_line = content.lines().next().unwrap_or_default().trim_end();
+    let has_more_lines = content.lines().nth(1).is_some();
+
+    let truncated: String = first_line.chars().take(MAX_LEN).collect();
+    let is_clipped = truncated.chars().count() < first_line.chars().count();
+
+    if is_clipped || has_more_lines {
+        format!("{}…", truncated.trim_end())
+    } else {
+        truncated
     }
 }
 
