@@ -656,6 +656,9 @@ pub fn connect_gateway(
     });
 }
 
+/// TODO: add support for higher file sizes upto 500mb with nitro checks
+pub const MAX_ATTACHMENT_SIZE: u64 = 10 * 1024 * 1024;
+
 /// Sends a message to a channel and invokes `on_done` with the created
 /// message.
 ///

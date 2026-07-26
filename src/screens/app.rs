@@ -1,5 +1,6 @@
 use gpui::*;
 
+use crate::screens::dialogs;
 use crate::screens::home::HomeScreen;
 use crate::screens::login::LoginScreen;
 
@@ -37,10 +38,14 @@ impl AppScreen {
 }
 
 impl Render for AppScreen {
-    fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
-        div().size_full().child(match &self.route {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let screen = match &self.route {
             Route::Login(view) => view.clone().into_any_element(),
             Route::Home(view) => view.clone().into_any_element(),
-        })
+        };
+
+        // Every screen sits under the same modal layer, so a dialog opened
+        // anywhere in the app is drawn (and backed by its scrim) here.
+        dialogs::with_dialog_layer(screen, window, cx)
     }
 }

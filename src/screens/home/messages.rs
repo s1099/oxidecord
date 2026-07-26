@@ -570,11 +570,61 @@ impl HomeScreen {
             .into_any_element()
     }
 
-    /// The row of removable thumbnails for images staged to be sent, shown
-    /// inside the composer above the input, like Discord's attachment tray.
-    fn render_attachment_previews(&self, cx: &Context<Self>) -> impl IntoElement {
+    /// The preview for one staged attachment: the image itself when it is one,
+    /// otherwise a card with the file's name and size.
+    fn render_attachment_preview(
+        &self,
+        attachment: &super::PendingAttachment,
+        cx: &Context<Self>,
+    ) -> AnyElement {
         let theme = cx.theme();
 
+        let Some(image) = attachment.data.image() else {
+            return v_flex()
+                .h(px(120.))
+                .w(px(160.))
+                .p_3()
+                .gap_2()
+                .items_center()
+                .justify_center()
+                .rounded(px(8.))
+                .bg(theme.muted.opacity(0.5))
+                .border_1()
+                .border_color(theme.border)
+                .child(
+                    Icon::new(IconName::File)
+                        .size_8()
+                        .text_color(theme.muted_foreground),
+                )
+                .child(
+                    div()
+                        .w_full()
+                        .truncate()
+                        .text_xs()
+                        .text_center()
+                        .child(attachment.filename.clone()),
+                )
+                .child(
+                    div()
+                        .text_xs()
+                        .text_color(theme.muted_foreground)
+                        .child(super::format_size(attachment.data.bytes().len() as u64)),
+                )
+                .into_any_element();
+        };
+
+        img(image)
+            .h(px(120.))
+            .max_w(px(200.))
+            .rounded(px(8.))
+            .border_1()
+            .border_color(theme.border)
+            .into_any_element()
+    }
+
+    /// The row of removable previews for the files staged to be sent, shown
+    /// inside the composer above the input, like Discord's attachment tray.
+    fn render_attachment_previews(&self, cx: &Context<Self>) -> impl IntoElement {
         h_flex()
             .w_full()
             .flex_wrap()
@@ -586,14 +636,7 @@ impl HomeScreen {
                 div()
                     .relative()
                     .flex_shrink_0()
-                    .child(
-                        img(attachment.image.clone())
-                            .h(px(120.))
-                            .max_w(px(200.))
-                            .rounded(px(8.))
-                            .border_1()
-                            .border_color(theme.border),
-                    )
+                    .child(self.render_attachment_preview(attachment, cx))
                     .child(
                         div().absolute().top(px(4.)).right(px(4.)).child(
                             Button::new(("remove-attachment", id))
@@ -642,9 +685,28 @@ impl HomeScreen {
                         this.child(self.render_attachment_previews(cx))
                     })
                     .child(
-                        Input::new(&self.message_input)
-                            .appearance(false)
-                            .focus_bordered(false),
+                        h_flex()
+                            .w_full()
+                            .items_center()
+                            .pl_1()
+                            .child(
+                                Button::new("add-attachment")
+                                    .icon(IconName::Plus)
+                                    .ghost()
+                                    .small()
+                                    .flex_shrink_0()
+                                    .tooltip("Add attachment")
+                                    .on_click(cx.listener(|this, _, window, cx| {
+                                        this.pick_attachments(window, cx);
+                                    })),
+                            )
+                            .child(
+                                div().flex_1().min_w_0().child(
+                                    Input::new(&self.message_input)
+                                        .appearance(false)
+                                        .focus_bordered(false),
+                                ),
+                            ),
                     ),
             )
     }
