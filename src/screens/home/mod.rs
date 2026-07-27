@@ -1,13 +1,17 @@
+//! The main app screen: the server rail, the channel/DM sidebar, and the
+//! message pane.
+//!
+//! [`HomeScreen`] owns all of the screen's state; the implementation is split
+//! across two groups of modules that both extend it with inherent methods:
+//!
+//! - [`data`] — everything that talks to [`crate::discord`] and mutates state.
+//! - [`view`] — everything that renders that state.
+
 mod channels;
 mod data;
-mod dm_data;
-mod dm_sidebar;
-mod messages;
-mod rail;
-mod sidebar;
+mod view;
 
 use std::collections::HashSet;
-use std::sync::Arc;
 
 use gpui::*;
 use gpui_component::{
@@ -22,6 +26,7 @@ use twilight_model::id::{
 use crate::discord::{self, DirectMessage, Guild};
 
 use channels::ChannelGroup;
+use data::attachments::PendingAttachment;
 
 actions!(
     oxidecord,
@@ -47,55 +52,6 @@ pub(super) enum View {
 pub(super) struct ReplyTarget {
     pub message_id: Id<MessageMarker>,
     pub author_name: String,
-}
-
-/// A file staged for sending, picked from disk or pasted from the clipboard
-pub(super) struct PendingAttachment {
-    /// Unique within the composer; keys the card element and targets removal.
-    pub id: u64,
-    /// The upload filename: the file's own name, or one derived from the image
-    /// format for a pasted image (e.g. `image-1.png`).
-    pub filename: String,
-    /// The file's contents, rendered as a preview and uploaded on send.
-    pub data: AttachmentData,
-}
-
-/// The contents of a staged attachment. An image keeps the decoded [`Image`], so
-/// the same bytes back both its thumbnail and the upload; any other file is held
-/// as raw bytes and previewed as a file card instead.
-pub(super) enum AttachmentData {
-    Image(Arc<Image>),
-    File(Arc<Vec<u8>>),
-}
-
-impl AttachmentData {
-    pub fn bytes(&self) -> &[u8] {
-        match self {
-            Self::Image(image) => &image.bytes,
-            Self::File(bytes) => bytes,
-        }
-    }
-
-    pub fn image(&self) -> Option<Arc<Image>> {
-        match self {
-            Self::Image(image) => Some(image.clone()),
-            Self::File(_) => None,
-        }
-    }
-}
-
-pub(super) fn format_size(bytes: u64) -> String {
-    const KB: f64 = 1024.;
-    const MB: f64 = 1024. * KB;
-
-    let bytes = bytes as f64;
-    if bytes >= MB {
-        format!("{:.1} MB", bytes / MB)
-    } else if bytes >= KB {
-        format!("{:.0} KB", bytes / KB)
-    } else {
-        format!("{bytes:.0} B")
-    }
 }
 
 pub struct HomeScreen {
@@ -169,8 +125,6 @@ impl HomeScreen {
         let weak = cx.entity().downgrade();
         messages_list.set_scroll_handler(move |event, _window, cx| {
             let _ = weak.update(cx, |this, cx| {
-                // Track whether the newest message is on screen so live
-                // messages only auto-scroll when the user is at the bottom.
                 this.at_bottom = event.visible_range.end >= event.count;
                 // Nearing the oldest loaded message; fetch the previous page.
                 if event.visible_range.start <= 2 {

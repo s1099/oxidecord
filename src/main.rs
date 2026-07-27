@@ -2,6 +2,7 @@ mod assets;
 mod constants;
 mod discord;
 mod http;
+mod runtime;
 mod screens;
 
 use std::sync::Arc;

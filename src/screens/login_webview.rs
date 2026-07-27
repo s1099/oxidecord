@@ -88,7 +88,6 @@ impl LoginWebview {
                                     let _ =
                                         app_inner.update(cx, |app, cx| app.show_home(window, cx));
                                 });
-                                // Close the login popup.
                                 let _ = cx.update_window(window_handle_inner, |_, window, _| {
                                     window.remove_window();
                                 });

@@ -1,3 +1,5 @@
+//! The direct-message sidebar and the conversation pane it opens.
+
 use gpui::prelude::FluentBuilder as _;
 use gpui::*;
 use gpui_component::{
@@ -6,7 +8,7 @@ use gpui_component::{
 
 use crate::discord::DirectMessage;
 
-use super::HomeScreen;
+use crate::screens::home::HomeScreen;
 
 impl HomeScreen {
     fn render_dm_row(&self, dm: &DirectMessage, cx: &Context<Self>) -> impl IntoElement {
@@ -42,7 +44,7 @@ impl HomeScreen {
             }))
     }
 
-    pub(super) fn render_dm_sidebar(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    pub(crate) fn render_dm_sidebar(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = cx.theme();
         let sidebar_border = theme.sidebar_border;
         let danger = theme.danger;

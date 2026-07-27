@@ -91,7 +91,6 @@ impl LoginScreen {
                             title: Some("Discord Login".into()),
                             ..Default::default()
                         }),
-                        // Start the login popup small.
                         window_bounds: Some(WindowBounds::centered(size(px(500.), px(650.)), cx)),
                         window_min_size: Some(size(px(400.), px(520.))),
                         ..Default::default()

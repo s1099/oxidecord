@@ -1,3 +1,6 @@
+//! The guild sidebar: the channel list, its categories, and the account panel
+//! pinned below it.
+
 use gpui::prelude::FluentBuilder as _;
 use gpui::*;
 use gpui_component::{
@@ -7,8 +10,8 @@ use gpui_component::{
 
 use crate::discord::Channel;
 
-use super::HomeScreen;
-use super::channels::{ChannelGroup, channel_icon_path};
+use crate::screens::home::HomeScreen;
+use crate::screens::home::channels::{ChannelGroup, channel_icon_path};
 
 impl HomeScreen {
     fn render_channel_row(&self, channel: &Channel, cx: &Context<Self>) -> impl IntoElement {
@@ -115,8 +118,8 @@ impl HomeScreen {
         collapsible.into_any_element()
     }
 
-    /// The account panel pinned below the channel list: avatar, display name,
-    /// username, and a settings button — like Discord's user area.
+    /// The account panel pinned below the channel list, like Discord's user
+    /// area.
     pub(super) fn render_user_panel(&self, cx: &Context<Self>) -> impl IntoElement {
         let theme = cx.theme();
 
@@ -173,7 +176,7 @@ impl HomeScreen {
             )
     }
 
-    pub(super) fn render_channel_sidebar(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    pub(crate) fn render_channel_sidebar(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = cx.theme();
         let sidebar_border = theme.sidebar_border;
         let danger = theme.danger;

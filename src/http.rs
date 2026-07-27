@@ -3,7 +3,7 @@
 use futures::{AsyncReadExt as _, FutureExt as _, future::BoxFuture};
 use gpui::http_client::{AsyncBody, HttpClient, Url, http, http::HeaderValue};
 
-use crate::discord::runtime_handle;
+use crate::runtime;
 
 pub struct ReqwestClient {
     client: reqwest::Client,
@@ -41,7 +41,7 @@ impl HttpClient for ReqwestClient {
         req: http::Request<AsyncBody>,
     ) -> BoxFuture<'static, anyhow::Result<http::Response<AsyncBody>>> {
         let client = self.client.clone();
-        let handle = runtime_handle().clone();
+        let handle = runtime::handle().clone();
 
         async move {
             let (parts, mut body) = req.into_parts();

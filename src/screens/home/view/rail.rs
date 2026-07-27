@@ -1,3 +1,5 @@
+//! The left-hand server rail: the DMs button and the guild icons.
+
 use std::sync::Arc;
 
 use gpui::prelude::FluentBuilder as _;
@@ -6,10 +8,10 @@ use gpui_component::{
     ActiveTheme as _, avatar::Avatar, divider::Divider, tooltip::Tooltip, v_flex,
 };
 
-use super::{HomeScreen, View};
+use crate::screens::home::{HomeScreen, View};
 
 impl HomeScreen {
-    pub(super) fn render_server_rail(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    pub(crate) fn render_server_rail(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let selected = self.selected_guild;
         let in_dms = self.view == View::DirectMessages;
         let theme = cx.theme();
