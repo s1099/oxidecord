@@ -145,8 +145,6 @@ impl HomeScreen {
         .flex_1()
         .py_2();
 
-        // The wheel handler sits on the container rather than the list itself:
-        // it has to bubble after the list's own handler to undo its jump.
         let mut container = v_flex()
             .flex_1()
             .min_h_0()

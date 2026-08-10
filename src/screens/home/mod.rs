@@ -182,8 +182,7 @@ impl HomeScreen {
 
 impl Render for HomeScreen {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        // Advance every pane's wheel easing; each one asks for another frame
-        // while it still has distance left to cover.
+        // Only a pane that's mid-glide does anything here; the rest just resync.
         for scroll in [
             &mut self.rail_scroll,
             &mut self.sidebar_scroll,
