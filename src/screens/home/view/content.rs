@@ -145,7 +145,13 @@ impl HomeScreen {
         .flex_1()
         .py_2();
 
-        let mut container = v_flex().flex_1().min_h_0().w_full();
+        // The wheel handler sits on the container rather than the list itself:
+        // it has to bubble after the list's own handler to undo its jump.
+        let mut container = v_flex()
+            .flex_1()
+            .min_h_0()
+            .w_full()
+            .on_scroll_wheel(cx.listener(|this, _, _, _| this.messages_scroll.absorb()));
         if self.older_loading {
             container = container.child(
                 h_flex()

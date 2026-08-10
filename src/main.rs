@@ -4,6 +4,7 @@ mod discord;
 mod http;
 mod runtime;
 mod screens;
+mod smooth_scroll;
 
 use std::sync::Arc;
 

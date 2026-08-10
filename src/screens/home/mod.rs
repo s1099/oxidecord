@@ -24,6 +24,7 @@ use twilight_model::id::{
 };
 
 use crate::discord::{self, DirectMessage, Guild};
+use crate::smooth_scroll::SmoothScroll;
 
 use channels::ChannelGroup;
 use data::attachments::PendingAttachment;
@@ -102,6 +103,11 @@ pub struct HomeScreen {
     /// Owns the decoded bitmaps for the currently displayed messages' images.
     /// Cleared on channel switch so image memory doesn't grow without bound.
     image_cache: Entity<RetainAllImageCache>,
+    /// Wheel easing for each scrollable pane; see [`crate::smooth_scroll`].
+    pub(super) rail_scroll: SmoothScroll,
+    pub(super) sidebar_scroll: SmoothScroll,
+    pub(super) dm_scroll: SmoothScroll,
+    pub(super) messages_scroll: SmoothScroll,
 }
 
 impl HomeScreen {
@@ -160,8 +166,12 @@ impl HomeScreen {
             pending_attachments: Vec::new(),
             next_attachment_id: 0,
             message_input,
+            messages_scroll: SmoothScroll::list(messages_list.clone()),
             messages_list,
             image_cache: RetainAllImageCache::new(cx),
+            rail_scroll: SmoothScroll::div(),
+            sidebar_scroll: SmoothScroll::div(),
+            dm_scroll: SmoothScroll::div(),
         };
         this.load_guilds(window, cx);
         this.load_current_user(cx);
@@ -171,7 +181,18 @@ impl HomeScreen {
 }
 
 impl Render for HomeScreen {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // Advance every pane's wheel easing; each one asks for another frame
+        // while it still has distance left to cover.
+        for scroll in [
+            &mut self.rail_scroll,
+            &mut self.sidebar_scroll,
+            &mut self.dm_scroll,
+            &mut self.messages_scroll,
+        ] {
+            scroll.step(window);
+        }
+
         let sidebar = match self.view {
             View::DirectMessages => Some(self.render_dm_sidebar(cx).into_any_element()),
             View::Guild => (self.selected_guild.is_some() || self.loading)

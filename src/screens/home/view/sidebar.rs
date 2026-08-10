@@ -192,6 +192,8 @@ impl HomeScreen {
             .flex_1()
             .w_full()
             .overflow_y_scroll()
+            .track_scroll(self.sidebar_scroll.handle())
+            .on_scroll_wheel(cx.listener(|this, _, _, _| this.sidebar_scroll.absorb()))
             .px_2()
             .py_2()
             .gap(px(2.));
