@@ -187,6 +187,9 @@ mod tests {
             frames += 1;
             assert!(frames < 60, "never settled, so the redraws never stop");
         }
-        assert!(frames > 3, "landed in {frames} frame(s), no smoothing happened");
+        assert!(
+            frames > 3,
+            "landed in {frames} frame(s), no smoothing happened"
+        );
     }
 }

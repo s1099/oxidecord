@@ -8,7 +8,7 @@ use twilight_model::channel::ChannelType;
 use twilight_model::guild::Permissions;
 use twilight_model::id::{
     Id,
-    marker::{ChannelMarker, GuildMarker, MessageMarker, UserMarker},
+    marker::{ChannelMarker, EmojiMarker, GuildMarker, MessageMarker, UserMarker},
 };
 use twilight_model::util::Timestamp;
 
@@ -85,6 +85,44 @@ pub struct Message {
     /// The message this one is a reply to, when it references another. Carries
     /// just enough to render the quoted preview above the message.
     pub reply: Option<MessageReference>,
+    /// Reactions on the message, in Discord's order (first reacted first).
+    pub reactions: Vec<Reaction>,
+}
+
+/// One emoji's reaction tally on a message.
+#[derive(Clone)]
+pub struct Reaction {
+    pub emoji: ReactionEmoji,
+    pub count: u64,
+    /// Whether the current user is one of the reactors.
+    pub me: bool,
+}
+
+#[derive(Clone, PartialEq, Eq)]
+pub enum ReactionEmoji {
+    Unicode(String),
+    Custom {
+        id: Id<EmojiMarker>,
+        /// Empty when the emoji has been deleted from its guild.
+        name: String,
+        animated: bool,
+    },
+}
+
+impl ReactionEmoji {
+    /// CDN URL for a custom emote's image; `None` for unicode emoji, which are
+    /// rendered as text.
+    pub fn image_url(&self) -> Option<String> {
+        match self {
+            Self::Unicode(_) => None,
+            // Animated emotes only animate as GIF; static ones are smaller as
+            // webp.
+            Self::Custom { id, animated, .. } => Some(format!(
+                "https://cdn.discordapp.com/emojis/{id}.{}?size=44",
+                if *animated { "gif" } else { "webp" }
+            )),
+        }
+    }
 }
 
 /// A compact snapshot of the message a reply points at, used to render the
@@ -258,6 +296,27 @@ pub(super) fn convert_message(message: twilight_model::channel::Message) -> Mess
         reply: message
             .referenced_message
             .map(|referenced| convert_reference(*referenced)),
+        reactions: message
+            .reactions
+            .into_iter()
+            .map(|reaction| Reaction {
+                emoji: convert_emoji(reaction.emoji),
+                count: reaction.count,
+                me: reaction.me,
+            })
+            .collect(),
+    }
+}
+
+fn convert_emoji(emoji: twilight_model::channel::message::EmojiReactionType) -> ReactionEmoji {
+    use twilight_model::channel::message::EmojiReactionType;
+    match emoji {
+        EmojiReactionType::Unicode { name } => ReactionEmoji::Unicode(name),
+        EmojiReactionType::Custom { id, name, animated } => ReactionEmoji::Custom {
+            id,
+            name: name.unwrap_or_default(),
+            animated,
+        },
     }
 }
 

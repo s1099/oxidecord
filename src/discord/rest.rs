@@ -6,6 +6,7 @@
 
 use twilight_http::Client as HttpClient;
 use twilight_http::request::Request;
+use twilight_http::request::channel::reaction::RequestReactionType;
 use twilight_http::response::marker::ListBody;
 use twilight_http::routing::Route;
 use twilight_model::http::attachment::Attachment;
@@ -19,8 +20,8 @@ use crate::runtime;
 
 use super::Permissions;
 use super::model::{
-    Channel, CurrentUser, DirectMessage, Guild, Message, convert_channel, convert_current_user,
-    convert_dms, convert_guild, convert_message,
+    Channel, CurrentUser, DirectMessage, Guild, Message, ReactionEmoji, convert_channel,
+    convert_current_user, convert_dms, convert_guild, convert_message,
 };
 
 /// How many messages one [`fetch_messages`] call requests; a response with
@@ -204,6 +205,44 @@ pub fn fetch_messages(
                 .into_iter()
                 .map(convert_message)
                 .collect::<Vec<_>>())
+        }
+        .await;
+
+        on_done(result);
+    });
+}
+
+/// Adds (`add`) or removes the current user's reaction with `emoji`.
+pub fn toggle_reaction(
+    token: String,
+    channel_id: Id<ChannelMarker>,
+    message_id: Id<MessageMarker>,
+    emoji: ReactionEmoji,
+    add: bool,
+    on_done: impl FnOnce(Result<(), String>) + Send + 'static,
+) {
+    runtime::handle().spawn(async move {
+        let result = async {
+            let client = HttpClient::new(token);
+            let emoji = match &emoji {
+                ReactionEmoji::Unicode(name) => RequestReactionType::Unicode { name },
+                ReactionEmoji::Custom { id, name, .. } => RequestReactionType::Custom {
+                    id: *id,
+                    name: Some(name),
+                },
+            };
+            if add {
+                client
+                    .create_reaction(channel_id, message_id, &emoji)
+                    .await
+                    .map_err(|err| err.to_string())?;
+            } else {
+                client
+                    .delete_current_user_reaction(channel_id, message_id, &emoji)
+                    .await
+                    .map_err(|err| err.to_string())?;
+            }
+            Ok(())
         }
         .await;
 
