@@ -1,4 +1,4 @@
-//! The direct-message sidebar and the conversation pane it opens.
+//! The direct-message sidebar: one row per conversation.
 
 use gpui::prelude::FluentBuilder as _;
 use gpui::*;
@@ -7,8 +7,15 @@ use gpui_component::{
 };
 
 use crate::discord::DirectMessage;
-
 use crate::screens::home::HomeScreen;
+
+use super::shell;
+
+/// Row widths for the loading skeleton, fixed so it doesn't reshuffle between
+/// frames.
+const SKELETON_WIDTHS: [f32; 12] = [
+    120., 88., 104., 72., 132., 96., 116., 80., 124., 92., 108., 76.,
+];
 
 impl HomeScreen {
     fn render_dm_row(&self, dm: &DirectMessage, cx: &Context<Self>) -> impl IntoElement {
@@ -44,10 +51,13 @@ impl HomeScreen {
             }))
     }
 
-    pub(crate) fn render_dm_sidebar(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    pub(in crate::screens::home) fn render_dm_sidebar(
+        &self,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
         let theme = cx.theme();
-        let sidebar_border = theme.sidebar_border;
         let danger = theme.danger;
+        let muted_foreground = theme.muted_foreground;
 
         let mut list = v_flex()
             .id("dm-list")
@@ -61,10 +71,7 @@ impl HomeScreen {
             .gap(px(2.));
 
         if self.dms_loading {
-            const WIDTHS: [f32; 12] = [
-                120., 88., 104., 72., 132., 96., 116., 80., 124., 92., 108., 76.,
-            ];
-            list = list.children(WIDTHS.iter().map(|&width| {
+            list = list.children(SKELETON_WIDTHS.iter().map(|&width| {
                 h_flex()
                     .px_2()
                     .py(px(6.))
@@ -87,87 +94,13 @@ impl HomeScreen {
                     .px_2()
                     .py_1()
                     .text_sm()
-                    .text_color(theme.muted_foreground)
+                    .text_color(muted_foreground)
                     .child("No conversations yet."),
             );
         } else {
             list = list.children(self.dms.iter().map(|dm| self.render_dm_row(dm, cx)));
         }
 
-        v_flex()
-            .w(px(240.))
-            .h_full()
-            .flex_shrink_0()
-            .bg(theme.sidebar)
-            .text_color(theme.sidebar_foreground)
-            .border_r_1()
-            .border_color(sidebar_border)
-            .child(
-                h_flex()
-                    .h(px(48.))
-                    .flex_shrink_0()
-                    .px_4()
-                    .items_center()
-                    .border_b_1()
-                    .border_color(sidebar_border)
-                    .child(
-                        div()
-                            .truncate()
-                            .font_weight(FontWeight::SEMIBOLD)
-                            .child("Direct Messages"),
-                    ),
-            )
-            .child(list)
-            .child(self.render_user_panel(cx))
-    }
-
-    fn render_dm_header(&self, dm: &DirectMessage, cx: &Context<Self>) -> impl IntoElement {
-        let theme = cx.theme();
-
-        let mut avatar = Avatar::new().name(dm.name.clone()).with_size(px(28.));
-        if let Some(url) = dm.avatar_url.clone() {
-            avatar = avatar.src(url);
-        }
-
-        h_flex()
-            .h(px(48.))
-            .w_full()
-            .flex_shrink_0()
-            .px_4()
-            .gap_2()
-            .items_center()
-            .border_b_1()
-            .border_color(theme.border)
-            .child(avatar)
-            .child(
-                div()
-                    .flex_shrink_0()
-                    .font_weight(FontWeight::SEMIBOLD)
-                    .child(dm.name.clone()),
-            )
-    }
-
-    pub(super) fn render_dm_content(&self, cx: &Context<Self>) -> AnyElement {
-        let theme = cx.theme();
-
-        let Some(dm) = self.selected_dm_info().cloned() else {
-            return v_flex()
-                .flex_1()
-                .h_full()
-                .items_center()
-                .justify_center()
-                .text_color(theme.muted_foreground)
-                .child("Select a conversation to start chatting.")
-                .into_any_element();
-        };
-
-        v_flex()
-            .flex_1()
-            .h_full()
-            .min_w_0()
-            .child(self.render_dm_header(&dm, cx))
-            .child(self.render_messages(cx))
-            .child(self.render_message_bar(cx))
-            .into_any_element()
+        shell("Direct Messages", list, self.render_user_panel(cx), cx)
     }
 }

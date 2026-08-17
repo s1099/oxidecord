@@ -1,3 +1,7 @@
+//! The sign-in screen: pick a login method, then hand the app a token.
+
+mod webview;
+
 use gpui::*;
 use gpui_component::{
     ActiveTheme as _,
@@ -8,6 +12,8 @@ use gpui_component::{
 };
 
 use crate::screens::app::AppScreen;
+
+use webview::LoginWebview;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum LoginMethod {
@@ -97,14 +103,8 @@ impl LoginScreen {
                     };
 
                     cx.open_window(webview_options, move |window, cx| {
-                        let webview_view = cx.new(|cx| {
-                            crate::screens::login_webview::LoginWebview::new(
-                                app,
-                                main_window,
-                                window,
-                                cx,
-                            )
-                        });
+                        let webview_view =
+                            cx.new(|cx| LoginWebview::new(app, main_window, window, cx));
                         cx.new(|cx| gpui_component::Root::new(webview_view, window, cx))
                     })
                     .expect("Failed to open webview window");

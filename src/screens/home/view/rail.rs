@@ -8,10 +8,11 @@ use gpui_component::{
     ActiveTheme as _, avatar::Avatar, divider::Divider, tooltip::Tooltip, v_flex,
 };
 
+use crate::assets::icons::DISCORD_ICON;
 use crate::screens::home::{HomeScreen, View};
 
 impl HomeScreen {
-    pub(crate) fn render_server_rail(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    pub(super) fn render_server_rail(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let selected = self.selected_guild;
         let in_dms = self.view == View::DirectMessages;
         let theme = cx.theme();
@@ -54,7 +55,7 @@ impl HomeScreen {
                             .child(
                                 img(Arc::new(Image::from_bytes(
                                     ImageFormat::Svg,
-                                    crate::constants::DISCORD_ICON.as_bytes().to_vec(),
+                                    DISCORD_ICON.as_bytes().to_vec(),
                                 )))
                                 .size(px(28.)),
                             ),

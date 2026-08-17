@@ -117,7 +117,7 @@ pub fn show_error(
                                 this.child(
                                     div()
                                         .flex_shrink_0()
-                                        // Centres the dot on the first line oftext
+                                        // Centres the dot on the first line of text.
                                         .mt(px(7.))
                                         .size(px(4.))
                                         .rounded_full()

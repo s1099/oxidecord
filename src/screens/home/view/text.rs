@@ -6,8 +6,8 @@ use std::sync::LazyLock;
 use gpui::*;
 use regex::Regex;
 
-/// Matches `http`/`https` URLs, running each up to the next whitespace or
-/// angle bracket. Trailing prose punctuation is trimmed separately.
+/// Runs each URL up to the next whitespace or angle bracket; trailing prose
+/// punctuation is trimmed separately, in [`find_links`].
 static URL_REGEX: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"https?://[^\s<>]+").expect("valid url regex"));
 
@@ -17,8 +17,8 @@ struct Link {
 }
 
 /// Finds every `http`/`https` URL in `text`, in order of appearance. Trailing
-/// punctuation that usually belongs to the surrounding prose rather than the
-/// link (a sentence's period, a wrapping paren, ...) is left out of the match.
+/// punctuation that usually belongs to the prose rather than the link (a
+/// sentence's period, a wrapping paren, ...) is left out of the match.
 fn find_links(text: &str) -> Vec<Link> {
     URL_REGEX
         .find_iter(text)
@@ -40,7 +40,11 @@ fn find_links(text: &str) -> Vec<Link> {
 /// Renders message text with any `http`/`https` URLs shown in the theme's link
 /// colour, underlined, and clickable — a click opens the URL in the default
 /// browser. Text without links renders as a plain string.
-pub(super) fn render_message_text(id: u64, content: &str, link_color: Hsla) -> AnyElement {
+pub(in crate::screens::home::view) fn render_message_text(
+    id: u64,
+    content: &str,
+    link_color: Hsla,
+) -> AnyElement {
     let links = find_links(content);
     if links.is_empty() {
         return div()

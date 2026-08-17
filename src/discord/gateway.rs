@@ -4,7 +4,7 @@ use twilight_gateway::{Event, EventTypeFlags, Intents, Shard, ShardId, StreamExt
 use twilight_model::gateway::payload::incoming::MessageCreate;
 use twilight_model::id::{Id, marker::ChannelMarker};
 
-use crate::runtime;
+use crate::platform::runtime;
 
 use super::model::{Message, convert_message};
 
@@ -16,10 +16,8 @@ pub struct IncomingMessage {
 }
 
 /// Opens a gateway websocket connection and invokes `on_message` for every
-/// `MESSAGE_CREATE` dispatch, giving the app real-time messages for whichever
-/// channel is currently open. `on_message` returns `false` to stop the
-/// connection (e.g. the receiving end went away), which ends the shard loop
-/// and drops the socket.
+/// `MESSAGE_CREATE` dispatch. Returning `false` from it (the receiving end went
+/// away) ends the shard loop and drops the socket.
 ///
 /// The shard reconnects and resumes on its own, so transient errors are
 /// skipped rather than treated as fatal.

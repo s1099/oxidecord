@@ -1,14 +1,8 @@
-//! App asset source: serves the app's own icons and falls back to the
-//! assets bundled with gpui-component for everything else.
-
-use std::borrow::Cow;
-
-use anyhow::Result;
-use gpui::{AssetSource, SharedString};
+//! SVG markup the app ships itself.
 
 /// Lucide icons the app needs that gpui-component-assets doesn't bundle.
 /// Stroke-based with `currentColor`, so they tint with the text color.
-const EXTRA_ICONS: &[(&str, &str)] = &[
+pub(super) const EXTRA_ICONS: &[(&str, &str)] = &[
     (
         "icons/hash.svg",
         r#"<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" x2="20" y1="9" y2="9"/><line x1="4" x2="20" y1="15" y2="15"/><line x1="10" x2="8" y1="3" y2="21"/><line x1="16" x2="14" y1="3" y2="21"/></svg>"#,
@@ -27,23 +21,5 @@ const EXTRA_ICONS: &[(&str, &str)] = &[
     ),
 ];
 
-pub struct Assets;
-
-impl AssetSource for Assets {
-    fn load(&self, path: &str) -> Result<Option<Cow<'static, [u8]>>> {
-        if let Some((_, svg)) = EXTRA_ICONS.iter().find(|(name, _)| *name == path) {
-            return Ok(Some(Cow::Borrowed(svg.as_bytes())));
-        }
-        gpui_component_assets::Assets.load(path)
-    }
-
-    fn list(&self, path: &str) -> Result<Vec<SharedString>> {
-        let mut items: Vec<SharedString> = EXTRA_ICONS
-            .iter()
-            .filter(|(name, _)| name.starts_with(path))
-            .map(|(name, _)| SharedString::from(*name))
-            .collect();
-        items.extend(gpui_component_assets::Assets.list(path)?);
-        Ok(items)
-    }
-}
+/// Discord Clyde svg
+pub const DISCORD_ICON: &str = r#"<svg aria-hidden="true" role="img" xmlns="http://www.w3.org/2000/svg" width="96" height="96" fill="none" viewBox="0 0 24 24"><path fill="white" d="M19.73 4.87a18.2 18.2 0 0 0-4.6-1.44c-.21.4-.4.8-.58 1.21-1.69-.25-3.4-.25-5.1 0-.18-.41-.37-.82-.59-1.2-1.6.27-3.14.75-4.6 1.43A19.04 19.04 0 0 0 .96 17.7a18.43 18.43 0 0 0 5.63 2.87c.46-.62.86-1.28 1.2-1.98-.65-.25-1.29-.55-1.9-.92.17-.12.32-.24.47-.37 3.58 1.7 7.7 1.7 11.28 0l.46.37c-.6.36-1.25.67-1.9.92.35.7.75 1.35 1.2 1.98 2.03-.63 3.94-1.6 5.64-2.87.47-4.87-.78-9.09-3.3-12.83ZM8.3 15.12c-1.1 0-2-1.02-2-2.27 0-1.24.88-2.26 2-2.26s2.02 1.02 2 2.26c0 1.25-.89 2.27-2 2.27Zm7.4 0c-1.1 0-2-1.02-2-2.27 0-1.24.88-2.26 2-2.26s2.02 1.02 2 2.26c0 1.25-.88 2.27-2 2.27Z"></path></svg>"#;

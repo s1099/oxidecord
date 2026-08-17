@@ -1,7 +1,7 @@
 //! The main app screen: the server rail, the channel/DM sidebar, and the
 //! message pane.
 //!
-//! [`HomeScreen`] owns all of the screen's state; the implementation is split
+//! [`HomeScreen`] owns all of the screen's state ([`state`]); the rest is split
 //! across two groups of modules that both extend it with inherent methods:
 //!
 //! - [`data`] — everything that talks to [`crate::discord`] and mutates state.
@@ -9,25 +9,14 @@
 
 mod channels;
 mod data;
+mod state;
 mod view;
 
-use std::collections::{HashMap, HashSet};
+use gpui::actions;
 
-use gpui::*;
-use gpui_component::{
-    ActiveTheme as _, h_flex,
-    input::{InputEvent, InputState},
-};
-use twilight_model::id::{
-    Id,
-    marker::{ChannelMarker, GuildMarker, MessageMarker, UserMarker},
-};
+pub use state::HomeScreen;
 
-use crate::discord::{self, DirectMessage, Guild};
-use crate::smooth_scroll::SmoothScroll;
-
-use channels::ChannelGroup;
-use data::attachments::PendingAttachment;
+use state::{ProfilePopup, ReplyTarget, View};
 
 actions!(
     oxidecord,
@@ -38,198 +27,3 @@ actions!(
         PasteAttachment
     ]
 );
-
-/// Which list occupies the sidebar: a guild's channels, or the DM list.
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub(super) enum View {
-    Guild,
-    DirectMessages,
-}
-
-/// The message a pending reply is aimed at, shown as a banner above the
-/// message bar. Kept minimal: enough to label the banner and reference the
-/// target when the reply is sent.
-#[derive(Clone)]
-pub(super) struct ReplyTarget {
-    pub message_id: Id<MessageMarker>,
-    pub author_name: String,
-}
-
-/// The open profile popout: which user it's for, where it's anchored, and the
-/// placeholder shown from the message that opened it while the fetch is in
-/// flight.
-pub(super) struct ProfilePopup {
-    pub user_id: Id<UserMarker>,
-    /// Window coordinates the card is anchored to, taken from the click on the
-    /// avatar.
-    pub position: Point<Pixels>,
-    pub name: String,
-    pub avatar_url: Option<String>,
-    /// `None` until the profile fetch resolves; the card renders a skeleton in
-    /// the meantime.
-    pub profile: Option<discord::UserProfile>,
-    pub error: Option<String>,
-}
-
-pub struct HomeScreen {
-    view: View,
-    guilds: Vec<Guild>,
-    /// The signed-in user, shown in the sidebar account panel. `None` until the
-    /// `GET /users/@me` fetch resolves (or if it fails).
-    current_user: Option<discord::CurrentUser>,
-    selected_guild: Option<Id<GuildMarker>>,
-    loading: bool,
-    error: Option<String>,
-    channel_groups: Vec<ChannelGroup>,
-    selected_channel: Option<Id<ChannelMarker>>,
-    /// The user's DM conversations, loaded lazily the first time the DM view is
-    /// opened. A selected DM reuses `selected_channel` and the message plumbing.
-    dms: Vec<DirectMessage>,
-    dms_loading: bool,
-    dms_error: Option<String>,
-    /// Set once the DM list has been fetched, so reopening the view doesn't
-    /// refetch it every time.
-    dms_loaded: bool,
-    collapsed_categories: HashSet<Id<ChannelMarker>>,
-    channels_loading: bool,
-    channels_error: Option<String>,
-    messages: Vec<discord::Message>,
-    messages_loading: bool,
-    messages_error: Option<String>,
-    /// An older page is currently being fetched (scrolled to the top).
-    older_loading: bool,
-    /// The start of the channel's history has been reached; stop fetching.
-    reached_oldest: bool,
-    /// Whether the newest message is currently in view. Used to decide if a
-    /// live message should snap the list to the bottom (following the
-    /// conversation) or be appended silently (the user is reading history).
-    at_bottom: bool,
-    send_error: Option<String>,
-    /// Set while composing a reply; drives the "Replying to …" banner and is
-    /// cleared when the reply is sent, dismissed, or the channel changes.
-    replying_to: Option<ReplyTarget>,
-    /// Images pasted into the composer, shown as removable thumbnails and
-    /// uploaded when the message is sent. Cleared on send and on channel switch.
-    pending_attachments: Vec<PendingAttachment>,
-    /// Monotonic id source for `pending_attachments`, so each thumbnail has a
-    /// stable key even if the same image is pasted twice.
-    next_attachment_id: u64,
-    /// The profile card currently open over the app, if any.
-    profile_popup: Option<ProfilePopup>,
-    /// Profiles already fetched this session, so reopening a card is instant
-    /// and repeated clicks don't refetch.
-    profile_cache: HashMap<Id<UserMarker>, discord::UserProfile>,
-    message_input: Entity<InputState>,
-    messages_list: ListState,
-    /// Owns the decoded bitmaps for the currently displayed messages' images.
-    /// Cleared on channel switch so image memory doesn't grow without bound.
-    image_cache: Entity<RetainAllImageCache>,
-    /// Wheel easing for each scrollable pane; see [`crate::smooth_scroll`].
-    pub(super) rail_scroll: SmoothScroll,
-    pub(super) sidebar_scroll: SmoothScroll,
-    pub(super) dm_scroll: SmoothScroll,
-    pub(super) messages_scroll: SmoothScroll,
-}
-
-impl HomeScreen {
-    pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let message_input = cx.new(|cx| InputState::new(window, cx).placeholder("Send a message"));
-
-        cx.subscribe_in(
-            &message_input,
-            window,
-            |this, _, event: &InputEvent, window, cx| {
-                if let InputEvent::PressEnter { .. } = event {
-                    this.send_current_message(window, cx);
-                }
-            },
-        )
-        .detach();
-
-        // Bottom-aligned like a chat log; items are measured lazily, and
-        // splicing older items in at the front keeps the scroll position.
-        let messages_list = ListState::new(0, ListAlignment::Bottom, px(512.));
-        let weak = cx.entity().downgrade();
-        messages_list.set_scroll_handler(move |event, _window, cx| {
-            let _ = weak.update(cx, |this, cx| {
-                this.at_bottom = event.visible_range.end >= event.count;
-                // Nearing the oldest loaded message; fetch the previous page.
-                if event.visible_range.start <= 2 {
-                    this.load_older_messages(cx);
-                }
-            });
-        });
-
-        let mut this = Self {
-            view: View::Guild,
-            guilds: Vec::new(),
-            current_user: None,
-            selected_guild: None,
-            loading: true,
-            error: None,
-            channel_groups: Vec::new(),
-            selected_channel: None,
-            dms: Vec::new(),
-            dms_loading: false,
-            dms_error: None,
-            dms_loaded: false,
-            collapsed_categories: HashSet::new(),
-            channels_loading: false,
-            channels_error: None,
-            messages: Vec::new(),
-            messages_loading: false,
-            messages_error: None,
-            older_loading: false,
-            reached_oldest: false,
-            at_bottom: true,
-            send_error: None,
-            replying_to: None,
-            pending_attachments: Vec::new(),
-            next_attachment_id: 0,
-            profile_popup: None,
-            profile_cache: HashMap::new(),
-            message_input,
-            messages_scroll: SmoothScroll::list(messages_list.clone()),
-            messages_list,
-            image_cache: RetainAllImageCache::new(cx),
-            rail_scroll: SmoothScroll::div(),
-            sidebar_scroll: SmoothScroll::div(),
-            dm_scroll: SmoothScroll::div(),
-        };
-        this.load_guilds(window, cx);
-        this.load_current_user(cx);
-        this.start_gateway(cx);
-        this
-    }
-}
-
-impl Render for HomeScreen {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        // Only a pane that's mid-glide does anything here; the rest just resync.
-        for scroll in [
-            &mut self.rail_scroll,
-            &mut self.sidebar_scroll,
-            &mut self.dm_scroll,
-            &mut self.messages_scroll,
-        ] {
-            scroll.step(window);
-        }
-
-        let sidebar = match self.view {
-            View::DirectMessages => Some(self.render_dm_sidebar(cx).into_any_element()),
-            View::Guild => (self.selected_guild.is_some() || self.loading)
-                .then(|| self.render_channel_sidebar(cx).into_any_element()),
-        };
-
-        h_flex()
-            .size_full()
-            // Anchors the profile popout's full-screen dismiss layer.
-            .relative()
-            .bg(cx.theme().background)
-            .on_action(cx.listener(Self::on_paste_attachment))
-            .child(self.render_server_rail(cx))
-            .children(sidebar)
-            .child(self.render_content(cx))
-            .children(self.render_profile_popup(cx))
-    }
-}

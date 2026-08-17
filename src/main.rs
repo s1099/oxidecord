@@ -1,10 +1,8 @@
 mod assets;
-mod constants;
 mod discord;
-mod http;
-mod runtime;
+mod platform;
 mod screens;
-mod smooth_scroll;
+mod ui;
 
 use std::sync::Arc;
 
@@ -12,6 +10,7 @@ use gpui::*;
 use gpui_component::Root;
 
 use crate::screens::app::AppScreen;
+use crate::screens::home::PasteAttachment;
 
 fn main() {
     // required for webview to work on windows
@@ -21,7 +20,7 @@ fn main() {
     }
     let app = Application::new()
         .with_assets(assets::Assets)
-        .with_http_client(Arc::new(http::ReqwestClient::new()));
+        .with_http_client(Arc::new(platform::http::ReqwestClient::new()));
 
     app.run(|cx: &mut App| {
         gpui_component::init(cx);
@@ -30,8 +29,8 @@ fn main() {
         // paste binding; the handler consumes the event only when an image is
         // pasted into the composer and otherwise lets text paste through.
         cx.bind_keys([
-            KeyBinding::new("ctrl-v", crate::screens::home::PasteAttachment, None),
-            KeyBinding::new("cmd-v", crate::screens::home::PasteAttachment, None),
+            KeyBinding::new("ctrl-v", PasteAttachment, None),
+            KeyBinding::new("cmd-v", PasteAttachment, None),
         ]);
 
         let options = WindowOptions {

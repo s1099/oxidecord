@@ -1,8 +1,11 @@
+//! The main window's router.
+
 use gpui::*;
 
-use crate::screens::dialogs;
+use crate::discord;
 use crate::screens::home::HomeScreen;
 use crate::screens::login::LoginScreen;
+use crate::ui::dialogs;
 
 /// Which screen the app is currently showing.
 enum Route {
@@ -19,7 +22,7 @@ pub struct AppScreen {
 
 impl AppScreen {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let route = if crate::discord::load_token().is_some() {
+        let route = if discord::load_token().is_some() {
             Route::Home(cx.new(|cx| HomeScreen::new(window, cx)))
         } else {
             let app = cx.weak_entity();

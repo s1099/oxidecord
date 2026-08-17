@@ -1,137 +1,27 @@
 //! Files staged for sending: what one holds, and how it gets there from the
 //! clipboard or the file picker.
 
-use std::path::{Path, PathBuf};
+mod pending;
+mod picker;
+
 use std::sync::Arc;
 
 use gpui::*;
 
 use crate::discord;
-use crate::screens::dialogs::show_error;
 use crate::screens::home::{HomeScreen, PasteAttachment};
+use crate::ui::dialogs::show_error;
 
-/// A file staged for sending, picked from disk or pasted from the clipboard
-pub(crate) struct PendingAttachment {
-    /// Unique within the composer; keys the card element and targets removal.
-    pub id: u64,
-    /// The upload filename: the file's own name, or one derived from the image
-    /// format for a pasted image (e.g. `image-1.png`).
-    pub filename: String,
-    /// The file's contents, rendered as a preview and uploaded on send.
-    pub data: AttachmentData,
-}
+pub(crate) use pending::{AttachmentData, PendingAttachment, format_size};
 
-/// The contents of a staged attachment. An image keeps the decoded [`Image`], so
-/// the same bytes back both its thumbnail and the upload; any other file is held
-/// as raw bytes and previewed as a file card instead.
-pub(crate) enum AttachmentData {
-    Image(Arc<Image>),
-    File(Arc<Vec<u8>>),
-}
-
-impl AttachmentData {
-    pub fn bytes(&self) -> &[u8] {
-        match self {
-            Self::Image(image) => &image.bytes,
-            Self::File(bytes) => bytes,
-        }
-    }
-
-    pub fn image(&self) -> Option<Arc<Image>> {
-        match self {
-            Self::Image(image) => Some(image.clone()),
-            Self::File(_) => None,
-        }
-    }
-}
-
-pub(crate) fn format_size(bytes: u64) -> String {
-    const KB: f64 = 1024.;
-    const MB: f64 = 1024. * KB;
-
-    let bytes = bytes as f64;
-    if bytes >= MB {
-        format!("{:.1} MB", bytes / MB)
-    } else if bytes >= KB {
-        format!("{:.0} KB", bytes / KB)
-    } else {
-        format!("{bytes:.0} B")
-    }
-}
-
-fn image_extension(format: ImageFormat) -> &'static str {
-    match format {
-        ImageFormat::Png => "png",
-        ImageFormat::Jpeg => "jpg",
-        ImageFormat::Webp => "webp",
-        ImageFormat::Gif => "gif",
-        ImageFormat::Svg => "svg",
-        ImageFormat::Bmp => "bmp",
-        ImageFormat::Tiff => "tiff",
-    }
-}
-
-/// The image format for a path's extension. Anything else is staged as a plain
-/// file rather than a thumbnail.
-fn image_format_from_path(path: &Path) -> Option<ImageFormat> {
-    let extension = path.extension()?.to_str()?.to_ascii_lowercase();
-    match extension.as_str() {
-        "png" => Some(ImageFormat::Png),
-        "jpg" | "jpeg" => Some(ImageFormat::Jpeg),
-        "webp" => Some(ImageFormat::Webp),
-        "gif" => Some(ImageFormat::Gif),
-        "svg" => Some(ImageFormat::Svg),
-        "bmp" => Some(ImageFormat::Bmp),
-        "tif" | "tiff" => Some(ImageFormat::Tiff),
-        _ => None,
-    }
-}
-
-/// The error-dialog line for a file that's over Discord's upload limit.
-fn oversize_message(subject: &str, size: u64) -> String {
-    format!(
-        "{subject} is {}, over the {} upload limit.",
-        format_size(size),
-        format_size(discord::MAX_ATTACHMENT_SIZE)
-    )
-}
-
-struct PickedFile {
-    filename: String,
-    data: AttachmentData,
-}
-
-/// Reads one picked file into an attachment, or returns the error-dialog line
-/// explaining why it can't be attached. The size is checked before the contents
-/// so an oversized file is never read into memory just to be turned down.
-fn read_picked_file(path: PathBuf) -> Result<PickedFile, String> {
-    let filename = path
-        .file_name()
-        .map(|name| name.to_string_lossy().into_owned())
-        .unwrap_or_else(|| "The selected file".to_string());
-
-    let size = std::fs::metadata(&path)
-        .map_err(|err| format!("{filename} couldn't be read: {err}"))?
-        .len();
-    if size > discord::MAX_ATTACHMENT_SIZE {
-        return Err(oversize_message(&filename, size));
-    }
-
-    let bytes =
-        std::fs::read(&path).map_err(|err| format!("{filename} couldn't be read: {err}"))?;
-    let data = match image_format_from_path(&path) {
-        Some(format) => AttachmentData::Image(Arc::new(Image::from_bytes(format, bytes))),
-        None => AttachmentData::File(Arc::new(bytes)),
-    };
-    Ok(PickedFile { filename, data })
-}
+use picker::{image_extension, oversize_message, read_picked_file};
 
 impl HomeScreen {
     /// Handles the paste shortcut in the composer. If the clipboard holds an
     /// image, it's staged as an attachment and the event is consumed. Otherwise
     /// (plain text, or the composer isn't focused) propagation continues so the
     /// text input's own paste handling runs as usual.
-    pub(crate) fn on_paste_attachment(
+    pub(in crate::screens::home) fn on_paste_attachment(
         &mut self,
         _: &PasteAttachment,
         window: &mut Window,
@@ -200,7 +90,11 @@ impl HomeScreen {
     /// Opens the platform file picker and stages every chosen file as an
     /// attachment. Files that can't be attached — over the upload limit, or
     /// unreadable — are listed in an error dialog; the rest are still staged.
-    pub(crate) fn pick_attachments(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    pub(in crate::screens::home) fn pick_attachments(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let paths = cx.prompt_for_paths(PathPromptOptions {
             files: true,
             directories: false,
@@ -250,7 +144,7 @@ impl HomeScreen {
         self.next_attachment_id
     }
 
-    pub(crate) fn remove_attachment(&mut self, id: u64, cx: &mut Context<Self>) {
+    pub(in crate::screens::home) fn remove_attachment(&mut self, id: u64, cx: &mut Context<Self>) {
         self.pending_attachments
             .retain(|attachment| attachment.id != id);
         cx.notify();

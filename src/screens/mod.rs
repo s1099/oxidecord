@@ -1,5 +1,5 @@
+//! The app's top-level screens and the router that swaps between them.
+
 pub mod app;
-pub mod dialogs;
 pub mod home;
 pub mod login;
-pub mod login_webview;

@@ -11,7 +11,11 @@ use crate::screens::home::channels::build_channel_groups;
 use crate::screens::home::{HomeScreen, View};
 
 impl HomeScreen {
-    pub(crate) fn load_guilds(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    pub(in crate::screens::home) fn load_guilds(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let Some(token) = discord::load_token() else {
             self.loading = false;
             self.error = Some("No token found. Please log in first.".into());
@@ -49,7 +53,7 @@ impl HomeScreen {
 
     /// Loads the signed-in user for the sidebar account panel. Best-effort:
     /// on failure the panel just stays empty.
-    pub(crate) fn load_current_user(&mut self, cx: &mut Context<Self>) {
+    pub(in crate::screens::home) fn load_current_user(&mut self, cx: &mut Context<Self>) {
         let Some(token) = discord::load_token() else {
             return;
         };
@@ -71,7 +75,7 @@ impl HomeScreen {
         .detach();
     }
 
-    pub(crate) fn select_guild(
+    pub(in crate::screens::home) fn select_guild(
         &mut self,
         guild_id: Id<GuildMarker>,
         window: &mut Window,
@@ -147,7 +151,7 @@ impl HomeScreen {
         .detach();
     }
 
-    pub(crate) fn selected_channel_info(&self) -> Option<&Channel> {
+    pub(in crate::screens::home) fn selected_channel_info(&self) -> Option<&Channel> {
         let id = self.selected_channel?;
         self.channel_groups
             .iter()
@@ -155,8 +159,8 @@ impl HomeScreen {
             .find(|channel| channel.id == id)
     }
 
-    /// The first text channel in display order used as the
-    /// default selection when entering a guild
+    /// The first text channel in display order, used as the default selection
+    /// when entering a guild.
     fn first_text_channel(&self) -> Option<Id<ChannelMarker>> {
         self.channel_groups
             .iter()

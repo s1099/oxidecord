@@ -9,7 +9,11 @@ impl HomeScreen {
     /// Switches the sidebar to the direct-message list, clearing the currently
     /// open conversation. The DM list is fetched the first time and reused on
     /// subsequent opens.
-    pub(crate) fn open_direct_messages(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    pub(in crate::screens::home) fn open_direct_messages(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         if self.view == View::DirectMessages {
             return;
         }
@@ -75,7 +79,7 @@ impl HomeScreen {
 
     /// The DM matching the currently open conversation, if the DM view is
     /// active and its channel is one of the loaded conversations.
-    pub(crate) fn selected_dm_info(&self) -> Option<&DirectMessage> {
+    pub(in crate::screens::home) fn selected_dm_info(&self) -> Option<&DirectMessage> {
         let id = self.selected_channel?;
         self.dms.iter().find(|dm| dm.id == id)
     }

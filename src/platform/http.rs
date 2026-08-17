@@ -3,7 +3,7 @@
 use futures::{AsyncReadExt as _, FutureExt as _, future::BoxFuture};
 use gpui::http_client::{AsyncBody, HttpClient, Url, http, http::HeaderValue};
 
-use crate::runtime;
+use super::runtime;
 
 pub struct ReqwestClient {
     client: reqwest::Client,

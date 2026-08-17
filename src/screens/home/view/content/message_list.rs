@@ -1,19 +1,18 @@
-//! The main content pane: the channel header and the scrolling message list.
+//! The scrolling message list, and the skeleton shown in its place while a
+//! conversation loads.
 
-use gpui::prelude::FluentBuilder as _;
 use gpui::*;
 use gpui_component::{
-    ActiveTheme as _, Icon, Sizable as _, divider::Divider, h_flex, skeleton::Skeleton,
-    spinner::Spinner, v_flex,
+    ActiveTheme as _, Sizable as _, h_flex, skeleton::Skeleton, spinner::Spinner, v_flex,
 };
 
-use crate::discord::Channel;
-use crate::screens::home::channels::channel_icon_path;
-use crate::screens::home::{HomeScreen, View};
+use crate::screens::home::HomeScreen;
 
-use super::MESSAGE_PADDING_X;
+use crate::screens::home::view::MESSAGE_PADDING_X;
 
-fn messages_skeleton() -> impl IntoElement {
+/// Placeholder message rows. The widths are fixed rather than random so the
+/// skeleton doesn't reshuffle on every frame.
+pub(super) fn skeleton() -> impl IntoElement {
     const WIDTHS: [f32; 12] = [
         420., 280., 360., 200., 480., 320., 260., 440., 300., 380., 220., 460.,
     ];
@@ -41,90 +40,11 @@ fn messages_skeleton() -> impl IntoElement {
 }
 
 impl HomeScreen {
-    pub(crate) fn render_content(&self, cx: &Context<Self>) -> AnyElement {
-        let theme = cx.theme();
-
-        if self.view == View::DirectMessages {
-            return self.render_dm_content(cx);
-        }
-
-        if self.loading {
-            return messages_skeleton().into_any_element();
-        }
-
-        if let Some(error) = &self.error {
-            return v_flex()
-                .size_full()
-                .items_center()
-                .justify_center()
-                .gap(px(8.))
-                .child(div().text_color(theme.danger).child(error.clone()))
-                .into_any_element();
-        }
-
-        let Some(channel) = self.selected_channel_info().cloned() else {
-            return messages_skeleton().into_any_element();
-        };
-
-        v_flex()
-            .flex_1()
-            .h_full()
-            .min_w_0()
-            .child(self.render_channel_header(&channel, cx))
-            .child(self.render_messages(cx))
-            .child(self.render_message_bar(cx))
-            .into_any_element()
-    }
-
-    fn render_channel_header(&self, channel: &Channel, cx: &Context<Self>) -> impl IntoElement {
-        let theme = cx.theme();
-
-        h_flex()
-            .h(px(48.))
-            .w_full()
-            .flex_shrink_0()
-            .px_4()
-            .gap_2()
-            .items_center()
-            .border_b_1()
-            .border_color(theme.border)
-            .child(
-                Icon::default()
-                    .path(channel_icon_path(channel.kind))
-                    .size_5()
-                    .text_color(theme.muted_foreground),
-            )
-            .child(
-                div()
-                    .flex_shrink_0()
-                    .font_weight(FontWeight::SEMIBOLD)
-                    .child(channel.name.clone()),
-            )
-            .when_some(
-                // show only the first line and let `truncate` elide the rest.
-                channel
-                    .topic
-                    .as_deref()
-                    .and_then(|topic| topic.lines().find(|line| !line.trim().is_empty()))
-                    .map(str::to_owned),
-                |this, topic| {
-                    this.child(Divider::vertical().h(px(24.))).child(
-                        div()
-                            .flex_1()
-                            .truncate()
-                            .text_sm()
-                            .text_color(theme.muted_foreground)
-                            .child(topic),
-                    )
-                },
-            )
-    }
-
     pub(super) fn render_messages(&self, cx: &Context<Self>) -> AnyElement {
         let theme = cx.theme();
 
         if self.messages_loading {
-            return messages_skeleton().into_any_element();
+            return skeleton().into_any_element();
         }
 
         if let Some(error) = &self.messages_error {
