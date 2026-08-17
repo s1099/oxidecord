@@ -11,7 +11,7 @@ mod channels;
 mod data;
 mod view;
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use gpui::*;
 use gpui_component::{
@@ -20,7 +20,7 @@ use gpui_component::{
 };
 use twilight_model::id::{
     Id,
-    marker::{ChannelMarker, GuildMarker, MessageMarker},
+    marker::{ChannelMarker, GuildMarker, MessageMarker, UserMarker},
 };
 
 use crate::discord::{self, DirectMessage, Guild};
@@ -53,6 +53,22 @@ pub(super) enum View {
 pub(super) struct ReplyTarget {
     pub message_id: Id<MessageMarker>,
     pub author_name: String,
+}
+
+/// The open profile popout: which user it's for, where it's anchored, and the
+/// placeholder shown from the message that opened it while the fetch is in
+/// flight.
+pub(super) struct ProfilePopup {
+    pub user_id: Id<UserMarker>,
+    /// Window coordinates the card is anchored to, taken from the click on the
+    /// avatar.
+    pub position: Point<Pixels>,
+    pub name: String,
+    pub avatar_url: Option<String>,
+    /// `None` until the profile fetch resolves; the card renders a skeleton in
+    /// the meantime.
+    pub profile: Option<discord::UserProfile>,
+    pub error: Option<String>,
 }
 
 pub struct HomeScreen {
@@ -98,6 +114,11 @@ pub struct HomeScreen {
     /// Monotonic id source for `pending_attachments`, so each thumbnail has a
     /// stable key even if the same image is pasted twice.
     next_attachment_id: u64,
+    /// The profile card currently open over the app, if any.
+    profile_popup: Option<ProfilePopup>,
+    /// Profiles already fetched this session, so reopening a card is instant
+    /// and repeated clicks don't refetch.
+    profile_cache: HashMap<Id<UserMarker>, discord::UserProfile>,
     message_input: Entity<InputState>,
     messages_list: ListState,
     /// Owns the decoded bitmaps for the currently displayed messages' images.
@@ -165,6 +186,8 @@ impl HomeScreen {
             replying_to: None,
             pending_attachments: Vec::new(),
             next_attachment_id: 0,
+            profile_popup: None,
+            profile_cache: HashMap::new(),
             message_input,
             messages_scroll: SmoothScroll::list(messages_list.clone()),
             messages_list,
@@ -200,10 +223,13 @@ impl Render for HomeScreen {
 
         h_flex()
             .size_full()
+            // Anchors the profile popout's full-screen dismiss layer.
+            .relative()
             .bg(cx.theme().background)
             .on_action(cx.listener(Self::on_paste_attachment))
             .child(self.render_server_rail(cx))
             .children(sidebar)
             .child(self.render_content(cx))
+            .children(self.render_profile_popup(cx))
     }
 }

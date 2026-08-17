@@ -5,14 +5,14 @@
 //! gpui's foreground thread.
 
 use twilight_http::Client as HttpClient;
-use twilight_http::request::Request;
 use twilight_http::request::channel::reaction::RequestReactionType;
+use twilight_http::request::{Method, Request, RequestBuilder};
 use twilight_http::response::marker::ListBody;
 use twilight_http::routing::Route;
 use twilight_model::http::attachment::Attachment;
 use twilight_model::id::{
     Id,
-    marker::{ChannelMarker, GuildMarker, MessageMarker, RoleMarker},
+    marker::{ChannelMarker, GuildMarker, MessageMarker, RoleMarker, UserMarker},
 };
 use twilight_util::permission_calculator::PermissionCalculator;
 
@@ -20,8 +20,9 @@ use crate::runtime;
 
 use super::Permissions;
 use super::model::{
-    Channel, CurrentUser, DirectMessage, Guild, Message, ReactionEmoji, convert_channel,
-    convert_current_user, convert_dms, convert_guild, convert_message,
+    Channel, CurrentUser, DirectMessage, Guild, Message, RawProfile, ReactionEmoji, UserProfile,
+    convert_channel, convert_current_user, convert_dms, convert_guild, convert_message,
+    convert_user_profile,
 };
 
 /// How many messages one [`fetch_messages`] call requests; a response with
@@ -170,6 +171,53 @@ pub fn fetch_dms(
             let channels = response.models().await.map_err(|err| err.to_string())?;
 
             Ok(convert_dms(channels))
+        }
+        .await;
+
+        on_done(result);
+    });
+}
+
+/// Fetches another user's profile, for the popout opened from their avatar.
+///
+/// Prefers `GET /users/{id}/profile` — the endpoint the Discord client itself
+/// uses, and the only one that carries the bio and the global (non-guild)
+/// banner. It has no twilight helper or route, so it goes out as a raw request.
+/// Tokens that can't reach it (a bot token, for instance) fall back to the
+/// plain user object, which covers everything but the bio and pronouns.
+pub fn fetch_user_profile(
+    token: String,
+    user_id: Id<UserMarker>,
+    on_done: impl FnOnce(Result<UserProfile, String>) + Send + 'static,
+) {
+    runtime::handle().spawn(async move {
+        let result = async {
+            let client = HttpClient::new(token);
+
+            let request = RequestBuilder::raw(
+                Method::Get,
+                format!("users/{user_id}/profile?with_mutual_guilds=false"),
+            )
+            .build()
+            .map_err(|err| err.to_string())?;
+
+            let profile = async {
+                let response = client.request::<RawProfile>(request).await.ok()?;
+                Some(response.model().await.ok()?.into_profile())
+            }
+            .await;
+            if let Some(profile) = profile {
+                return Ok(profile);
+            }
+
+            let user = client
+                .user(user_id)
+                .await
+                .map_err(|err| err.to_string())?
+                .model()
+                .await
+                .map_err(|err| err.to_string())?;
+            Ok(convert_user_profile(user))
         }
         .await;
 

@@ -5,6 +5,7 @@ mod composer;
 mod content;
 mod dm_sidebar;
 mod message;
+mod profile;
 mod rail;
 mod sidebar;
 mod text;

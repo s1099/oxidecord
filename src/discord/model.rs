@@ -4,6 +4,7 @@
 //! Everything the UI renders goes through these types, so the twilight models
 //! stay confined to this module and [`super::rest`]/[`super::gateway`].
 
+use serde::Deserialize;
 use twilight_model::channel::ChannelType;
 use twilight_model::guild::Permissions;
 use twilight_model::id::{
@@ -33,6 +34,158 @@ pub struct CurrentUser {
     /// The `@handle` username.
     pub username: String,
     pub avatar_url: Option<String>,
+}
+
+/// Another user, as shown in the profile popout opened from their avatar.
+#[derive(Clone)]
+pub struct UserProfile {
+    /// Display name: the global display name when set, else the username.
+    pub name: String,
+    /// The `@handle` username.
+    pub username: String,
+    pub avatar_url: Option<String>,
+    pub banner_url: Option<String>,
+    /// The banner's solid colour, used when the user has no banner image.
+    /// Packed as `0xRRGGBB`.
+    pub accent_color: Option<u32>,
+    /// The "About Me" text. `None` when unset or when only the fallback
+    /// `GET /users/{id}` data was available, which doesn't carry a bio.
+    pub bio: Option<String>,
+    pub pronouns: Option<String>,
+    /// When the account was registered, derived from the snowflake and
+    /// formatted as `Jan 5, 2021`.
+    pub created_at: String,
+    pub bot: bool,
+}
+
+/// `GET /users/{id}/profile`, the endpoint the Discord client itself uses for
+/// the profile popout. It has no twilight model, so it's deserialized here.
+#[derive(Deserialize)]
+pub(super) struct RawProfile {
+    user: RawProfileUser,
+    /// The user's global profile, whose banner/bio/accent override the ones on
+    /// `user` (which are the per-guild values when a guild was requested).
+    #[serde(default)]
+    user_profile: Option<RawProfileDetails>,
+}
+
+#[derive(Deserialize)]
+struct RawProfileUser {
+    id: Id<UserMarker>,
+    username: String,
+    #[serde(default)]
+    global_name: Option<String>,
+    #[serde(default)]
+    avatar: Option<String>,
+    #[serde(default)]
+    banner: Option<String>,
+    #[serde(default)]
+    accent_color: Option<u32>,
+    #[serde(default)]
+    bio: Option<String>,
+    #[serde(default)]
+    bot: bool,
+}
+
+#[derive(Deserialize)]
+struct RawProfileDetails {
+    #[serde(default)]
+    bio: Option<String>,
+    #[serde(default)]
+    banner: Option<String>,
+    #[serde(default)]
+    accent_color: Option<u32>,
+    #[serde(default)]
+    pronouns: Option<String>,
+}
+
+impl RawProfile {
+    pub(super) fn into_profile(self) -> UserProfile {
+        let details = self.user_profile;
+        let user = self.user;
+
+        // The global profile wins wherever it has a value; `user` is the
+        // fallback for accounts that only set the fields in one place.
+        let banner = details
+            .as_ref()
+            .and_then(|details| details.banner.clone())
+            .or(user.banner);
+        let bio = details
+            .as_ref()
+            .and_then(|details| details.bio.clone())
+            .or(user.bio);
+        let accent_color = details
+            .as_ref()
+            .and_then(|details| details.accent_color)
+            .or(user.accent_color);
+
+        UserProfile {
+            name: user.global_name.unwrap_or_else(|| user.username.clone()),
+            username: user.username,
+            avatar_url: user
+                .avatar
+                .as_deref()
+                .map(|hash| cdn_avatar_url(user.id.get(), hash, 160)),
+            banner_url: banner
+                .as_deref()
+                .map(|hash| cdn_banner_url(user.id.get(), hash, 480)),
+            accent_color,
+            bio: bio.filter(|bio| !bio.trim().is_empty()),
+            pronouns: details
+                .and_then(|details| details.pronouns)
+                .filter(|pronouns| !pronouns.trim().is_empty()),
+            created_at: format_snowflake_date(user.id.get()),
+            bot: user.bot,
+        }
+    }
+}
+
+/// Builds a [`UserProfile`] from the plain `GET /users/{id}` user, used when
+/// the richer profile endpoint isn't available to this token. The bio and
+/// pronouns aren't part of that response, so they're left unset.
+pub(super) fn convert_user_profile(user: twilight_model::user::User) -> UserProfile {
+    UserProfile {
+        name: user
+            .global_name
+            .clone()
+            .unwrap_or_else(|| user.name.clone()),
+        username: user.name,
+        avatar_url: user
+            .avatar
+            .map(|hash| cdn_avatar_url(user.id.get(), &hash.to_string(), 160)),
+        banner_url: user
+            .banner
+            .map(|hash| cdn_banner_url(user.id.get(), &hash.to_string(), 480)),
+        accent_color: user.accent_color,
+        bio: None,
+        pronouns: None,
+        created_at: format_snowflake_date(user.id.get()),
+        bot: user.bot,
+    }
+}
+
+/// Extension for a CDN image hash: animated assets are prefixed `a_` and only
+/// animate as GIF, while static ones are smaller as webp.
+fn cdn_extension(hash: &str) -> &'static str {
+    if hash.starts_with("a_") {
+        "gif"
+    } else {
+        "webp"
+    }
+}
+
+fn cdn_avatar_url(user_id: u64, hash: &str, size: u32) -> String {
+    format!(
+        "https://cdn.discordapp.com/avatars/{user_id}/{hash}.{}?size={size}",
+        cdn_extension(hash)
+    )
+}
+
+fn cdn_banner_url(user_id: u64, hash: &str, size: u32) -> String {
+    format!(
+        "https://cdn.discordapp.com/banners/{user_id}/{hash}.{}?size={size}",
+        cdn_extension(hash)
+    )
 }
 
 /// The subset of Discord channel types the app knows how to display.
@@ -370,6 +523,47 @@ fn format_timestamp(timestamp: Timestamp) -> String {
         (Some(date), Some(time)) => format!("{date} {time}"),
         _ => iso,
     }
+}
+
+/// Milliseconds between the Unix epoch and Discord's (2015-01-01), the offset
+/// the timestamp inside a snowflake is measured from.
+const DISCORD_EPOCH_MS: u64 = 1_420_070_400_000;
+
+/// Formats the creation time encoded in a snowflake as `Jan 5, 2021` (UTC),
+/// the form Discord uses for "Member Since".
+fn format_snowflake_date(id: u64) -> String {
+    const MONTHS: [&str; 12] = [
+        "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+    ];
+
+    // The upper 42 bits are milliseconds since the Discord epoch.
+    let unix_ms = (id >> 22) + DISCORD_EPOCH_MS;
+    let (year, month, day) = civil_from_days((unix_ms / 86_400_000) as i64);
+    format!("{} {day}, {year}", MONTHS[(month - 1) as usize])
+}
+
+/// Converts days since the Unix epoch into a `(year, month, day)` civil date,
+/// via Howard Hinnant's `civil_from_days` algorithm. Avoids pulling in a date
+/// library for the one date the app formats this way.
+fn civil_from_days(days: i64) -> (i64, u32, u32) {
+    // Shift the era to start on 0000-03-01, so the leap day lands at the end of
+    // the year and every era is exactly 146097 days.
+    let shifted = days + 719_468;
+    let era = shifted.div_euclid(146_097);
+    let day_of_era = shifted.rem_euclid(146_097);
+    let year_of_era =
+        (day_of_era - day_of_era / 1460 + day_of_era / 36524 - day_of_era / 146_096) / 365;
+    let day_of_year = day_of_era - (365 * year_of_era + year_of_era / 4 - year_of_era / 100);
+    // March-based month index (0 = March … 11 = February).
+    let shifted_month = (5 * day_of_year + 2) / 153;
+    let day = (day_of_year - (153 * shifted_month + 2) / 5 + 1) as u32;
+    let month = if shifted_month < 10 {
+        shifted_month + 3
+    } else {
+        shifted_month - 9
+    } as u32;
+    let year = year_of_era + era * 400 + i64::from(month <= 2);
+    (year, month, day)
 }
 
 const PREVIEW_MAX_WIDTH: u32 = 480;

@@ -108,6 +108,33 @@ impl HomeScreen {
                 avatar = avatar.src(avatar_url);
             }
 
+            // Clicking the avatar opens the author's profile card, anchored at
+            // the click. Handled on mouse-down rather than click so the card's
+            // dismiss layer doesn't see the same press and close it again.
+            let author_id = message.author_id;
+            let author_name = message.author_name.clone();
+            let author_avatar_url = message.author_avatar_url.clone();
+            let avatar = div()
+                .id(("message-avatar", message.id.get()))
+                .flex_shrink_0()
+                .cursor_pointer()
+                .hover(|this| this.opacity(0.8))
+                .child(avatar)
+                .on_mouse_down(
+                    MouseButton::Left,
+                    cx.listener(move |this, event: &MouseDownEvent, window, cx| {
+                        cx.stop_propagation();
+                        this.open_profile(
+                            author_id,
+                            author_name.clone(),
+                            author_avatar_url.clone(),
+                            event.position,
+                            window,
+                            cx,
+                        );
+                    }),
+                );
+
             let header_row = h_flex()
                 .w_full()
                 .min_w_0()
