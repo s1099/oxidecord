@@ -65,7 +65,9 @@ impl HomeScreen {
             .w_full()
             .overflow_y_scroll()
             .track_scroll(self.dm_scroll.handle())
-            .on_scroll_wheel(cx.listener(|this, _, _, _| this.dm_scroll.absorb()))
+            .on_scroll_wheel(
+                cx.listener(|this, event, window, _| this.dm_scroll.absorb(event, window)),
+            )
             .px_2()
             .py_2()
             .gap(px(2.));

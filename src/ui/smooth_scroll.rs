@@ -19,6 +19,13 @@ const SETTLE: f32 = 1.0;
 /// Redraw ceiling for a glide. Inside a 60Hz frame, so those displays step every
 /// vsync as before while faster ones stop paying for invisible extra frames.
 const MIN_STEP: Duration = Duration::from_millis(15);
+/// Line jumps up to this size land immediately instead of being eased.
+///
+/// A mouse notch is `wheel_scroll_lines` at once — three by default — and that
+/// jump is the whole reason this module exists. A precision touchpad arrives
+/// through the same Windows message but reports a fraction of a line many times
+/// a second, which is already smooth; easing it only adds lag.
+const DIRECT_LINES: f32 = 1.0;
 
 /// Offsets follow GPUI's convention: `0` is the top, growing more negative as
 /// you scroll down.
@@ -32,7 +39,14 @@ impl Surface {
     fn offset(&self) -> Pixels {
         match self {
             Self::Div(handle) => handle.offset().y,
-            Self::List(state) => state.scroll_px_offset_for_scrollbar().y,
+            // A bottom-aligned list parks its anchor one item past the last one,
+            // and this getter reports that anchor's top: the full content
+            // height, a viewport short of the bottom it's actually drawn at.
+            // Clamping folds that back onto the bottom.
+            Self::List(state) => state
+                .scroll_px_offset_for_scrollbar()
+                .y
+                .clamp(self.min_offset(), px(0.)),
         }
     }
 
@@ -48,21 +62,12 @@ impl Surface {
     fn min_offset(&self) -> Pixels {
         match self {
             Self::Div(handle) => -handle.max_offset().height,
+            // Has to match the setter's own clamp to the last float, or a target
+            // of `min_offset` stops short of the bottom and the list never
+            // repins. It only does while the list element carries no padding:
+            // the setter counts padding in the scrollable range and this getter
+            // doesn't, so `py_2` there would leave us 16px short forever.
             Self::List(state) => -state.max_offset_for_scrollbar().height,
-        }
-    }
-
-    /// How far this one wheel event asked to move, given where the container sat
-    /// at the last paint (`base`) and how much we've already taken this frame.
-    fn delta_from(&self, base: Pixels, taken: Pixels) -> Pixels {
-        let moved = self.offset() - base;
-        match self {
-            // Adds each delta to wherever it finds the offset, and we always
-            // hand it back at `base`, so it reports this event alone.
-            Self::Div(_) => moved,
-            // Re-applies every delta it has seen since the last paint, so drop
-            // what we already counted this frame.
-            Self::List(_) => moved - taken,
         }
     }
 }
@@ -77,10 +82,6 @@ pub struct SmoothScroll {
     current: Pixels,
     /// Where the wheel has asked it to end up.
     target: Pixels,
-    /// `current` as of the last render — where a wheel event will find it.
-    base: Pixels,
-    /// Distance absorbed since the last render.
-    taken: Pixels,
 }
 
 impl SmoothScroll {
@@ -97,8 +98,6 @@ impl SmoothScroll {
             surface,
             current: px(0.),
             target: px(0.),
-            base: px(0.),
-            taken: px(0.),
         }
     }
 
@@ -124,25 +123,43 @@ impl SmoothScroll {
             self.surface.set_offset(self.current);
             request_step(window.current_view(), Instant::now() + MIN_STEP, window);
         }
-
-        self.base = self.current;
-        self.taken = px(0.);
     }
 
-    /// Take back the jump the container's own handler just applied and fold it
-    /// into the target instead. Call from `on_scroll_wheel` on the container (or,
-    /// for a list, an ancestor), which bubbles after that handler.
+    /// Overwrite the jump the container's own handler just applied and fold this
+    /// event's delta into the target instead. Call from `on_scroll_wheel` on the
+    /// container (or, for a list, an ancestor), which bubbles after that handler.
     ///
-    /// Requests no redraw: the handler we're undoing already notified the view.
-    pub fn absorb(&mut self) {
-        let delta = self.surface.delta_from(self.base, self.taken);
+    /// The delta comes off the event rather than from how far the container
+    /// moved. Measuring the container looks equivalent and isn't: a list
+    /// re-applies every delta since the last paint as one coalesced total, and
+    /// coalescing *discards* the running total the moment a delta flips sign. A
+    /// single stray opposite-sign tick — routine from a touchpad — would then
+    /// measure as the whole gesture so far running backwards.
+    ///
+    /// Requests no redraw: the handler we're overwriting already notified the
+    /// view.
+    pub fn absorb(&mut self, event: &ScrollWheelEvent, window: &Window) {
+        let (delta, smooth) = wheel_delta(&event.delta, window.line_height());
         if delta.is_zero() {
             return;
         }
-        self.taken += delta;
+
         self.target = (self.target + delta).clamp(self.surface.min_offset(), px(0.));
-        // Undo the jump. Nothing has been painted since, so it's never seen.
+        if !smooth {
+            self.current = self.target;
+        }
+        // Nothing has been painted since the container moved, so its jump is
+        // never seen.
         self.surface.set_offset(self.current);
+    }
+}
+
+/// This event's vertical travel in pixels, and whether it wants easing.
+fn wheel_delta(delta: &ScrollDelta, line_height: Pixels) -> (Pixels, bool) {
+    match delta {
+        // Pixel deltas only come from a touchpad, which is smooth already.
+        ScrollDelta::Pixels(delta) => (delta.y, false),
+        ScrollDelta::Lines(delta) => (line_height * delta.y, delta.y.abs() > DIRECT_LINES),
     }
 }
 
@@ -172,8 +189,8 @@ fn request_step(view: EntityId, due: Instant, window: &Window) {
 
 #[cfg(test)]
 mod tests {
-    use super::advance;
-    use gpui::px;
+    use super::{advance, wheel_delta};
+    use gpui::{ScrollDelta, point, px};
 
     #[test]
     fn a_glide_spreads_the_distance_then_lands_exactly() {
@@ -190,6 +207,26 @@ mod tests {
         assert!(
             frames > 3,
             "landed in {frames} frame(s), no smoothing happened"
+        );
+    }
+
+    #[test]
+    fn a_notch_eases_and_a_touchpad_tick_does_not() {
+        let line_height = px(20.);
+
+        assert_eq!(
+            wheel_delta(&ScrollDelta::Lines(point(0., -3.)), line_height),
+            (px(-60.), true)
+        );
+
+        // What a Windows precision touchpad sends: a fraction of a line, often.
+        let (delta, smooth) = wheel_delta(&ScrollDelta::Lines(point(0., -0.2)), line_height);
+        assert_eq!(delta, px(-4.));
+        assert!(!smooth, "easing a touchpad's own stream only adds lag");
+
+        assert_eq!(
+            wheel_delta(&ScrollDelta::Pixels(point(px(0.), px(-7.5))), line_height),
+            (px(-7.5), false)
         );
     }
 }

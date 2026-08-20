@@ -51,14 +51,12 @@ impl HomeScreen {
             })
             .when(has_images, |this| {
                 this.child(
-                    v_flex()
-                        .gap_1()
-                        .children(
-                            message
-                                .images
-                                .iter()
-                                .map(|image| attachment::render_image(image, &self.image_cache)),
-                        ),
+                    v_flex().gap_1().children(
+                        message
+                            .images
+                            .iter()
+                            .map(|image| attachment::render_image(image, &self.image_cache)),
+                    ),
                 )
             })
             .when(!message.reactions.is_empty(), |this| {

@@ -62,14 +62,15 @@ impl HomeScreen {
         let messages_list = list(self.messages_list.clone(), move |ix, _window, cx| {
             entity.update(cx, |this, cx| this.render_message_item(ix, cx))
         })
-        .flex_1()
-        .py_2();
+        .flex_1();
 
-        let mut container = v_flex()
-            .flex_1()
-            .min_h_0()
-            .w_full()
-            .on_scroll_wheel(cx.listener(|this, _, _, _| this.messages_scroll.absorb()));
+        // The vertical padding sits on the container, not on the list: `list`
+        // counts its own padding when it clamps a scroll offset but not when it
+        // reports one, and smooth scrolling needs those two to agree to land on
+        // the bottom and let the list repin there. See `ui::smooth_scroll`.
+        let mut container = v_flex().flex_1().min_h_0().w_full().py_2().on_scroll_wheel(
+            cx.listener(|this, event, window, _| this.messages_scroll.absorb(event, window)),
+        );
         if self.older_loading {
             container = container.child(
                 h_flex()

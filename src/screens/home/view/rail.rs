@@ -36,7 +36,9 @@ impl HomeScreen {
             .border_color(rail_border)
             .overflow_y_scroll()
             .track_scroll(self.rail_scroll.handle())
-            .on_scroll_wheel(cx.listener(|this, _, _, _| this.rail_scroll.absorb()))
+            .on_scroll_wheel(
+                cx.listener(|this, event, window, _| this.rail_scroll.absorb(event, window)),
+            )
             .child(
                 div()
                     .id("home-dms")
