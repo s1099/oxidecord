@@ -80,18 +80,13 @@ impl HomeScreen {
             );
         }
 
-        // Route message images through our own cache instead of gpui's global
-        // asset cache, which never evicts. Child `img` elements pick this up via
-        // the cache stack; clearing it on channel switch bounds image memory to
-        // the messages currently on screen.
-        image_cache(self.image_cache.clone())
-            .flex()
-            .flex_col()
-            .flex_1()
-            .min_h_0()
-            .w_full()
-            .child(container.child(messages_list))
-            .into_any_element()
+        // Note: images inside the list name `self.image_cache` on the element
+        // itself rather than relying on an ancestor `image_cache(..)`. That
+        // wrapper only pushes onto the cache stack during layout and paint,
+        // while `list` renders its items during prepaint, so the stack would be
+        // empty when the images actually resolve and they'd land in gpui's
+        // global asset cache, which never evicts.
+        container.child(messages_list).into_any_element()
     }
 
     fn render_message_item(&mut self, ix: usize, cx: &mut Context<Self>) -> AnyElement {

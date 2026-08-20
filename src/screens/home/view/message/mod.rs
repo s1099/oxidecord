@@ -53,7 +53,12 @@ impl HomeScreen {
                 this.child(
                     v_flex()
                         .gap_1()
-                        .children(message.images.iter().map(attachment::render_image)),
+                        .children(
+                            message
+                                .images
+                                .iter()
+                                .map(|image| attachment::render_image(image, &self.image_cache)),
+                        ),
                 )
             })
             .when(!message.reactions.is_empty(), |this| {

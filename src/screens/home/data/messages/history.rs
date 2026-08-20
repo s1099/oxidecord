@@ -38,6 +38,9 @@ impl HomeScreen {
         self.at_bottom = true;
         self.send_error = None;
         self.replying_to = None;
+        for attachment in &self.pending_attachments {
+            attachment.release_preview(cx);
+        }
         self.pending_attachments.clear();
         self.messages_loading = true;
 

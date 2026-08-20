@@ -29,7 +29,10 @@ impl HomeScreen {
         let attachments: Vec<(String, Vec<u8>)> = self
             .pending_attachments
             .drain(..)
-            .map(|attachment| (attachment.filename, attachment.data.bytes().to_vec()))
+            .map(|attachment| {
+                attachment.release_preview(cx);
+                (attachment.filename, attachment.data.bytes().to_vec())
+            })
             .collect();
 
         self.message_input.update(cx, |input, cx| {

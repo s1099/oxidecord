@@ -145,6 +145,13 @@ impl HomeScreen {
     }
 
     pub(in crate::screens::home) fn remove_attachment(&mut self, id: u64, cx: &mut Context<Self>) {
+        for attachment in self
+            .pending_attachments
+            .iter()
+            .filter(|attachment| attachment.id == id)
+        {
+            attachment.release_preview(cx);
+        }
         self.pending_attachments
             .retain(|attachment| attachment.id != id);
         cx.notify();

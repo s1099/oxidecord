@@ -9,8 +9,17 @@ use crate::discord;
 const MAX_IMAGE_WIDTH: f32 = 400.;
 const MAX_IMAGE_HEIGHT: f32 = 300.;
 
-pub(super) fn render_image(image: &discord::ImageAttachment) -> impl IntoElement {
+pub(super) fn render_image(
+    image: &discord::ImageAttachment,
+    cache: &Entity<RetainAllImageCache>,
+) -> impl IntoElement {
+    // The cache has to be named on the element itself. An ancestor
+    // `image_cache(..)` only pushes onto the cache stack during layout and
+    // paint, and `list` renders its items during *prepaint* — so images inside
+    // the message list would otherwise miss the stack entirely and fall back to
+    // gpui's global asset cache, which never evicts.
     let mut element = img(image.url.clone())
+        .image_cache(cache)
         .rounded(px(8.))
         .max_w(px(MAX_IMAGE_WIDTH));
     match (image.width, image.height) {

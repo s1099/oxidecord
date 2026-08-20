@@ -39,6 +39,19 @@ impl AttachmentData {
     }
 }
 
+impl PendingAttachment {
+    /// Drops the decoded thumbnail gpui kept for this attachment's preview.
+    ///
+    /// `img` decodes an `Arc<Image>` into the global asset cache, which has no
+    /// eviction of its own, so a staged image would stay resident for the rest
+    /// of the session after it is sent or removed.
+    pub fn release_preview(&self, cx: &mut App) {
+        if let Some(image) = self.data.image() {
+            ImageSource::Image(image).remove_asset(cx);
+        }
+    }
+}
+
 pub(crate) fn format_size(bytes: u64) -> String {
     const KB: f64 = 1024.;
     const MB: f64 = 1024. * KB;

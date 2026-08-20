@@ -51,7 +51,10 @@ impl HomeScreen {
                     .cursor_pointer()
                     .hover(|this| this.border_color(theme.primary.opacity(0.6)))
                     .child(match emoji.image_url() {
-                        Some(url) => img(url).size(px(16.)).into_any_element(),
+                        Some(url) => img(url)
+                            .image_cache(&self.image_cache)
+                            .size(px(16.))
+                            .into_any_element(),
                         None => match &emoji {
                             discord::ReactionEmoji::Unicode(name) => div()
                                 .text_size(px(15.))
