@@ -22,7 +22,6 @@ impl HomeScreen {
             .w_full()
             .flex_shrink_0()
             .px_2()
-            .pt_1()
             .pb_2()
             .gap_1()
             .when_some(self.send_error.clone(), |this, error| {

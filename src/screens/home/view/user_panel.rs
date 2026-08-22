@@ -8,6 +8,7 @@ use gpui_component::{
 };
 
 use crate::screens::home::HomeScreen;
+use crate::ui::settings;
 
 impl HomeScreen {
     pub(super) fn render_user_panel(&self, cx: &Context<Self>) -> impl IntoElement {
@@ -62,7 +63,8 @@ impl HomeScreen {
                     .icon(IconName::Settings)
                     .ghost()
                     .small()
-                    .tooltip("User Settings"),
+                    .tooltip("User Settings")
+                    .on_click(|_, window, cx| settings::open(window, cx)),
             )
     }
 }
