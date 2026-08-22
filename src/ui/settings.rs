@@ -26,6 +26,10 @@ const WINDOW_MARGIN: f32 = 64.;
 /// Width of the page sidebar inside the popup.
 const SIDEBAR_WIDTH: f32 = 220.;
 
+/// The dialog's own border, one pixel top and bottom, which sits inside the
+/// height it's given. See [`open`] for why the content has to subtract it.
+const DIALOG_BORDER: f32 = 2.;
+
 /// A theme card: wide enough for a couple of words of theme name, over a
 /// preview roughly the proportions of the app window.
 const CARD_WIDTH: f32 = 148.;
@@ -48,7 +52,14 @@ pub fn open(window: &mut Window, cx: &mut App) {
             .h(height)
             .overflow_hidden()
             .child(
-                div().w_full().h(height).child(
+                // The dialog puts its content in a block-layout scroll box, so
+                // a percentage height has nothing definite to resolve against
+                // and the whole component would collapse to the height of the
+                // sidebar's two entries. It needs a pixel height, and that
+                // height is the dialog's content box: what it was given, less
+                // the border sitting inside it. Overshoot by even a pixel and
+                // the dialog scrolls the popup — sidebar and all.
+                div().w_full().h(height - px(DIALOG_BORDER)).child(
                     Settings::new("app-settings")
                         .small()
                         .with_group_variant(GroupBoxVariant::Outline)
