@@ -24,6 +24,7 @@ fn main() {
 
     app.run(|cx: &mut App| {
         gpui_component::init(cx);
+        ui::theme::init(cx);
 
         // Bound with no context so it resolves ahead of the text input's own
         // paste binding; the handler consumes the event only when an image is

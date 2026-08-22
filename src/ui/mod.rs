@@ -3,3 +3,4 @@
 pub mod dialogs;
 pub mod settings;
 pub mod smooth_scroll;
+pub mod theme;
