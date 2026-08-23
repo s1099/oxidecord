@@ -13,6 +13,12 @@ use crate::screens::app::AppScreen;
 use crate::screens::home::PasteAttachment;
 
 fn main() {
+    // The app doubles as its own update helper: started with this flag it only
+    // swaps the downloaded binary in and exits, with no UI in between.
+    if std::env::args().any(|arg| arg == platform::updater::APPLY_UPDATE_ARG) {
+        platform::updater::apply_update();
+    }
+
     // required for webview to work on windows
     #[cfg(target_os = "windows")]
     unsafe {
@@ -25,6 +31,7 @@ fn main() {
     app.run(|cx: &mut App| {
         gpui_component::init(cx);
         ui::theme::init(cx);
+        platform::updater::init(cx);
 
         // Bound with no context so it resolves ahead of the text input's own
         // paste binding; the handler consumes the event only when an image is

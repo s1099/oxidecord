@@ -25,3 +25,4 @@ cargo run --release # release build
 - Voice calls
 - Caching
 - Themes https://longbridge.github.io/gpui-component/docs/theme#theme-registry
+- Cross platform autoupdater (only Windows is implemented; macOS and Linux still need their own swap step)

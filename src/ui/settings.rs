@@ -2,18 +2,22 @@
 //! beside the active page's groups — hosted in a dialog, opened from the
 //! account panel.
 //!
-//! The themes page is real; the updates page is still a placeholder, and the
-//! structure it uses is the one a filled-in page has.
+//! Both pages are real: themes picks a preset, and updates drives the
+//! self-updater in [`crate::platform::updater`].
 
 use std::rc::Rc;
 
+use gpui::prelude::FluentBuilder as _;
 use gpui::*;
 use gpui_component::{
-    ActiveTheme as _, Sizable as _, ThemeConfig, WindowExt as _,
+    ActiveTheme as _, Disableable as _, Sizable as _, ThemeConfig, WindowExt as _,
+    button::{Button, ButtonVariants as _},
     group_box::GroupBoxVariant,
+    h_flex,
     setting::{RenderOptions, SettingField, SettingGroup, SettingItem, SettingPage, Settings},
 };
 
+use crate::platform::updater::{self, Status};
 use crate::ui::theme;
 
 /// Size the popup aims for. Both are capped to the window with [`WINDOW_MARGIN`]
@@ -209,25 +213,85 @@ fn updates_page() -> SettingPage {
         .group(
             SettingGroup::new()
                 .title("Software update")
-                .description("How new versions are found and installed.")
-                .item(
-                    SettingItem::new("Current version", placeholder_field())
-                        .description("The version you're running, and when it was last checked."),
-                )
-                .item(
-                    SettingItem::new("Automatic updates", placeholder_field())
-                        .description("Download and install new versions in the background."),
-                ),
+                .item(SettingItem::new("Current version", version_field()))
+                .item(SettingItem::new("Check for updates", update_field())),
         )
 }
 
-/// Stands in for a page's real control until it's built, so the rows lay out
-/// the way they will once the fields land.
-fn placeholder_field() -> SettingField<SharedString> {
+fn version_field() -> SettingField<SharedString> {
     SettingField::render(|_: &RenderOptions, _window: &mut Window, cx: &mut App| {
         div()
             .text_sm()
             .text_color(cx.theme().muted_foreground)
-            .child("Coming soon")
+            .child(updater::CURRENT_VERSION)
+    })
+}
+
+/// The updater's whole interface: where it has got to, and the one action that
+/// makes sense from there.
+fn update_field() -> SettingField<SharedString> {
+    SettingField::render(|_: &RenderOptions, _window: &mut Window, cx: &mut App| {
+        let status = updater::status(cx);
+        let (message, tone) = status_message(&status, cx);
+
+        h_flex()
+            .gap_3()
+            .items_center()
+            .when_some(message, |this, message| {
+                this.child(div().text_sm().text_color(tone).child(message))
+            })
+            .children(action_button(&status))
+    })
+}
+
+/// What the current status reads as, and the colour it reads in. `None` where
+/// the button alone already says it.
+fn status_message(status: &Status, cx: &App) -> (Option<SharedString>, Hsla) {
+    let muted = cx.theme().muted_foreground;
+    match status {
+        Status::Idle => (None, muted),
+        Status::Checking => (Some("Checking…".into()), muted),
+        Status::UpToDate => (Some("You're on the latest version.".into()), muted),
+        Status::Available { version, .. } => (
+            Some(format!("Version {version} is available.").into()),
+            cx.theme().foreground,
+        ),
+        Status::Downloading { percent, .. } => {
+            (Some(format!("Downloading… {percent}%").into()), muted)
+        }
+        Status::Ready { version } => (
+            Some(format!("Version {version} is ready to install.").into()),
+            cx.theme().success,
+        ),
+        Status::Failed(error) => (Some(error.clone()), cx.theme().danger),
+    }
+}
+
+/// The action the current status leads to. Work in flight leaves a disabled
+/// button in place, so the row doesn't reflow while it runs.
+fn action_button(status: &Status) -> Option<Button> {
+    if !updater::supported() {
+        return None;
+    }
+
+    Some(match status {
+        Status::Checking | Status::Downloading { .. } => Button::new("update-action")
+            .label("Working")
+            .loading(true)
+            .disabled(true),
+        Status::Available { .. } => Button::new("update-action")
+            .label("Download")
+            .primary()
+            .on_click(|_, _window, cx| updater::download(cx)),
+        Status::Ready { .. } => Button::new("update-action")
+            // The swap can only happen once this process is gone, so quitting
+            // is the install rather than a step before it.
+            .label("Install and quit")
+            .primary()
+            .on_click(|_, _window, cx| updater::install(cx)),
+        Status::Idle | Status::UpToDate | Status::Failed(_) => Button::new("update-action")
+            .label("Check for updates")
+            .outline()
+            .on_click(|_, _window, cx| updater::check(cx)),
     })
 }
