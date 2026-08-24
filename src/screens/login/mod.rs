@@ -7,8 +7,8 @@ use gpui::*;
 use gpui_component::{
     ActiveTheme as _,
     button::{Button, ButtonVariants as _},
-    input::{Input, InputState},
     h_flex,
+    input::{Input, InputState},
     tab::{Tab, TabBar},
     v_flex,
 };
