@@ -1,22 +1,26 @@
 //! The direct-message conversation: its header, messages, and composer.
 
 use gpui::*;
-use gpui_component::{ActiveTheme as _, Sizable as _, avatar::Avatar, h_flex, v_flex};
+use gpui_component::{ActiveTheme as _, Sizable as _, avatar::Avatar, v_flex};
 
 use crate::discord::DirectMessage;
 use crate::screens::home::HomeScreen;
 
+use super::{header, header_content, pane};
+
 impl HomeScreen {
     pub(super) fn render_dm_content(&self, cx: &Context<Self>) -> AnyElement {
         let Some(dm) = self.selected_dm_info().cloned() else {
-            return v_flex()
-                .flex_1()
-                .h_full()
-                .items_center()
-                .justify_center()
-                .text_color(cx.theme().muted_foreground)
-                .child("Select a conversation to start chatting.")
-                .into_any_element();
+            return pane(
+                v_flex()
+                    .flex_1()
+                    .items_center()
+                    .justify_center()
+                    .text_color(cx.theme().muted_foreground)
+                    .child("Select a conversation to start chatting.")
+                    .into_any_element(),
+                cx,
+            );
         };
 
         v_flex()
@@ -35,21 +39,14 @@ impl HomeScreen {
             avatar = avatar.src(url);
         }
 
-        h_flex()
-            .h(px(48.))
-            .w_full()
-            .flex_shrink_0()
-            .px_4()
-            .gap_2()
-            .items_center()
-            .border_b_1()
-            .border_color(cx.theme().border)
-            .child(avatar)
-            .child(
+        header(
+            header_content().child(avatar).child(
                 div()
                     .flex_shrink_0()
                     .font_weight(FontWeight::SEMIBOLD)
                     .child(dm.name.clone()),
-            )
+            ),
+            cx,
+        )
     }
 }

@@ -2,16 +2,19 @@
 
 mod webview;
 
+use gpui::prelude::FluentBuilder as _;
 use gpui::*;
 use gpui_component::{
     ActiveTheme as _,
     button::{Button, ButtonVariants as _},
     input::{Input, InputState},
+    h_flex,
     tab::{Tab, TabBar},
     v_flex,
 };
 
 use crate::screens::app::AppScreen;
+use crate::ui::window_controls::WindowControls;
 
 use webview::LoginWebview;
 
@@ -156,12 +159,37 @@ impl Render for LoginScreen {
                 LoginMethod::Token => self.render_token_pane(cx).into_any_element(),
             });
 
-        div()
+        v_flex()
             .size_full()
-            .flex()
-            .items_center()
-            .justify_center()
             .bg(page_bg)
-            .child(card)
+            // No system title bar, so the window's own controls have to be on
+            // the page. Login has no header to put them in, so they get a strip
+            // of their own; the rest of it drags the window.
+            .child(
+                h_flex()
+                    .h(px(40.))
+                    .w_full()
+                    .flex_shrink_0()
+                    .items_center()
+                    .child(
+                        div()
+                            .id("login-drag")
+                            .flex_1()
+                            .h_full()
+                            .when(cfg!(target_os = "windows"), |this| {
+                                this.window_control_area(WindowControlArea::Drag)
+                            }),
+                    )
+                    .child(WindowControls),
+            )
+            .child(
+                div()
+                    .flex_1()
+                    .w_full()
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .child(card),
+            )
     }
 }

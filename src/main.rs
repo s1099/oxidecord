@@ -47,7 +47,11 @@ fn main() {
 
         let options = WindowOptions {
             titlebar: Some(TitlebarOptions {
+                // Still the taskbar's name for the window, but nothing is drawn
+                // for it: the system title bar is gone and the app draws its own
+                // controls into the conversation header instead.
                 title: Some("Oxidecord".into()),
+                appears_transparent: true,
                 ..Default::default()
             }),
             // Open maximized; the bounds are the size to restore to when unmaximized.
