@@ -1,3 +1,7 @@
+// Release builds run as a GUI app so double-clicking the exe does not pop a
+// console window; debug builds keep the console for logging.
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
 mod assets;
 mod discord;
 mod platform;
