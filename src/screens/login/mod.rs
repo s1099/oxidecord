@@ -70,7 +70,7 @@ impl LoginScreen {
             .child(Tab::new().label("Login with Discord"))
             .child(Tab::new().label("Login with Token"))
             .on_click(move |&selected_index, _window, cx| {
-                let _ = entity.update(cx, |this, cx| {
+                entity.update(cx, |this, cx| {
                     this.method = match selected_index {
                         0 => LoginMethod::Discord,
                         _ => LoginMethod::Token,

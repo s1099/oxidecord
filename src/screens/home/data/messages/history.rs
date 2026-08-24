@@ -136,20 +136,17 @@ impl HomeScreen {
                     return;
                 }
                 this.older_loading = false;
-                match result {
-                    Ok(older) => {
-                        if older.len() < discord::MESSAGE_PAGE_SIZE {
-                            this.reached_oldest = true;
-                        }
-                        let count = older.len();
-                        if count > 0 {
-                            this.messages.splice(0..0, older);
-                            this.messages_list.splice(0..0, count);
-                        }
+                // A failed fetch leaves the messages on screen; it retries the
+                // next time the user scrolls near the top.
+                if let Ok(older) = result {
+                    if older.len() < discord::MESSAGE_PAGE_SIZE {
+                        this.reached_oldest = true;
                     }
-                    // Keep the messages on screen; the fetch retries the next
-                    // time the user scrolls near the top.
-                    Err(_) => {}
+                    let count = older.len();
+                    if count > 0 {
+                        this.messages.splice(0..0, older);
+                        this.messages_list.splice(0..0, count);
+                    }
                 }
                 cx.notify();
             });

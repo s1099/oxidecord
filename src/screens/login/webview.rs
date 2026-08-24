@@ -87,7 +87,7 @@ impl LoginWebview {
                                 eprintln!("failed to save token to the credential store: {err}");
                             }
 
-                            let window_handle_inner = window_handle_capture.clone();
+                            let window_handle_inner = window_handle_capture;
                             let async_cx_inner = async_cx_capture.clone();
                             let app_inner = app_capture.clone();
 

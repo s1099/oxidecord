@@ -108,14 +108,13 @@ impl HomeScreen {
 
         // Like Discord, keep the selected channel visible when its category
         // is collapsed.
-        if collapsed {
-            if let Some(selected) = group
+        if collapsed
+            && let Some(selected) = group
                 .channels
                 .iter()
                 .find(|channel| Some(channel.id) == self.selected_channel)
-            {
-                collapsible = collapsible.child(self.render_channel_row(selected, cx));
-            }
+        {
+            collapsible = collapsible.child(self.render_channel_row(selected, cx));
         }
 
         collapsible.into_any_element()
