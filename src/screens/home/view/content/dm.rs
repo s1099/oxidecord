@@ -25,7 +25,7 @@ impl HomeScreen {
             .min_w_0()
             .child(self.render_dm_header(&dm, cx))
             .child(self.render_messages(cx))
-            .child(self.render_message_bar(cx))
+            .child(self.render_message_bar(true, cx))
             .into_any_element()
     }
 

@@ -3,7 +3,7 @@
 use gpui::*;
 
 use crate::discord;
-use crate::screens::home::HomeScreen;
+use crate::screens::home::{HomeScreen, View};
 
 impl HomeScreen {
     pub(in crate::screens::home) fn send_current_message(
@@ -14,6 +14,16 @@ impl HomeScreen {
         let Some(channel_id) = self.selected_channel else {
             return;
         };
+        // Guard the send path too: the composer is replaced by a notice on
+        // channels the user can't post in, but Enter could still reach here.
+        if self.view != View::DirectMessages
+            && !self
+                .selected_channel_info()
+                .is_some_and(|channel| channel.can_send)
+        {
+            return;
+        }
+
         let content = self.message_input.read(cx).value().trim().to_string();
         if content.is_empty() && self.pending_attachments.is_empty() {
             return;

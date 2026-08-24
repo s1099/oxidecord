@@ -22,7 +22,7 @@ impl HomeScreen {
             .min_w_0()
             .child(self.render_channel_header(&channel, cx))
             .child(self.render_messages(cx))
-            .child(self.render_message_bar(cx))
+            .child(self.render_message_bar(channel.can_send, cx))
             .into_any_element()
     }
 

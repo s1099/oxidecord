@@ -31,6 +31,9 @@ pub struct Channel {
     pub parent_id: Option<Id<ChannelMarker>>,
     pub position: i32,
     pub topic: Option<String>,
+    /// Whether the current user may post here, resolved from the channel's
+    /// overwrites when the channel list is fetched.
+    pub can_send: bool,
 }
 
 /// A 1:1 or group direct-message conversation from the user's DM list.
@@ -48,6 +51,7 @@ pub struct DirectMessage {
 /// directories, ...).
 pub(in crate::discord) fn convert_channel(
     channel: twilight_model::channel::Channel,
+    can_send: bool,
 ) -> Option<Channel> {
     let kind = match channel.kind {
         ChannelType::GuildText => ChannelKind::Text,
@@ -66,6 +70,7 @@ pub(in crate::discord) fn convert_channel(
         parent_id: channel.parent_id,
         position: channel.position.unwrap_or(0),
         topic: channel.topic.filter(|topic| !topic.is_empty()),
+        can_send,
     })
 }
 

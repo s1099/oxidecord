@@ -35,6 +35,7 @@ pub fn fetch_guilds(
 
 /// Fetches a guild's channels, keeping only the ones the current user holds
 /// `VIEW_CHANNEL` on — the rest are what Discord itself hides from the sidebar.
+/// Each surviving channel also records whether the user holds `SEND_MESSAGES`.
 ///
 /// `base_permissions` and `owner` come from the guild list (see [`Guild`]), so
 /// the only extra request here is the member object — which of their roles
@@ -83,9 +84,10 @@ pub fn fetch_channels(
             Ok(channels
                 .into_iter()
                 .filter_map(|channel| {
-                    // Apply the channel's own overwrites to the baseline and
-                    // drop the channel if the user can't even view it.
-                    let visible = {
+                    // Apply the channel's own overwrites to the baseline: drop
+                    // the channel if the user can't even view it, and carry
+                    // whether they may post so the composer can say otherwise.
+                    let permissions = {
                         let overwrites = channel.permission_overwrites.as_deref().unwrap_or(&[]);
                         let mut calculator = PermissionCalculator::new(
                             guild_id,
@@ -96,12 +98,18 @@ pub fn fetch_channels(
                         if owner {
                             calculator = calculator.owner_id(user_id);
                         }
-                        calculator
-                            .in_channel(channel.kind, overwrites)
-                            .contains(Permissions::VIEW_CHANNEL)
+                        calculator.in_channel(channel.kind, overwrites)
                     };
 
-                    visible.then(|| convert_channel(channel)).flatten()
+                    permissions
+                        .contains(Permissions::VIEW_CHANNEL)
+                        .then(|| {
+                            convert_channel(
+                                channel,
+                                permissions.contains(Permissions::SEND_MESSAGES),
+                            )
+                        })
+                        .flatten()
                 })
                 .collect::<Vec<_>>())
         }
