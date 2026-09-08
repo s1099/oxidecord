@@ -19,10 +19,9 @@ cargo run --release # release build
 
 ### TODO
 - App icon
-- Settings page
 - Embeds
 - Videos
 - Voice calls
+- Screenshare and video calls
 - Caching
-- Themes https://longbridge.github.io/gpui-component/docs/theme#theme-registry
 - Cross platform autoupdater (only Windows is implemented; macOS and Linux still need their own swap step)
