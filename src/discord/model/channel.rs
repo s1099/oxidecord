@@ -34,6 +34,9 @@ pub struct Channel {
     /// Whether the current user may post here, resolved from the channel's
     /// overwrites when the channel list is fetched.
     pub can_send: bool,
+    /// Whether the current user holds `MANAGE_MESSAGES` here, which is what
+    /// lets them delete other people's messages.
+    pub can_manage_messages: bool,
 }
 
 /// A 1:1 or group direct-message conversation from the user's DM list.
@@ -52,6 +55,7 @@ pub struct DirectMessage {
 pub(in crate::discord) fn convert_channel(
     channel: twilight_model::channel::Channel,
     can_send: bool,
+    can_manage_messages: bool,
 ) -> Option<Channel> {
     let kind = match channel.kind {
         ChannelType::GuildText => ChannelKind::Text,
@@ -71,6 +75,7 @@ pub(in crate::discord) fn convert_channel(
         position: channel.position.unwrap_or(0),
         topic: channel.topic.filter(|topic| !topic.is_empty()),
         can_send,
+        can_manage_messages,
     })
 }
 

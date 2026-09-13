@@ -135,3 +135,25 @@ pub fn send_message(
         on_done(result);
     });
 }
+
+/// Deletes a message. Permitted for the author's own messages, or anywhere the
+/// user holds `MANAGE_MESSAGES`.
+pub fn delete_message(
+    token: String,
+    channel_id: Id<ChannelMarker>,
+    message_id: Id<MessageMarker>,
+    on_done: impl FnOnce(Result<(), String>) + Send + 'static,
+) {
+    runtime::handle().spawn(async move {
+        let result = async {
+            HttpClient::new(token)
+                .delete_message(channel_id, message_id)
+                .await
+                .map_err(|err| err.to_string())?;
+            Ok(())
+        }
+        .await;
+
+        on_done(result);
+    });
+}

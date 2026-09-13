@@ -34,6 +34,11 @@ impl Render for HomeScreen {
             scroll.step(window);
         }
 
+        // Holding shift lays the message toolbar's hidden actions out inline,
+        // like Discord. Modifier changes don't repaint on their own, so the
+        // listener below nudges the screen when shift goes down or up.
+        self.shift_held = window.modifiers().shift;
+
         let sidebar = match self.view {
             View::DirectMessages => Some(self.render_dm_sidebar(cx).into_any_element()),
             View::Guild => (self.selected_guild.is_some() || self.loading)
@@ -41,11 +46,17 @@ impl Render for HomeScreen {
         };
 
         h_flex()
+            .track_focus(&self.focus_handle)
             .size_full()
             // Anchors the profile popout's full-screen dismiss layer.
             .relative()
             .bg(cx.theme().background)
             .on_action(cx.listener(Self::on_paste_attachment))
+            .on_modifiers_changed(cx.listener(|this, event: &ModifiersChangedEvent, _, cx| {
+                if this.shift_held != event.modifiers.shift {
+                    cx.notify();
+                }
+            }))
             .child(self.render_server_rail(cx))
             .children(sidebar)
             .child(self.render_content(cx))

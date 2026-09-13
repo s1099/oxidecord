@@ -94,6 +94,14 @@ pub struct HomeScreen {
     /// Monotonic id source for `pending_attachments`, so each thumbnail has a
     /// stable key even if the same image is pasted twice.
     pub(super) next_attachment_id: u64,
+    /// Whether shift is currently held, tracked so the message toolbar can
+    /// expand its hidden actions inline the way Discord's does.
+    pub(super) shift_held: bool,
+    /// Focus for the screen as a whole. Modifier and key events are dispatched
+    /// along the focus path, so without something focused inside the screen the
+    /// root element's listeners never run; this handle is focused on startup so
+    /// they always do, and stays an ancestor of whatever is focused after that.
+    pub(super) focus_handle: FocusHandle,
     /// The profile card currently open over the app, if any.
     pub(super) profile_popup: Option<ProfilePopup>,
     /// Profiles already fetched this session, so reopening a card is instant
@@ -166,6 +174,8 @@ impl HomeScreen {
             replying_to: None,
             pending_attachments: Vec::new(),
             next_attachment_id: 0,
+            shift_held: false,
+            focus_handle: cx.focus_handle(),
             profile_popup: None,
             profile_cache: HashMap::new(),
             message_input,
@@ -179,6 +189,9 @@ impl HomeScreen {
         this.load_guilds(window, cx);
         this.load_current_user(cx);
         this.start_gateway(cx);
+        // Seeds the focus path so the root element's key listeners are live
+        // from the first frame, before anything has been clicked.
+        this.focus_handle.focus(window);
         this
     }
 }

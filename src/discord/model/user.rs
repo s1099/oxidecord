@@ -12,6 +12,7 @@ const PROFILE_BANNER_SIZE: u32 = 480;
 
 #[derive(Clone)]
 pub struct CurrentUser {
+    pub id: Id<UserMarker>,
     /// Display name: the global display name when set, else the username.
     pub name: String,
     /// The `@handle` username.
@@ -151,6 +152,7 @@ pub(in crate::discord) fn convert_current_user(
     user: twilight_model::user::CurrentUser,
 ) -> CurrentUser {
     CurrentUser {
+        id: user.id,
         name: user
             .global_name
             .clone()

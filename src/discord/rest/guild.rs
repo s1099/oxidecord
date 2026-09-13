@@ -35,7 +35,8 @@ pub fn fetch_guilds(
 
 /// Fetches a guild's channels, keeping only the ones the current user holds
 /// `VIEW_CHANNEL` on — the rest are what Discord itself hides from the sidebar.
-/// Each surviving channel also records whether the user holds `SEND_MESSAGES`.
+/// Each surviving channel also records whether the user holds `SEND_MESSAGES`
+/// and `MANAGE_MESSAGES`.
 ///
 /// `base_permissions` and `owner` come from the guild list (see [`Guild`]), so
 /// the only extra request here is the member object — which of their roles
@@ -107,6 +108,7 @@ pub fn fetch_channels(
                             convert_channel(
                                 channel,
                                 permissions.contains(Permissions::SEND_MESSAGES),
+                                permissions.contains(Permissions::MANAGE_MESSAGES),
                             )
                         })
                         .flatten()
