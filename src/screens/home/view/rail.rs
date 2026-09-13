@@ -107,7 +107,6 @@ impl HomeScreen {
         cx: &mut Context<Self>,
     ) -> impl IntoElement + use<> {
         let theme = cx.theme();
-        // Discord's own default for an uncoloured folder is the accent colour.
         let accent: Hsla = folder
             .color
             .map_or(theme.primary, |color| rgb(color).into());
@@ -124,8 +123,8 @@ impl HomeScreen {
         v_flex()
             .items_center()
             .gap_2()
-            // Expanded, the tint runs behind the whole column so its guilds
-            // read as being inside the folder rather than loose in the rail.
+            // Expanded, the tint runs behind the column so its guilds read as
+            // being inside the folder rather than loose in the rail.
             .when(expanded, |this| {
                 this.p(px(4.)).rounded(px(20.)).bg(accent.opacity(0.12))
             })
@@ -139,8 +138,7 @@ impl HomeScreen {
                     .justify_center()
                     .rounded(px(16.))
                     .bg(accent.opacity(0.24))
-                    // Collapsed, the folder is the only thing standing in for
-                    // the selected guild, so it takes the highlight.
+                    // Collapsed, the folder stands in for the guild inside it.
                     .when(holds_selected && !expanded, |this| this.bg(selected_bg))
                     .map(|this| {
                         if expanded {

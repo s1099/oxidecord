@@ -58,12 +58,10 @@ pub struct HomeScreen {
     /// The signed-in user, shown in the sidebar account panel. `None` until the
     /// `GET /users/@me` fetch resolves (or if it fails).
     pub(super) current_user: Option<discord::CurrentUser>,
-    /// The guild list laid out for the rail, folders and all. Rebuilt whenever
-    /// the guild list or the folder settings change.
+    /// The guild list laid out for the rail, folders and all.
     pub(super) rail_entries: Vec<RailEntry>,
-    /// The user's folder settings, as Discord stores them. `None` until the
-    /// settings-proto fetch resolves, or if it fails — the rail then falls back
-    /// to the plain guild order.
+    /// The user's folder settings. `None` until the settings-proto fetch
+    /// resolves, or if it fails — the rail falls back to the plain guild order.
     pub(super) guild_folders: Option<discord::GuildFolders>,
     /// Folders the user has opened, by folder id. Folders start collapsed.
     pub(super) expanded_folders: HashSet<i64>,
@@ -107,10 +105,9 @@ pub struct HomeScreen {
     /// Whether shift is currently held, tracked so the message toolbar can
     /// expand its hidden actions inline the way Discord's does.
     pub(super) shift_held: bool,
-    /// Focus for the screen as a whole. Modifier and key events are dispatched
-    /// along the focus path, so without something focused inside the screen the
-    /// root element's listeners never run; this handle is focused on startup so
-    /// they always do, and stays an ancestor of whatever is focused after that.
+    /// Focus for the screen as a whole, held by an empty element inside it and
+    /// focused on startup: key and modifier events only travel the focus path,
+    /// so without it the root's listeners never run.
     pub(super) focus_handle: FocusHandle,
     /// The profile card currently open over the app, if any.
     pub(super) profile_popup: Option<ProfilePopup>,

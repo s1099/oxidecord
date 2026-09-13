@@ -34,9 +34,9 @@ impl Render for HomeScreen {
             scroll.step(window);
         }
 
-        // Holding shift lays the message toolbar's hidden actions out inline,
-        // like Discord. Modifier changes don't repaint on their own, so the
-        // listener below nudges the screen when shift goes down or up.
+        // Holding shift lays the message toolbar's hidden actions out inline;
+        // modifier changes don't repaint on their own, so the listener below
+        // nudges the screen when shift goes down or up.
         self.shift_held = window.modifiers().shift;
 
         let sidebar = match self.view {
@@ -46,7 +46,6 @@ impl Render for HomeScreen {
         };
 
         h_flex()
-            .track_focus(&self.focus_handle)
             .size_full()
             // Anchors the profile popout's full-screen dismiss layer.
             .relative()
@@ -57,6 +56,12 @@ impl Render for HomeScreen {
                     cx.notify();
                 }
             }))
+            // Puts the screen on the focus path, which is the only path
+            // modifier events travel. Not on the root: a focusable element
+            // prevents the default on every mouse down over it, which Windows
+            // reads as the app having handled the click — killing the window
+            // controls and the drag region.
+            .child(div().track_focus(&self.focus_handle))
             .child(self.render_server_rail(cx))
             .children(sidebar)
             .child(self.render_content(cx))

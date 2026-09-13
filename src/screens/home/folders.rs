@@ -21,11 +21,10 @@ pub(in crate::screens::home) struct RailFolder {
 
 /// Orders the guild list the way the user's folder settings say.
 ///
-/// Entries without an id are bare guilds sitting at the top level rather than
-/// folders, so they flatten into single rows. Guilds the settings don't mention
-/// — joined since the settings were last written — go to the end, which is
-/// where Discord puts them too. Without settings at all, the rail keeps the
-/// order the guild list arrived in.
+/// Entries without an id are bare guilds at the top level, so they flatten into
+/// single rows. Guilds the settings don't mention go to the end, where Discord
+/// puts newly joined ones too; with no settings at all the guild list's own
+/// order stands.
 pub(in crate::screens::home) fn build_rail_entries(
     guilds: &[Guild],
     folders: Option<&GuildFolders>,
@@ -46,8 +45,7 @@ pub(in crate::screens::home) fn build_rail_entries(
         placed.extend(members.iter().map(|guild| guild.id));
 
         match folder.id {
-            // A folder the user emptied, or one holding only guilds we've since
-            // left, would otherwise render as an empty square.
+            // An emptied folder would render as an empty square.
             _ if members.is_empty() => {}
             Some(id) => entries.push(RailEntry::Folder(RailFolder {
                 id,

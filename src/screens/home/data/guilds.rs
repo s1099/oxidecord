@@ -54,9 +54,7 @@ impl HomeScreen {
     }
 
     /// Loads the user's folder settings, which decide the rail's order.
-    ///
-    /// Best-effort: the rail renders from the plain guild list until this
-    /// lands, and keeps doing so if it never does.
+    /// Best-effort: until it lands the rail uses the plain guild list.
     pub(in crate::screens::home) fn load_guild_folders(&mut self, cx: &mut Context<Self>) {
         let Some(token) = discord::load_token() else {
             return;
@@ -86,7 +84,6 @@ impl HomeScreen {
         .detach();
     }
 
-    /// Re-lays the rail out of the current guild list and folder settings.
     fn rebuild_rail(&mut self) {
         self.rail_entries = build_rail_entries(&self.guilds, self.guild_folders.as_ref());
     }

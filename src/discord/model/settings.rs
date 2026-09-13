@@ -7,8 +7,8 @@
 //! `guild_positions` is the flattened order of every guild inside them.
 //!
 //! Pulling in a protobuf runtime for one message isn't worth it, so the wire
-//! format is walked by hand below; only the handful of fields this file names
-//! are interpreted, and everything else is skipped.
+//! format is walked by hand below, skipping every field this file doesn't
+//! name.
 
 use serde::Deserialize;
 use twilight_model::id::{Id, marker::GuildMarker};
@@ -69,8 +69,7 @@ fn parse_folder(bytes: &[u8]) -> GuildFolder {
     let mut folder = GuildFolder::default();
     for (number, value) in Fields::new(bytes) {
         let Value::Bytes(bytes) = value else { continue };
-        // Fields 2-4 are protobuf wrappers (`Int64Value` and friends), each a
-        // message holding the value itself in field 1.
+        // Fields 2-4 are protobuf wrappers (`Int64Value` and friends).
         match number {
             1 => folder.guild_ids = parse_ids(bytes),
             2 => folder.id = unwrap_scalar(bytes).map(|value| value as i64),
@@ -86,11 +85,9 @@ fn parse_folder(bytes: &[u8]) -> GuildFolder {
     folder
 }
 
-/// Reads a packed repeated field of guild ids.
-///
-/// Discord declares these as `fixed64`, but packed varints decode from the
-/// same wire type, so anything that isn't a whole number of 8-byte words is
-/// read as varints instead.
+/// Reads a packed repeated field of guild ids. Discord declares these as
+/// `fixed64`, but packed varints share the wire type, so anything that isn't a
+/// whole number of 8-byte words is read as varints instead.
 fn parse_ids(bytes: &[u8]) -> Vec<Id<GuildMarker>> {
     let raw: Vec<u64> = if bytes.len().is_multiple_of(8) {
         bytes
@@ -106,7 +103,6 @@ fn parse_ids(bytes: &[u8]) -> Vec<Id<GuildMarker>> {
         values
     };
 
-    // A zero id would be a decode slip, and `Id` can't hold one anyway.
     raw.into_iter().filter_map(Id::new_checked).collect()
 }
 
@@ -166,8 +162,7 @@ impl<'a> Iterator for Fields<'a> {
                 Value::Bytes(self.take(len)?)
             }
             5 => Value::Fixed32(u32::from_le_bytes(self.take(4)?.try_into().ok()?)),
-            // Groups (3 and 4) are deprecated and Discord doesn't use them;
-            // there's no way to skip past one, so stop here.
+            // Groups (3 and 4) are deprecated and unskippable.
             _ => return None,
         };
         Some((number, value))

@@ -8,10 +8,8 @@ use crate::platform::runtime;
 use crate::discord::model::{GuildFolders, RawSettingsProto, parse_guild_folders};
 
 /// Fetches the rail's server ordering (`GET /users/@me/settings-proto/1`,
-/// `PreloadedUserSettings.guild_folders`).
-///
-/// This is a user-client endpoint with no twilight helper, so it goes out as a
-/// raw request; a token that can't reach it fails like any other request.
+/// `PreloadedUserSettings.guild_folders`). A user-client endpoint with no
+/// twilight helper, so it goes out as a raw request.
 pub fn fetch_guild_folders(
     token: String,
     on_done: impl FnOnce(Result<GuildFolders, String>) + Send + 'static,
