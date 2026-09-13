@@ -14,12 +14,13 @@ mod token;
 pub use gateway::{IncomingMessage, connect_gateway};
 pub use model::{
     Channel, ChannelKind, CurrentUser, DirectMessage, Embed, EmbedAuthor, EmbedField, EmbedFooter,
-    EmbedLayout, EmbedMedia, Guild, ImageAttachment, Message, MessageReference, Reaction,
-    ReactionEmoji, UserProfile,
+    EmbedLayout, EmbedMedia, Guild, GuildFolders, ImageAttachment, Message, MessageReference,
+    Reaction, ReactionEmoji, UserProfile,
 };
 pub use rest::{
     MAX_ATTACHMENT_SIZE, MESSAGE_PAGE_SIZE, delete_message, fetch_channels, fetch_current_user,
-    fetch_dms, fetch_guilds, fetch_messages, fetch_user_profile, send_message, toggle_reaction,
+    fetch_dms, fetch_guild_folders, fetch_guilds, fetch_messages, fetch_user_profile, send_message,
+    toggle_reaction,
 };
 pub use token::{load_token, save_token};
 pub use twilight_model::guild::Permissions;

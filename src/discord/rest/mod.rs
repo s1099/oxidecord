@@ -7,6 +7,7 @@
 mod channel;
 mod guild;
 mod message;
+mod settings;
 mod user;
 
 pub use channel::fetch_dms;
@@ -15,4 +16,5 @@ pub use message::{
     MAX_ATTACHMENT_SIZE, MESSAGE_PAGE_SIZE, delete_message, fetch_messages, send_message,
     toggle_reaction,
 };
+pub use settings::fetch_guild_folders;
 pub use user::{fetch_current_user, fetch_user_profile};

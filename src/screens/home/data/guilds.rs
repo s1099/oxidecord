@@ -8,6 +8,7 @@ use twilight_model::id::{
 
 use crate::discord::{self, Channel};
 use crate::screens::home::channels::build_channel_groups;
+use crate::screens::home::folders::build_rail_entries;
 use crate::screens::home::{HomeScreen, View};
 
 impl HomeScreen {
@@ -38,6 +39,7 @@ impl HomeScreen {
                         let first = guilds.first().map(|guild| guild.id);
                         this.guilds = guilds;
                         this.error = None;
+                        this.rebuild_rail();
                         if let Some(guild_id) = first {
                             this.select_guild(guild_id, window, cx);
                         }
@@ -49,6 +51,44 @@ impl HomeScreen {
             });
         })
         .detach();
+    }
+
+    /// Loads the user's folder settings, which decide the rail's order.
+    ///
+    /// Best-effort: the rail renders from the plain guild list until this
+    /// lands, and keeps doing so if it never does.
+    pub(in crate::screens::home) fn load_guild_folders(&mut self, cx: &mut Context<Self>) {
+        let Some(token) = discord::load_token() else {
+            return;
+        };
+
+        let (tx, rx) = futures::channel::oneshot::channel();
+        discord::fetch_guild_folders(token, move |result| {
+            let _ = tx.send(result);
+        });
+
+        cx.spawn(async move |this, cx| {
+            let Ok(result) = rx.await else {
+                return;
+            };
+            let _ = this.update(cx, |this, cx| {
+                match result {
+                    Ok(folders) => this.guild_folders = Some(folders),
+                    Err(err) => {
+                        eprintln!("failed to load guild folders: {err}");
+                        return;
+                    }
+                }
+                this.rebuild_rail();
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
+    /// Re-lays the rail out of the current guild list and folder settings.
+    fn rebuild_rail(&mut self) {
+        self.rail_entries = build_rail_entries(&self.guilds, self.guild_folders.as_ref());
     }
 
     /// Loads the signed-in user for the sidebar account panel. Best-effort:

@@ -18,6 +18,7 @@ use crate::ui::smooth_scroll::SmoothScroll;
 
 use super::channels::ChannelGroup;
 use super::data::attachments::PendingAttachment;
+use super::folders::RailEntry;
 
 /// Which list occupies the sidebar: a guild's channels, or the DM list.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -57,6 +58,15 @@ pub struct HomeScreen {
     /// The signed-in user, shown in the sidebar account panel. `None` until the
     /// `GET /users/@me` fetch resolves (or if it fails).
     pub(super) current_user: Option<discord::CurrentUser>,
+    /// The guild list laid out for the rail, folders and all. Rebuilt whenever
+    /// the guild list or the folder settings change.
+    pub(super) rail_entries: Vec<RailEntry>,
+    /// The user's folder settings, as Discord stores them. `None` until the
+    /// settings-proto fetch resolves, or if it fails — the rail then falls back
+    /// to the plain guild order.
+    pub(super) guild_folders: Option<discord::GuildFolders>,
+    /// Folders the user has opened, by folder id. Folders start collapsed.
+    pub(super) expanded_folders: HashSet<i64>,
     pub(super) selected_guild: Option<Id<GuildMarker>>,
     pub(super) loading: bool,
     pub(super) error: Option<String>,
@@ -151,6 +161,9 @@ impl HomeScreen {
         let mut this = Self {
             view: View::Guild,
             guilds: Vec::new(),
+            rail_entries: Vec::new(),
+            guild_folders: None,
+            expanded_folders: HashSet::new(),
             current_user: None,
             selected_guild: None,
             loading: true,
@@ -187,6 +200,7 @@ impl HomeScreen {
             dm_scroll: SmoothScroll::div(),
         };
         this.load_guilds(window, cx);
+        this.load_guild_folders(cx);
         this.load_current_user(cx);
         this.start_gateway(cx);
         // Seeds the focus path so the root element's key listeners are live

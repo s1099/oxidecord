@@ -9,6 +9,7 @@
 
 mod channels;
 mod data;
+mod folders;
 mod state;
 mod view;
 

@@ -9,6 +9,7 @@ mod channel;
 mod embed;
 mod guild;
 mod message;
+mod settings;
 mod time;
 mod user;
 
@@ -16,9 +17,11 @@ pub use channel::{Channel, ChannelKind, DirectMessage};
 pub use embed::{Embed, EmbedAuthor, EmbedField, EmbedFooter, EmbedLayout, EmbedMedia};
 pub use guild::Guild;
 pub use message::{ImageAttachment, Message, MessageReference, Reaction, ReactionEmoji};
+pub use settings::GuildFolders;
 pub use user::{CurrentUser, UserProfile};
 
 pub(super) use channel::{convert_channel, convert_dms};
 pub(super) use guild::convert_guild;
 pub(super) use message::convert_message;
+pub(super) use settings::{RawSettingsProto, parse_guild_folders};
 pub(super) use user::{RawProfile, convert_current_user, convert_user_profile};
