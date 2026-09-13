@@ -18,11 +18,18 @@ cargo run --release # release build
 3. Binary can be found in `target/release` or `target/debug`
 
 ### TODO
-- App icon
-- Embeds
-- Videos
-- Voice calls
-- Screenshare and video calls
-- Caching
-- Markdown rendering
-- Cross platform autoupdater (only Windows is implemented; macOS and Linux still need their own swap step)
+- [x] Embeds
+- [x] Dm's
+- [x] Image rendering
+- [x] Themes
+- [x] Updater
+- [ ] App icon
+- [ ] Status changes
+- [ ] Video playback
+- [ ] Voice calls
+- [ ] Screenshare and video calls
+- [ ] Caching
+- [ ] Markdown rendering
+- [ ] Custom themes
+- [ ] Cross platform autoupdater (only Windows is works right now)
+
