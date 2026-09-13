@@ -13,8 +13,9 @@ mod token;
 
 pub use gateway::{IncomingMessage, connect_gateway};
 pub use model::{
-    Channel, ChannelKind, CurrentUser, DirectMessage, Guild, ImageAttachment, Message,
-    MessageReference, Reaction, ReactionEmoji, UserProfile,
+    Channel, ChannelKind, CurrentUser, DirectMessage, Embed, EmbedAuthor, EmbedField, EmbedFooter,
+    EmbedLayout, EmbedMedia, Guild, ImageAttachment, Message, MessageReference, Reaction,
+    ReactionEmoji, UserProfile,
 };
 pub use rest::{
     MAX_ATTACHMENT_SIZE, MESSAGE_PAGE_SIZE, fetch_channels, fetch_current_user, fetch_dms,

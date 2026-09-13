@@ -6,6 +6,7 @@ use twilight_model::id::{
 };
 
 use super::cdn;
+use super::embed::{Embed, convert_embed};
 use super::time::format_timestamp;
 use super::user::small_avatar_url;
 
@@ -18,6 +19,8 @@ pub struct Message {
     pub content: String,
     pub timestamp: String,
     pub images: Vec<ImageAttachment>,
+    /// Rich embeds under the content: link previews, bot cards, and so on.
+    pub embeds: Vec<Embed>,
     /// The message this one is a reply to, when it references another. Carries
     /// just enough to render the quoted preview above the message.
     pub reply: Option<MessageReference>,
@@ -104,6 +107,7 @@ pub(in crate::discord) fn convert_message(message: twilight_model::channel::Mess
                 height: attachment.height.map(|h| h as u32),
             })
             .collect(),
+        embeds: message.embeds.into_iter().map(convert_embed).collect(),
         reply: message
             .referenced_message
             .map(|referenced| convert_reference(*referenced)),

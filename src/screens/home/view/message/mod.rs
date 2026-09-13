@@ -1,6 +1,7 @@
 //! A single message row: its header, content, attachments, and hover toolbar.
 
 mod attachment;
+mod embed;
 mod reactions;
 mod reply;
 mod toolbar;
@@ -30,25 +31,29 @@ impl HomeScreen {
         let theme = cx.theme();
 
         let has_images = !message.images.is_empty();
+        let has_embeds = !message.embeds.is_empty();
         let content: AnyElement = v_flex()
             .w_full()
             .min_w_0()
             .gap_1()
             .when(!message.content.is_empty(), |this| {
                 this.child(render_message_text(
-                    message.id.get(),
+                    ("message-content", message.id.get()),
                     &message.content,
                     theme.link,
                 ))
             })
-            .when(message.content.is_empty() && !has_images, |this| {
-                this.child(
-                    div()
-                        .italic()
-                        .text_color(theme.muted_foreground)
-                        .child("(no text content)"),
-                )
-            })
+            .when(
+                message.content.is_empty() && !has_images && !has_embeds,
+                |this| {
+                    this.child(
+                        div()
+                            .italic()
+                            .text_color(theme.muted_foreground)
+                            .child("(no text content)"),
+                    )
+                },
+            )
             .when(has_images, |this| {
                 this.child(
                     v_flex().gap_1().children(
@@ -58,6 +63,9 @@ impl HomeScreen {
                             .map(|image| attachment::render_image(image, &self.image_cache)),
                     ),
                 )
+            })
+            .when(has_embeds, |this| {
+                this.child(self.render_embeds(message.id.get(), &message.embeds, cx))
             })
             .when(!message.reactions.is_empty(), |this| {
                 this.child(self.render_reactions(message, cx))

@@ -24,4 +24,5 @@ cargo run --release # release build
 - Voice calls
 - Screenshare and video calls
 - Caching
+- Markdown rendering
 - Cross platform autoupdater (only Windows is implemented; macOS and Linux still need their own swap step)

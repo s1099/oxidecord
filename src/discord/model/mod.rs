@@ -6,12 +6,14 @@
 
 mod cdn;
 mod channel;
+mod embed;
 mod guild;
 mod message;
 mod time;
 mod user;
 
 pub use channel::{Channel, ChannelKind, DirectMessage};
+pub use embed::{Embed, EmbedAuthor, EmbedField, EmbedFooter, EmbedLayout, EmbedMedia};
 pub use guild::Guild;
 pub use message::{ImageAttachment, Message, MessageReference, Reaction, ReactionEmoji};
 pub use user::{CurrentUser, UserProfile};

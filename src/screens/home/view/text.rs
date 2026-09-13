@@ -41,7 +41,7 @@ fn find_links(text: &str) -> Vec<Link> {
 /// colour, underlined, and clickable — a click opens the URL in the default
 /// browser. Text without links renders as a plain string.
 pub(in crate::screens::home::view) fn render_message_text(
-    id: u64,
+    id: impl Into<ElementId>,
     content: &str,
     link_color: Hsla,
 ) -> AnyElement {
@@ -78,14 +78,11 @@ pub(in crate::screens::home::view) fn render_message_text(
         .w_full()
         .min_w_0()
         .child(
-            InteractiveText::new(("message-content", id), styled).on_click(
-                ranges,
-                move |ix, _window, cx| {
-                    if let Some(url) = urls.get(ix) {
-                        cx.open_url(url);
-                    }
-                },
-            ),
+            InteractiveText::new(id, styled).on_click(ranges, move |ix, _window, cx| {
+                if let Some(url) = urls.get(ix) {
+                    cx.open_url(url);
+                }
+            }),
         )
         .into_any_element()
 }
