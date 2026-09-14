@@ -16,12 +16,18 @@ impl HomeScreen {
             return pane(message_list::skeleton().into_any_element(), cx);
         };
 
-        v_flex()
+        let pane = v_flex()
             .flex_1()
             .h_full()
             .min_w_0()
-            .child(self.render_channel_header(&channel, cx))
-            .child(self.render_messages(cx))
+            .child(self.render_channel_header(&channel, cx));
+
+        // A voice channel's pane is the call itself: no history, no composer.
+        if channel.kind.is_voice() {
+            return pane.child(self.render_voice_stage(cx)).into_any_element();
+        }
+
+        pane.child(self.render_messages(cx))
             .child(self.render_message_bar(channel.can_send, cx))
             .into_any_element()
     }

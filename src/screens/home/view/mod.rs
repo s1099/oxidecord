@@ -8,6 +8,7 @@ mod rail;
 mod sidebar;
 mod text;
 mod user_panel;
+mod voice;
 
 use gpui::*;
 use gpui_component::{ActiveTheme as _, h_flex};

@@ -66,6 +66,6 @@ impl HomeScreen {
             );
         }
 
-        shell(guild_name, list, self.render_user_panel(cx), cx)
+        shell(guild_name, list, self.render_sidebar_footer(cx), cx)
     }
 }

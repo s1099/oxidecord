@@ -10,3 +10,4 @@ pub(super) mod dms;
 pub(super) mod guilds;
 pub(super) mod messages;
 pub(super) mod profile;
+pub(super) mod voice;

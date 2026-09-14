@@ -19,6 +19,7 @@ use crate::ui::smooth_scroll::SmoothScroll;
 use super::channels::ChannelGroup;
 use super::data::attachments::PendingAttachment;
 use super::folders::RailEntry;
+use super::voice::VoiceCall;
 
 /// Which list occupies the sidebar: a guild's channels, or the DM list.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -102,6 +103,14 @@ pub struct HomeScreen {
     /// Monotonic id source for `pending_attachments`, so each thumbnail has a
     /// stable key even if the same image is pasted twice.
     pub(super) next_attachment_id: u64,
+    /// The call the user is in, if any. Drives the sidebar's voice panel and
+    /// the call stage in the content pane.
+    pub(super) voice: Option<VoiceCall>,
+    /// Self-mute and self-deafen. They sit on the screen rather than on the
+    /// call because Discord keeps them set between calls: leave muted, rejoin
+    /// muted.
+    pub(super) voice_muted: bool,
+    pub(super) voice_deafened: bool,
     /// Whether shift is currently held, tracked so the message toolbar can
     /// expand its hidden actions inline the way Discord's does.
     pub(super) shift_held: bool,
@@ -184,6 +193,9 @@ impl HomeScreen {
             replying_to: None,
             pending_attachments: Vec::new(),
             next_attachment_id: 0,
+            voice: None,
+            voice_muted: false,
+            voice_deafened: false,
             shift_held: false,
             focus_handle: cx.focus_handle(),
             profile_popup: None,

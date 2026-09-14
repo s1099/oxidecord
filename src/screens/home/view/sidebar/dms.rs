@@ -103,6 +103,6 @@ impl HomeScreen {
             list = list.children(self.dms.iter().map(|dm| self.render_dm_row(dm, cx)));
         }
 
-        shell("Direct Messages", list, self.render_user_panel(cx), cx)
+        shell("Direct Messages", list, self.render_sidebar_footer(cx), cx)
     }
 }

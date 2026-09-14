@@ -12,6 +12,7 @@ mod data;
 mod folders;
 mod state;
 mod view;
+mod voice;
 
 use gpui::actions;
 

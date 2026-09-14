@@ -3,8 +3,8 @@
 
 use gpui::*;
 use gpui_component::{
-    ActiveTheme as _, IconName, Sizable as _, avatar::Avatar, button::Button,
-    button::ButtonVariants as _, h_flex, v_flex,
+    ActiveTheme as _, Icon, IconName, Selectable as _, Sizable as _, avatar::Avatar,
+    button::Button, button::ButtonVariants as _, h_flex, v_flex,
 };
 
 use crate::screens::home::HomeScreen;
@@ -57,6 +57,36 @@ impl HomeScreen {
                             .text_color(theme.muted_foreground)
                             .child(username),
                     ),
+            )
+            .child(
+                Button::new("self-mute")
+                    .icon(Icon::default().path(if self.voice_muted {
+                        "icons/mic-off.svg"
+                    } else {
+                        "icons/mic.svg"
+                    }))
+                    .ghost()
+                    .small()
+                    .selected(self.voice_muted)
+                    .tooltip(if self.voice_muted { "Unmute" } else { "Mute" })
+                    .on_click(cx.listener(|this, _, _, cx| this.toggle_voice_mute(cx))),
+            )
+            .child(
+                Button::new("self-deafen")
+                    .icon(Icon::default().path(if self.voice_deafened {
+                        "icons/headphone-off.svg"
+                    } else {
+                        "icons/headphones.svg"
+                    }))
+                    .ghost()
+                    .small()
+                    .selected(self.voice_deafened)
+                    .tooltip(if self.voice_deafened {
+                        "Undeafen"
+                    } else {
+                        "Deafen"
+                    })
+                    .on_click(cx.listener(|this, _, _, cx| this.toggle_voice_deafen(cx))),
             )
             .child(
                 Button::new("user-settings")
