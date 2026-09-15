@@ -38,8 +38,28 @@ jobs:
       - name: Install Rust target
         run: rustup target add ${{ matrix.target }}
 
+      # Voice calls link Opus, which audiopus_sys builds from source, so the
+      # build needs CMake and a C compiler on top of the Rust toolchain. Both
+      # runner images ship those, but a CMake older than the image's Visual
+      # Studio doesn't know that generator, so pin a current CMake rather than
+      # trusting whatever is preinstalled. This also brings Ninja along.
+      - name: Install CMake and Ninja
+        uses: lukka/get-cmake@latest
+
+      # Ninja finds no compiler by itself the way the Visual Studio generator
+      # does, so put cl.exe and the Windows SDK on PATH before building.
+      - name: Set up MSVC environment
+        if: matrix.os == 'windows-latest'
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
       - name: Build
         run: cargo build --release --target ${{ matrix.target }}
+        env:
+          # Sidesteps the generator-vs-Visual-Studio mismatch entirely: Ninja
+          # works with any MSVC the environment above selected.
+          CMAKE_GENERATOR: Ninja
 
       - name: Upload artifact - Linux
         if: matrix.os == 'ubuntu-latest'
