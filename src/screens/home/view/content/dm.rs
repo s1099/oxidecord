@@ -3,7 +3,7 @@
 use gpui::prelude::FluentBuilder as _;
 use gpui::*;
 use gpui_component::{
-    ActiveTheme as _, Icon, Sizable as _, avatar::Avatar, button::Button,
+    ActiveTheme as _, Disableable as _, Icon, Sizable as _, avatar::Avatar, button::Button,
     button::ButtonVariants as _, v_flex,
 };
 
@@ -65,15 +65,15 @@ impl HomeScreen {
                             .ghost()
                             .small()
                             .tooltip("Start Voice Call")
-                            .on_click(cx.listener(|this, _, _, cx| this.start_dm_call(false, cx))),
+                            .on_click(cx.listener(|this, _, _, cx| this.start_dm_call(cx))),
                     )
                     .child(
                         Button::new("dm-video-call")
                             .icon(Icon::default().path("icons/video.svg"))
                             .ghost()
                             .small()
-                            .tooltip("Start Video Call")
-                            .on_click(cx.listener(|this, _, _, cx| this.start_dm_call(true, cx))),
+                            .disabled(true)
+                            .tooltip("Video isn't supported yet"),
                     )
                 }),
             cx,

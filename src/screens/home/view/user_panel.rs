@@ -59,17 +59,21 @@ impl HomeScreen {
                     ),
             )
             .child(
-                Button::new("self-mute")
-                    .icon(Icon::default().path(if self.voice_muted {
-                        "icons/mic-off.svg"
-                    } else {
-                        "icons/mic.svg"
-                    }))
-                    .ghost()
-                    .small()
-                    .selected(self.voice_muted)
-                    .tooltip(if self.voice_muted { "Unmute" } else { "Mute" })
-                    .on_click(cx.listener(|this, _, _, cx| this.toggle_voice_mute(cx))),
+                self.with_mic_menu(
+                    "panel-mic-menu",
+                    Button::new("self-mute")
+                        .icon(Icon::default().path(if self.voice_muted {
+                            "icons/mic-off.svg"
+                        } else {
+                            "icons/mic.svg"
+                        }))
+                        .ghost()
+                        .small()
+                        .selected(self.voice_muted)
+                        .tooltip(if self.voice_muted { "Unmute" } else { "Mute" })
+                        .on_click(cx.listener(|this, _, _, cx| this.toggle_voice_mute(cx))),
+                    cx,
+                ),
             )
             .child(
                 Button::new("self-deafen")

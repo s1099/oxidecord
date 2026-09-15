@@ -18,6 +18,10 @@ pub struct Prefs {
     /// until the user picks one, which leaves the system appearance in charge.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub theme: Option<String>,
+    /// Id of the microphone calls should use. `None` follows whichever device
+    /// the system calls the default.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub input_device: Option<String>,
 }
 
 /// Reads the preferences file, or returns the defaults if it isn't there yet.

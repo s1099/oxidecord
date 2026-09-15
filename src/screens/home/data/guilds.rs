@@ -105,6 +105,9 @@ impl HomeScreen {
                 return;
             };
             let _ = this.update(cx, |this, cx| {
+                // Whichever of this and the gateway's READY lands first fills
+                // in the id a voice connection identifies itself with.
+                this.self_user_id.get_or_insert(user.id);
                 this.current_user = Some(user);
                 cx.notify();
             });

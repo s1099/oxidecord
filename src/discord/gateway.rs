@@ -1,12 +1,25 @@
 //! The gateway websocket connection, which delivers live events.
+//!
+//! Dispatches are read as raw JSON rather than through twilight's `Event`
+//! enum: the app needs a few user-client payloads twilight either models too
+//! strictly (a DM call's `VOICE_SERVER_UPDATE` has no guild id) or doesn't
+//! model at all. The shard still handles the session itself — heartbeats,
+//! identify, resume — since that happens as messages are polled.
 
-use twilight_gateway::{Event, EventTypeFlags, Intents, Shard, ShardId, StreamExt as _};
-use twilight_model::gateway::payload::incoming::MessageCreate;
-use twilight_model::id::{Id, marker::ChannelMarker};
+use futures::StreamExt as _;
+use serde::Deserialize;
+use twilight_gateway::{Intents, Message as ShardMessage, MessageSender, Shard, ShardId};
+use twilight_model::id::{
+    Id,
+    marker::{ChannelMarker, GuildMarker, UserMarker},
+};
 
 use crate::platform::runtime;
 
-use super::model::{Message, convert_message};
+use super::model::{
+    Message, RawVoiceServer, RawVoiceState, VoiceServerInfo, VoiceUserState, convert_message,
+    convert_voice_server, convert_voice_state,
+};
 
 /// A message received live over the gateway, tagged with the channel it
 /// belongs to so the UI can decide whether it's for the open conversation.
@@ -15,41 +28,198 @@ pub struct IncomingMessage {
     pub message: Message,
 }
 
-/// Opens a gateway websocket connection and invokes `on_message` for every
-/// `MESSAGE_CREATE` dispatch. Returning `false` from it (the receiving end went
+/// The live events the app acts on.
+pub enum GatewayEvent {
+    /// The session is up. Carries the signed-in user, which voice connections
+    /// need to identify themselves.
+    Ready {
+        user_id: Id<UserMarker>,
+    },
+    Message(IncomingMessage),
+    /// Someone joined, left, or changed their state in a voice channel. Also
+    /// synthesized for the states bundled into `GUILD_CREATE`, so the app
+    /// learns who was already in a channel before it connected.
+    VoiceState(VoiceUserState),
+    /// The voice server assigned to a call the user is joining.
+    VoiceServer(VoiceServerInfo),
+}
+
+/// Sends commands up the gateway from outside the receive loop.
+///
+/// Cloneable and cheap: commands are queued on a channel the shard drains, so
+/// they survive a reconnect rather than failing while one is in flight.
+#[derive(Clone)]
+pub struct GatewaySender {
+    inner: MessageSender,
+}
+
+impl GatewaySender {
+    /// Sends `VOICE_STATE_UPDATE` (opcode 4): joins `channel_id`, or leaves
+    /// the current channel when it's `None`.
+    ///
+    /// `guild_id` is `None` for a DM call, which Discord accepts as a null
+    /// field — twilight's own command type can't express that, so the payload
+    /// is built here.
+    pub fn update_voice_state(
+        &self,
+        guild_id: Option<Id<GuildMarker>>,
+        channel_id: Option<Id<ChannelMarker>>,
+        self_mute: bool,
+        self_deaf: bool,
+    ) {
+        let payload = serde_json::json!({
+            "op": 4,
+            "d": {
+                "guild_id": guild_id,
+                "channel_id": channel_id,
+                "self_mute": self_mute,
+                "self_deaf": self_deaf,
+                "self_video": false,
+            }
+        });
+        let _ = self.inner.send(payload.to_string());
+    }
+}
+
+/// The dispatches the app reads. Everything else — presence updates, typing,
+/// the rest of a user account's firehose — is dropped before its payload is
+/// parsed, which is most of the traffic.
+const HANDLED: &[&str] = &[
+    "READY",
+    "MESSAGE_CREATE",
+    "VOICE_STATE_UPDATE",
+    "VOICE_SERVER_UPDATE",
+    "GUILD_CREATE",
+];
+
+/// Just enough of a payload to tell what it is. Deserializing this walks the
+/// JSON without building it, so an unwanted dispatch costs no allocations.
+#[derive(Deserialize)]
+struct Envelope<'a> {
+    #[serde(default, borrow)]
+    t: Option<&'a str>,
+}
+
+/// The envelope every gateway payload arrives in. Only dispatches (opcode 0)
+/// carry a name and data the app cares about.
+#[derive(Deserialize)]
+struct Payload {
+    #[serde(default)]
+    t: Option<String>,
+    #[serde(default)]
+    d: Option<serde_json::Value>,
+}
+
+#[derive(Deserialize)]
+struct ReadyPayload {
+    user: ReadyUser,
+}
+
+#[derive(Deserialize)]
+struct ReadyUser {
+    id: Id<UserMarker>,
+}
+
+/// `GUILD_CREATE`, of which only the voice states are read here: they say who
+/// is already sitting in each of the guild's voice channels.
+#[derive(Deserialize)]
+struct GuildCreatePayload {
+    id: Id<GuildMarker>,
+    #[serde(default)]
+    voice_states: Vec<RawVoiceState>,
+}
+
+/// Opens a gateway websocket connection and invokes `on_event` for every
+/// dispatch the app acts on. Returning `false` from it (the receiving end went
 /// away) ends the shard loop and drops the socket.
 ///
 /// The shard reconnects and resumes on its own, so transient errors are
 /// skipped rather than treated as fatal.
 pub fn connect_gateway(
     token: String,
-    mut on_message: impl FnMut(IncomingMessage) -> bool + Send + 'static,
-) {
-    runtime::handle().spawn(async move {
-        // Discord ignores the intents field for user tokens; a real user
-        // client receives every event its account can see. Request all intents
-        // so we mirror that and never filter events at this layer (the shard
-        // still requires a value in the IDENTIFY payload).
-        let mut shard = Shard::new(ShardId::ONE, token, Intents::all());
+    mut on_event: impl FnMut(GatewayEvent) -> bool + Send + 'static,
+) -> GatewaySender {
+    // The shard is built here rather than inside the task because the sender
+    // has to come back to the caller — but building one starts the identify
+    // queue's timer, so it has to happen inside the runtime all the same.
+    let guard = runtime::handle().enter();
+    // Discord ignores the intents field for user tokens; a real user client
+    // receives every event its account can see. Request all intents so we
+    // mirror that and never filter events at this layer (the shard still
+    // requires a value in the IDENTIFY payload).
+    let mut shard = Shard::new(ShardId::ONE, token, Intents::all());
+    let sender = GatewaySender {
+        inner: shard.sender(),
+    };
+    drop(guard);
 
-        while let Some(item) = shard.next_event(EventTypeFlags::MESSAGE_CREATE).await {
-            let event = match item {
-                Ok(event) => event,
-                // Reconnects/resumes are handled by the shard internally; a
-                // receive error just means skip this one and keep listening.
-                Err(_) => continue,
+    runtime::handle().spawn(async move {
+        while let Some(item) = shard.next().await {
+            // Reconnects and resumes are handled by the shard internally; a
+            // receive error just means skip this one and keep listening.
+            let Ok(ShardMessage::Text(json)) = item else {
+                continue;
+            };
+            match serde_json::from_str::<Envelope>(&json) {
+                Ok(Envelope { t: Some(name) }) if HANDLED.contains(&name) => {}
+                _ => continue,
+            }
+            let Ok(payload) = serde_json::from_str::<Payload>(&json) else {
+                continue;
+            };
+            let (Some(name), Some(data)) = (payload.t, payload.d) else {
+                continue;
             };
 
-            if let Event::MessageCreate(message) = event {
-                let MessageCreate { message, .. } = *message;
-                let incoming = IncomingMessage {
-                    channel_id: message.channel_id,
-                    message: convert_message(message),
-                };
-                if !on_message(incoming) {
-                    break;
+            // A dispatch the app doesn't handle, or one whose shape doesn't
+            // match, yields nothing rather than ending the loop.
+            for event in dispatch(&name, data) {
+                if !on_event(event) {
+                    return;
                 }
             }
         }
     });
+
+    sender
+}
+
+/// Turns one dispatch into the events the app acts on. `GUILD_CREATE` is the
+/// only one that fans out into several.
+fn dispatch(name: &str, data: serde_json::Value) -> Vec<GatewayEvent> {
+    match name {
+        "READY" => serde_json::from_value::<ReadyPayload>(data)
+            .map(|ready| {
+                vec![GatewayEvent::Ready {
+                    user_id: ready.user.id,
+                }]
+            })
+            .unwrap_or_default(),
+        "MESSAGE_CREATE" => serde_json::from_value::<twilight_model::channel::Message>(data)
+            .map(|message| {
+                vec![GatewayEvent::Message(IncomingMessage {
+                    channel_id: message.channel_id,
+                    message: convert_message(message),
+                })]
+            })
+            .unwrap_or_default(),
+        "VOICE_STATE_UPDATE" => serde_json::from_value::<RawVoiceState>(data)
+            .map(|state| vec![GatewayEvent::VoiceState(convert_voice_state(state, None))])
+            .unwrap_or_default(),
+        "VOICE_SERVER_UPDATE" => serde_json::from_value::<RawVoiceServer>(data)
+            .map(|server| vec![GatewayEvent::VoiceServer(convert_voice_server(server))])
+            .unwrap_or_default(),
+        "GUILD_CREATE" => serde_json::from_value::<GuildCreatePayload>(data)
+            .map(|guild| {
+                guild
+                    .voice_states
+                    .into_iter()
+                    .map(|state| {
+                        GatewayEvent::VoiceState(convert_voice_state(state, Some(guild.id)))
+                    })
+                    .collect()
+            })
+            .unwrap_or_default(),
+        _ => Vec::new(),
+    }
 }

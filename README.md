@@ -17,6 +17,11 @@ cargo run --release # release build
 ``` 
 3. Binary can be found in `target/release` or `target/debug`
 
+Voice calls link Opus, which is built from source, so the build also needs
+CMake and a C compiler. If CMake is older than the installed Visual Studio it
+won't know that generator so either update CMake, or build through Ninja with
+`CMAKE_GENERATOR=Ninja`.
+
 ### TODO
 - [x] Embeds
 - [x] Dm's
@@ -26,7 +31,7 @@ cargo run --release # release build
 - [ ] App icon
 - [ ] Status changes
 - [ ] Video playback
-- [ ] Voice calls
+- [x] Voice calls
 - [ ] Screenshare and video calls
 - [ ] Caching
 - [ ] Markdown rendering

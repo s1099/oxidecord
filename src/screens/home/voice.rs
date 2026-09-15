@@ -1,24 +1,23 @@
 //! The state behind a voice call, and the small types it holds.
 //!
-//! This is the interface layer only: nothing here speaks to Discord's voice
-//! gateway or touches an audio device. Joining a channel fills a [`VoiceCall`]
-//! in locally so the call chrome — the sidebar panel, the stage, the controls —
-//! can be built and looked at ahead of the transport underneath it.
+//! The call itself lives in [`crate::voice`]; this is what the screen needs to
+//! draw one. Who is in the channel isn't stored here — that comes from the
+//! voice states the gateway keeps up to date, so a participant list is always
+//! built from the latest ones.
 
 use twilight_model::id::{
     Id,
-    marker::{ChannelMarker, UserMarker},
+    marker::{ChannelMarker, GuildMarker, UserMarker},
 };
 
 /// Where a call is in its lifecycle.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(super) enum VoiceStatus {
-    /// Handshaking with the voice server.
+    /// Waiting on the gateway for the voice server, then on the handshake with
+    /// it.
     Connecting,
-    /// In the channel, audio flowing.
+    /// Connected to the voice server, audio flowing.
     Connected,
-    /// An outgoing DM call nobody has picked up yet.
-    Ringing,
 }
 
 impl VoiceStatus {
@@ -27,7 +26,6 @@ impl VoiceStatus {
         match self {
             Self::Connecting => "Connecting…",
             Self::Connected => "Voice Connected",
-            Self::Ringing => "Ringing…",
         }
     }
 }
@@ -39,60 +37,46 @@ pub(super) enum VoiceKind {
     Direct,
 }
 
-/// Someone in the call. The signed-in user is one of these too, flagged with
-/// `is_self` — their mute and deafen live on the screen rather than here, since
-/// both outlive any single call.
-pub(super) struct VoiceParticipant {
-    pub user_id: Option<Id<UserMarker>>,
-    pub name: String,
-    pub avatar_url: Option<String>,
-    pub is_self: bool,
-    /// Invited but not yet in the call, so the tile reads as waiting.
-    pub pending: bool,
-    pub muted: bool,
-    pub deafened: bool,
-}
-
-impl VoiceParticipant {
-    pub(super) fn new(name: String, avatar_url: Option<String>) -> Self {
-        Self {
-            user_id: None,
-            name,
-            avatar_url,
-            is_self: false,
-            pending: false,
-            muted: false,
-            deafened: false,
-        }
-    }
-
-    pub(super) fn user_id(mut self, id: Id<UserMarker>) -> Self {
-        self.user_id = Some(id);
-        self
-    }
-
-    pub(super) fn this_user(mut self) -> Self {
-        self.is_self = true;
-        self
-    }
-
-    pub(super) fn pending(mut self) -> Self {
-        self.pending = true;
-        self
-    }
-}
-
-/// The call the user is currently in. At most one at a time, like Discord.
+/// The call the user is in. At most one at a time, like Discord.
 pub(super) struct VoiceCall {
     /// The voice channel, or the DM the call is placed in.
     pub channel_id: Id<ChannelMarker>,
+    /// The channel's guild. `None` for a DM call, which Discord treats as a
+    /// guildless one.
+    pub guild_id: Option<Id<GuildMarker>>,
     pub kind: VoiceKind,
     /// The channel or conversation name, shown wherever the call is labelled.
     pub name: String,
     /// The guild the channel belongs to; `None` for a DM call.
     pub context: Option<String>,
     pub status: VoiceStatus,
-    pub camera: bool,
-    pub screen_share: bool,
-    pub participants: Vec<VoiceParticipant>,
+    /// Why the call failed, when it did.
+    pub error: Option<String>,
+}
+
+/// The connection parameters, as the two gateway dispatches that answer a join
+/// deliver them.
+///
+/// `VOICE_STATE_UPDATE` carries the session and `VOICE_SERVER_UPDATE` the
+/// server, in either order, and the connection can only open once both have
+/// landed.
+#[derive(Default)]
+pub(super) struct PendingVoice {
+    pub session_id: Option<String>,
+    pub token: Option<String>,
+    pub endpoint: Option<String>,
+}
+
+/// Someone in a voice channel, assembled for display from their voice state.
+pub(super) struct VoiceParticipant {
+    pub user_id: Id<UserMarker>,
+    pub name: String,
+    pub avatar_url: Option<String>,
+    /// Silenced, whether by themselves or by a moderator — the tile shows the
+    /// badge either way.
+    pub muted: bool,
+    pub deafened: bool,
+    /// Transmitting right now.
+    pub speaking: bool,
+    pub is_self: bool,
 }

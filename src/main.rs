@@ -7,6 +7,7 @@ mod discord;
 mod platform;
 mod screens;
 mod ui;
+mod voice;
 
 use std::sync::Arc;
 

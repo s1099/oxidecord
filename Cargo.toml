@@ -20,6 +20,17 @@ futures = "0.3"
 anyhow = "1.0.103"
 reqwest = { package = "zed-reqwest", version = "0.12.15-zed", default-features = false, features = ["rustls-tls-native-roots"] }
 keyring = "4.1.5"
+# "gateway" is only here because songbird 0.6.0 declares dashmap under it while
+# "receive" uses it, so receiving doesn't build without it. Its manager and Call
+# types go unused: a DM call is guildless and theirs require a guild id.
+songbird = { version = "0.6.0", default-features = false, features = ["driver", "gateway", "receive", "rustls", "tws"] }
+cpal = "0.18.2"
+# Songbird pulls symphonia in with every format and codec turned off, leaving
+# the registry it hands the mixer empty. Sending the microphone needs the PCM
+# decoder: the raw f32 adapter declares itself as PCM_F32LE, so without this
+# the track is dropped as an unsupported codec and nothing is transmitted.
+symphonia = { version = "0.5.5", default-features = false, features = ["pcm"] }
+async-trait = "0.1.92"
 
 [patch.crates-io]
 twilight-http = { git = "https://github.com/s1099/twilight", branch = "main" }

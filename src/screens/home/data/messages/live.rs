@@ -1,32 +1,39 @@
-//! The gateway connection that keeps the open conversation live.
+//! The gateway connection that keeps the open conversation live, and the call
+//! events that ride alongside it.
 
 use gpui::*;
 
 use crate::discord;
 use crate::screens::home::HomeScreen;
+use crate::voice::{VoiceEngine, VoiceEvent};
 
 impl HomeScreen {
-    /// Opens the gateway connection and pumps live `MESSAGE_CREATE` events
-    /// onto the gpui foreground, where they update the open conversation.
+    /// Opens the gateway connection and pumps its events onto the gpui
+    /// foreground, where they update the open conversation and the call.
+    ///
+    /// The call engine is started here too: a call is opened with a gateway
+    /// command and answered with gateway dispatches, so neither half is of any
+    /// use without the other.
     pub(in crate::screens::home) fn start_gateway(&mut self, cx: &mut Context<Self>) {
         let Some(token) = discord::load_token() else {
             return;
         };
 
-        let (tx, rx) = futures::channel::mpsc::unbounded::<discord::IncomingMessage>();
-        discord::connect_gateway(token, move |incoming| {
+        let (tx, rx) = futures::channel::mpsc::unbounded::<discord::GatewayEvent>();
+        let gateway = discord::connect_gateway(token, move |event| {
             // Returns whether the foreground receiver is still around; once it
             // isn't (the screen was dropped), the gateway loop stops.
-            tx.unbounded_send(incoming).is_ok()
+            tx.unbounded_send(event).is_ok()
         });
+        self.gateway = Some(gateway);
 
         cx.spawn(async move |this, cx| {
             use futures::StreamExt as _;
 
             let mut rx = rx;
-            while let Some(incoming) = rx.next().await {
+            while let Some(event) = rx.next().await {
                 if this
-                    .update(cx, |this, cx| this.handle_incoming_message(incoming, cx))
+                    .update(cx, |this, cx| this.handle_gateway_event(event, cx))
                     .is_err()
                 {
                     // The entity is gone; stop draining so the sender closes.
@@ -35,6 +42,38 @@ impl HomeScreen {
             }
         })
         .detach();
+
+        let (tx, rx) = futures::channel::mpsc::unbounded::<VoiceEvent>();
+        let engine = VoiceEngine::start(tx);
+        // Hand over the remembered microphone before any call can be made.
+        engine.set_input_device(self.voice_input_device.clone());
+        self.voice_engine = Some(engine);
+
+        cx.spawn(async move |this, cx| {
+            use futures::StreamExt as _;
+
+            let mut rx = rx;
+            while let Some(event) = rx.next().await {
+                if this
+                    .update(cx, |this, cx| this.handle_voice_event(event, cx))
+                    .is_err()
+                {
+                    break;
+                }
+            }
+        })
+        .detach();
+    }
+
+    fn handle_gateway_event(&mut self, event: discord::GatewayEvent, cx: &mut Context<Self>) {
+        match event {
+            discord::GatewayEvent::Ready { user_id } => {
+                self.self_user_id = Some(user_id);
+            }
+            discord::GatewayEvent::Message(incoming) => self.handle_incoming_message(incoming, cx),
+            discord::GatewayEvent::VoiceState(state) => self.handle_voice_state(state, cx),
+            discord::GatewayEvent::VoiceServer(server) => self.handle_voice_server(server, cx),
+        }
     }
 
     /// Appends a live message to the open conversation, if it belongs there.

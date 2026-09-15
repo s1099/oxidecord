@@ -14,12 +14,14 @@ use twilight_model::id::{
 };
 
 use crate::discord::{self, DirectMessage, Guild};
+use crate::platform::prefs;
 use crate::ui::smooth_scroll::SmoothScroll;
 
 use super::channels::ChannelGroup;
 use super::data::attachments::PendingAttachment;
 use super::folders::RailEntry;
-use super::voice::VoiceCall;
+use super::voice::{PendingVoice, VoiceCall};
+use crate::voice::VoiceEngine;
 
 /// Which list occupies the sidebar: a guild's channels, or the DM list.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -106,11 +108,37 @@ pub struct HomeScreen {
     /// The call the user is in, if any. Drives the sidebar's voice panel and
     /// the call stage in the content pane.
     pub(super) voice: Option<VoiceCall>,
-    /// Self-mute and self-deafen. They sit on the screen rather than on the
-    /// call because Discord keeps them set between calls: leave muted, rejoin
-    /// muted.
+    /// Self-mute and self-deafen: one stops the microphone being sent, the
+    /// other stops everyone else being played. Deafening silences the
+    /// microphone too, so `voice_muted` can be on without the user having
+    /// pressed mute. They sit on the screen rather than on the call because
+    /// they're kept between calls: leave muted, rejoin muted.
     pub(super) voice_muted: bool,
     pub(super) voice_deafened: bool,
+    /// The mute state to go back to when undeafening, so a user who was
+    /// unmuted before gets their microphone back and one who was muted stays
+    /// muted.
+    pub(super) voice_mute_before_deafen: bool,
+    /// Id of the chosen microphone, remembered between runs. `None` follows
+    /// the system default.
+    pub(super) voice_input_device: Option<String>,
+    /// Everyone the gateway has reported in a voice channel, by user. This is
+    /// what fills every participant list: the tiles on the call stage, and the
+    /// names under each voice channel in the sidebar.
+    pub(super) voice_states: HashMap<Id<UserMarker>, discord::VoiceUserState>,
+    /// Who is transmitting in the open call, from the audio the driver
+    /// receives rather than from the gateway.
+    pub(super) voice_speaking: HashSet<Id<UserMarker>>,
+    /// The connection parameters for a join that's still in flight.
+    pub(super) pending_voice: Option<PendingVoice>,
+    /// Runs the call. Started with the gateway, since a call needs both.
+    pub(super) voice_engine: Option<VoiceEngine>,
+    /// Sends commands up the gateway — joining and leaving voice channels is
+    /// done with a gateway command, not a REST call.
+    pub(super) gateway: Option<discord::GatewaySender>,
+    /// The signed-in user's id, from whichever of `READY` or `GET /users/@me`
+    /// lands first. The voice connection can't identify itself without it.
+    pub(super) self_user_id: Option<Id<UserMarker>>,
     /// Whether shift is currently held, tracked so the message toolbar can
     /// expand its hidden actions inline the way Discord's does.
     pub(super) shift_held: bool,
@@ -196,6 +224,14 @@ impl HomeScreen {
             voice: None,
             voice_muted: false,
             voice_deafened: false,
+            voice_mute_before_deafen: false,
+            voice_input_device: prefs::load().input_device,
+            voice_states: HashMap::new(),
+            voice_speaking: HashSet::new(),
+            pending_voice: None,
+            voice_engine: None,
+            gateway: None,
+            self_user_id: None,
             shift_held: false,
             focus_handle: cx.focus_handle(),
             profile_popup: None,

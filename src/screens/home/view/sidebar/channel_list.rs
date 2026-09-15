@@ -7,6 +7,8 @@ use gpui_component::{
     h_flex, v_flex,
 };
 
+use twilight_model::id::{Id, marker::ChannelMarker};
+
 use crate::discord::Channel;
 use crate::screens::home::HomeScreen;
 use crate::screens::home::channels::{ChannelGroup, channel_icon_path};
@@ -17,15 +19,13 @@ impl HomeScreen {
         channel: &Channel,
         cx: &Context<Self>,
     ) -> impl IntoElement {
-        let is_voice = channel.kind.is_voice();
-
         // A voice channel carries the people in it under its own row, the way
-        // Discord nests them.
+        // Discord nests them — whether or not the user is in there too.
         v_flex()
             .gap(px(2.))
             .child(self.channel_row(channel, cx))
-            .when(is_voice && self.in_voice_channel(channel.id), |this| {
-                this.children(self.voice_members(cx))
+            .when(channel.kind.is_voice(), |this| {
+                this.children(self.voice_members(channel.id, cx))
             })
     }
 
@@ -72,31 +72,26 @@ impl HomeScreen {
             }))
     }
 
-    /// The call's participants, listed under the voice channel they're in.
-    fn voice_members(&self, cx: &Context<Self>) -> Vec<impl IntoElement + use<>> {
+    /// Who's in a voice channel, listed under it.
+    fn voice_members(
+        &self,
+        channel_id: Id<ChannelMarker>,
+        cx: &Context<Self>,
+    ) -> Vec<impl IntoElement + use<>> {
         let theme = cx.theme();
-        let Some(call) = self.voice.as_ref() else {
-            return Vec::new();
-        };
 
-        call.participants
-            .iter()
-            .enumerate()
-            .map(|(index, participant)| {
+        self.voice_participants(channel_id)
+            .into_iter()
+            .map(|participant| {
                 let mut avatar = Avatar::new()
                     .name(participant.name.clone())
                     .with_size(px(20.));
                 if let Some(url) = participant.avatar_url.clone() {
                     avatar = avatar.src(url);
                 }
-                let muted = if participant.is_self {
-                    self.voice_muted
-                } else {
-                    participant.muted
-                };
 
                 h_flex()
-                    .id(("voice-member", index))
+                    .id(("voice-member", participant.user_id.get()))
                     .pl(px(28.))
                     .pr_2()
                     .py(px(3.))
@@ -104,14 +99,37 @@ impl HomeScreen {
                     .items_center()
                     .rounded(px(6.))
                     .text_sm()
-                    .text_color(theme.muted_foreground)
-                    .when(participant.pending, |this| this.opacity(0.6))
-                    .child(avatar)
+                    .text_color(if participant.speaking {
+                        theme.sidebar_accent_foreground
+                    } else {
+                        theme.muted_foreground
+                    })
+                    .child(
+                        // Mirrors the ring on the call stage, so the sidebar
+                        // shows who's talking without opening the channel.
+                        div()
+                            .rounded_full()
+                            .border_1()
+                            .border_color(if participant.speaking {
+                                theme.success
+                            } else {
+                                transparent_black()
+                            })
+                            .child(avatar),
+                    )
                     .child(div().flex_1().truncate().child(participant.name.clone()))
-                    .when(muted, |this| {
+                    .when(participant.muted, |this| {
                         this.child(
                             Icon::default()
                                 .path("icons/mic-off.svg")
+                                .size_3()
+                                .text_color(theme.danger),
+                        )
+                    })
+                    .when(participant.deafened, |this| {
+                        this.child(
+                            Icon::default()
+                                .path("icons/headphone-off.svg")
                                 .size_3()
                                 .text_color(theme.danger),
                         )

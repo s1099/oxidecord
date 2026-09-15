@@ -4,12 +4,18 @@
 use gpui::prelude::FluentBuilder as _;
 use gpui::*;
 use gpui_component::{
-    ActiveTheme as _, Icon, Selectable as _, Sizable as _, avatar::Avatar, button::Button,
-    button::ButtonVariants as _, h_flex, v_flex,
+    ActiveTheme as _, Disableable as _, Icon, IconName, Selectable as _, Sizable as _,
+    avatar::Avatar,
+    button::Button,
+    button::ButtonVariants as _,
+    h_flex,
+    menu::{ContextMenuExt as _, PopupMenuItem},
+    v_flex,
 };
 
 use crate::screens::home::HomeScreen;
 use crate::screens::home::voice::{VoiceCall, VoiceKind, VoiceParticipant, VoiceStatus};
+use crate::voice;
 
 /// Height of the call band shown above a DM conversation. A voice channel's
 /// stage fills its pane instead, since there's no chat under it.
@@ -17,6 +23,11 @@ const DM_STAGE_HEIGHT: f32 = 280.;
 
 /// Diameter of the avatar on a participant tile.
 const TILE_AVATAR: f32 = 72.;
+
+/// What the camera and screen-share buttons say. Both are drawn because the
+/// call has a place for them, and disabled because nothing behind them sends
+/// video yet.
+const VIDEO_UNAVAILABLE: &str = "Video isn't supported yet";
 
 impl HomeScreen {
     /// The sidebar footer: the call panel when there's a call, the account
@@ -35,7 +46,9 @@ impl HomeScreen {
         let call = self.voice.as_ref()?;
         let theme = cx.theme();
         let connected = call.status == VoiceStatus::Connected;
-        let status_color = if connected {
+        let status_color = if call.error.is_some() {
+            theme.danger
+        } else if connected {
             theme.success
         } else {
             theme.muted_foreground
@@ -70,7 +83,10 @@ impl HomeScreen {
                                         .text_xs()
                                         .font_weight(FontWeight::SEMIBOLD)
                                         .text_color(status_color)
-                                        .child(call.status.label()),
+                                        .child(match &call.error {
+                                            Some(error) => SharedString::from(error.clone()),
+                                            None => SharedString::from(call.status.label()),
+                                        }),
                                 )
                                 .child(
                                     div()
@@ -94,19 +110,12 @@ impl HomeScreen {
                         .gap_1()
                         .child(
                             Button::new("voice-panel-camera")
-                                .icon(Icon::default().path(if call.camera {
-                                    "icons/video.svg"
-                                } else {
-                                    "icons/video-off.svg"
-                                }))
+                                .icon(Icon::default().path("icons/video-off.svg"))
                                 .ghost()
                                 .small()
                                 .flex_1()
-                                .selected(call.camera)
-                                .tooltip("Turn Camera On/Off")
-                                .on_click(
-                                    cx.listener(|this, _, _, cx| this.toggle_voice_camera(cx)),
-                                ),
+                                .disabled(true)
+                                .tooltip(VIDEO_UNAVAILABLE),
                         )
                         .child(
                             Button::new("voice-panel-share")
@@ -114,11 +123,8 @@ impl HomeScreen {
                                 .ghost()
                                 .small()
                                 .flex_1()
-                                .selected(call.screen_share)
-                                .tooltip("Share Your Screen")
-                                .on_click(
-                                    cx.listener(|this, _, _, cx| this.toggle_screen_share(cx)),
-                                ),
+                                .disabled(true)
+                                .tooltip(VIDEO_UNAVAILABLE),
                         ),
                 ),
         )
@@ -158,10 +164,16 @@ impl HomeScreen {
 
     /// The tiles and the control bar under them, shared by both stages.
     fn stage(&self, call: &VoiceCall, cx: &Context<Self>) -> Div {
+        let theme = cx.theme();
+        let participants = self.voice_participants(call.channel_id);
+        // Until the voice state for the join comes back there's nobody to
+        // draw — say what's happening rather than show an empty stage.
+        let waiting = participants.is_empty();
+
         v_flex()
             .w_full()
             .min_h_0()
-            .bg(cx.theme().muted.opacity(0.4))
+            .bg(theme.muted.opacity(0.4))
             .child(
                 h_flex()
                     .flex_1()
@@ -171,25 +183,25 @@ impl HomeScreen {
                     .flex_wrap()
                     .items_center()
                     .justify_center()
+                    .when(waiting, |this| {
+                        this.child(
+                            div()
+                                .text_color(theme.muted_foreground)
+                                .child(call.status.label()),
+                        )
+                    })
                     .children(
-                        call.participants
+                        participants
                             .iter()
                             .map(|participant| self.participant_tile(participant, cx)),
                     ),
             )
-            .child(self.render_call_controls(call, cx))
+            .child(self.render_call_controls(cx))
     }
 
-    /// One participant: their avatar, their name, and what they've muted.
+    /// One participant: their avatar, their name, and what they've silenced.
     fn participant_tile(&self, participant: &VoiceParticipant, cx: &Context<Self>) -> Div {
         let theme = cx.theme();
-        // The signed-in user's own mute and deafen live on the screen, not on
-        // the participant, so they survive leaving and rejoining.
-        let (muted, deafened) = if participant.is_self {
-            (self.voice_muted, self.voice_deafened)
-        } else {
-            (participant.muted, participant.deafened)
-        };
 
         let mut avatar = Avatar::new()
             .name(participant.name.clone())
@@ -206,8 +218,20 @@ impl HomeScreen {
             .justify_center()
             .rounded(px(8.))
             .bg(theme.background.opacity(0.6))
-            .when(participant.pending, |this| this.opacity(0.6))
-            .child(avatar)
+            .child(
+                // The speaking ring goes on a wrapper rather than the avatar,
+                // so appearing and disappearing doesn't nudge the layout.
+                div()
+                    .rounded_full()
+                    .border_2()
+                    .p(px(2.))
+                    .border_color(if participant.speaking {
+                        theme.success
+                    } else {
+                        transparent_black()
+                    })
+                    .child(avatar),
+            )
             .child(
                 h_flex()
                     .max_w_full()
@@ -220,7 +244,7 @@ impl HomeScreen {
                             .font_weight(FontWeight::MEDIUM)
                             .child(participant.name.clone()),
                     )
-                    .when(muted, |this| {
+                    .when(participant.muted, |this| {
                         this.child(
                             Icon::default()
                                 .path("icons/mic-off.svg")
@@ -228,7 +252,7 @@ impl HomeScreen {
                                 .text_color(theme.danger),
                         )
                     })
-                    .when(deafened, |this| {
+                    .when(participant.deafened, |this| {
                         this.child(
                             Icon::default()
                                 .path("icons/headphone-off.svg")
@@ -237,21 +261,10 @@ impl HomeScreen {
                         )
                     }),
             )
-            .when(participant.pending, |this| {
-                this.child(
-                    div()
-                        .text_xs()
-                        .text_color(theme.muted_foreground)
-                        .child("Ringing…"),
-                )
-            })
     }
 
     /// The row of call actions under the stage.
-    fn render_call_controls(&self, call: &VoiceCall, cx: &Context<Self>) -> impl IntoElement {
-        let camera = call.camera;
-        let sharing = call.screen_share;
-
+    fn render_call_controls(&self, cx: &Context<Self>) -> impl IntoElement {
         h_flex()
             .flex_shrink_0()
             .w_full()
@@ -260,17 +273,21 @@ impl HomeScreen {
             .items_center()
             .justify_center()
             .child(
-                control(
-                    "call-mute",
-                    if self.voice_muted {
-                        "icons/mic-off.svg"
-                    } else {
-                        "icons/mic.svg"
-                    },
-                    if self.voice_muted { "Unmute" } else { "Mute" },
-                    self.voice_muted,
-                )
-                .on_click(cx.listener(|this, _, _, cx| this.toggle_voice_mute(cx))),
+                self.with_mic_menu(
+                    "call-mic-menu",
+                    control(
+                        "call-mute",
+                        if self.voice_muted {
+                            "icons/mic-off.svg"
+                        } else {
+                            "icons/mic.svg"
+                        },
+                        if self.voice_muted { "Unmute" } else { "Mute" },
+                        self.voice_muted,
+                    )
+                    .on_click(cx.listener(|this, _, _, cx| this.toggle_voice_mute(cx))),
+                    cx,
+                ),
             )
             .child(
                 control(
@@ -292,32 +309,20 @@ impl HomeScreen {
             .child(
                 control(
                     "call-camera",
-                    if camera {
-                        "icons/video.svg"
-                    } else {
-                        "icons/video-off.svg"
-                    },
-                    if camera {
-                        "Turn Off Camera"
-                    } else {
-                        "Turn On Camera"
-                    },
-                    camera,
+                    "icons/video-off.svg",
+                    VIDEO_UNAVAILABLE,
+                    false,
                 )
-                .on_click(cx.listener(|this, _, _, cx| this.toggle_voice_camera(cx))),
+                .disabled(true),
             )
             .child(
                 control(
                     "call-share",
                     "icons/screen-share.svg",
-                    if sharing {
-                        "Stop Sharing"
-                    } else {
-                        "Share Your Screen"
-                    },
-                    sharing,
+                    VIDEO_UNAVAILABLE,
+                    false,
                 )
-                .on_click(cx.listener(|this, _, _, cx| this.toggle_screen_share(cx))),
+                .disabled(true),
             )
             .child(
                 Button::new("call-hangup")
@@ -329,13 +334,17 @@ impl HomeScreen {
             )
     }
 
-    /// The empty state for a voice channel the user hasn't joined.
+    /// The empty state for a voice channel the user hasn't joined: whoever is
+    /// already in there, and the way in.
     fn render_join_prompt(&self, cx: &Context<Self>) -> impl IntoElement {
         let theme = cx.theme();
         let channel_id = self.selected_channel;
         let name = self
             .selected_channel_info()
             .map(|channel| channel.name.clone())
+            .unwrap_or_default();
+        let participants = channel_id
+            .map(|id| self.voice_participants(id))
             .unwrap_or_default();
 
         v_flex()
@@ -344,22 +353,39 @@ impl HomeScreen {
             .items_center()
             .justify_center()
             .bg(theme.muted.opacity(0.4))
-            .child(
-                Icon::default()
-                    .path("icons/volume-2.svg")
-                    .size(px(40.))
-                    .text_color(theme.muted_foreground),
-            )
-            .child(
-                div()
-                    .text_color(theme.muted_foreground)
-                    .child(format!("No one is in {name} yet.")),
-            )
+            .when(participants.is_empty(), |this| {
+                this.child(
+                    Icon::default()
+                        .path("icons/volume-2.svg")
+                        .size(px(40.))
+                        .text_color(theme.muted_foreground),
+                )
+                .child(
+                    div()
+                        .text_color(theme.muted_foreground)
+                        .child(format!("No one is in {name} yet.")),
+                )
+            })
+            .when(!participants.is_empty(), |this| {
+                this.child(
+                    h_flex()
+                        .gap_4()
+                        .flex_wrap()
+                        .items_center()
+                        .justify_center()
+                        .children(
+                            participants
+                                .iter()
+                                .map(|participant| self.participant_tile(participant, cx)),
+                        ),
+                )
+            })
             .child(
                 Button::new("voice-join")
                     .icon(Icon::default().path("icons/phone.svg"))
                     .label("Join Voice")
                     .primary()
+                    .rounded(px(8.))
                     .on_click(cx.listener(move |this, _, _, cx| {
                         if let Some(id) = channel_id {
                             this.join_voice_channel(id, cx);
@@ -369,7 +395,66 @@ impl HomeScreen {
     }
 }
 
-/// One round toggle on the control bar, lit while its thing is on.
+/// Puts the microphone picker behind a right-click on `button`.
+///
+/// The menu wraps the button rather than being hung off it: a `Button` with
+/// children lays itself out as a labelled button, which would stretch an icon
+/// one out of shape.
+impl HomeScreen {
+    pub(super) fn with_mic_menu(
+        &self,
+        id: &'static str,
+        button: impl IntoElement,
+        cx: &Context<Self>,
+    ) -> impl IntoElement {
+        let screen = cx.entity().downgrade();
+
+        div().id(id).child(button).context_menu(move |menu, _, cx| {
+            let Some(screen) = screen.upgrade() else {
+                return menu;
+            };
+            let chosen = screen.read(cx).voice_input_device.clone();
+
+            // Enumerated as the menu opens, so a microphone plugged in since
+            // the app started is in the list.
+            let devices: Vec<voice::InputDevice> = voice::input_devices();
+            let menu = menu.label("Input Device").item(device_item(
+                "System Default",
+                None,
+                chosen.is_none(),
+                &screen,
+            ));
+
+            devices.into_iter().fold(menu, |menu, device| {
+                let selected = chosen.as_deref() == Some(device.id.as_str());
+                menu.item(device_item(device.name, Some(device.id), selected, &screen))
+            })
+        })
+    }
+}
+
+/// One microphone in the picker, ticked when it's the one in use.
+fn device_item(
+    label: impl Into<SharedString>,
+    id: Option<String>,
+    selected: bool,
+    screen: &Entity<HomeScreen>,
+) -> PopupMenuItem {
+    let screen = screen.downgrade();
+    let item = PopupMenuItem::new(label.into()).on_click(move |_, _, cx| {
+        if let Some(screen) = screen.upgrade() {
+            screen.update(cx, |this, cx| this.set_input_device(id.clone(), cx));
+        }
+    });
+
+    if selected {
+        item.icon(Icon::new(IconName::Check))
+    } else {
+        item
+    }
+}
+
+/// One square toggle on the control bar, lit while its thing is on.
 fn control(id: &'static str, icon: &'static str, tooltip: &'static str, active: bool) -> Button {
     Button::new(id)
         .icon(Icon::default().path(icon))
