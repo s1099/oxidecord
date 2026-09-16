@@ -374,13 +374,22 @@ impl EventHandler for TickHandler {
             return None;
         };
 
-        let mut mixed: Vec<i16> = Vec::new();
+        // Summing is what mixing several speakers into one stream means. The
+        // sum is kept wider than the samples that went into it so the peaks it
+        // produces survive as far as `play`, which eases them back inside full
+        // scale — clipping them flat here is what a busy call is heard as.
+        let mut mixed: Vec<i32> = Vec::new();
         let mut audible = HashSet::new();
 
+        // One lock for the whole tick: this runs fifty times a second, and the
+        // mapping can't change underneath it in the middle either way.
+        let known = match self.speakers.lock() {
+            Ok(speakers) => speakers.users.clone(),
+            Err(_) => return None,
+        };
+
         for (ssrc, data) in &tick.speaking {
-            if let Ok(speakers) = self.speakers.lock()
-                && let Some(user_id) = speakers.users.get(ssrc)
-            {
+            if let Some(user_id) = known.get(ssrc) {
                 audible.insert(*user_id);
             }
 
@@ -390,10 +399,8 @@ impl EventHandler for TickHandler {
             if mixed.len() < voice.len() {
                 mixed.resize(voice.len(), 0);
             }
-            // Summing is what mixing several speakers into one stream means;
-            // saturating keeps a loud moment from wrapping into noise.
             for (slot, sample) in mixed.iter_mut().zip(voice) {
-                *slot = slot.saturating_add(*sample);
+                *slot += i32::from(*sample);
             }
         }
 

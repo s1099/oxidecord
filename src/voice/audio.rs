@@ -13,71 +13,311 @@
 //! device reports is whichever one its driver prefers, and a call with no
 //! microphone is worse than a handful of conversions.
 //!
+//! Neither side of a ring shares a clock with the other, so a ring is either
+//! running dry or running over most of the time. The rings answer for that
+//! rather than the callbacks: see [`SampleRing`] for the priming and the ramps
+//! that keep a stall from being heard, and [`Playback`] for the phase the
+//! resampler has to carry between callbacks.
+//!
 //! cpal streams are not `Send` on every platform, so both live on a thread of
 //! their own that does nothing but hold them open until the call ends.
 
 use std::collections::VecDeque;
 use std::io::{Read, Result as IoResult, Seek, SeekFrom};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Condvar, Mutex};
 
 use cpal::traits::{DeviceTrait as _, HostTrait as _, StreamTrait as _};
 use cpal::{
     DeviceId, FromSample, Sample as _, SampleFormat, SizedSample, StreamConfig,
     SupportedStreamConfig,
 };
-use songbird::constants::{SAMPLE_RATE, STEREO_FRAME_SIZE};
+use songbird::constants::SAMPLE_RATE;
 use songbird::input::core::io::MediaSource;
 use songbird::input::{Input, RawAdapter};
 
-/// Decoded packets are stereo, which is what songbird's own frame size counts.
+/// Decoded packets are stereo, which is the layout the playback ring carries.
 const CHANNELS: usize = 2;
 
-/// Ceiling on each ring, in samples: twenty of songbird's 20ms stereo frames,
-/// or 400ms. Enough to ride out a scheduling hiccup, short enough that
-/// recovery isn't audible as a growing delay.
-const MAX_BUFFERED: usize = STEREO_FRAME_SIZE * 20;
+/// Ceiling on each ring: enough to ride out a scheduling hiccup, short enough
+/// that recovery isn't audible as a growing delay.
+const MAX_BUFFERED_MS: u32 = 400;
 
-/// A ring of interleaved stereo samples shared between an audio callback and
-/// the call.
+/// How much the playback ring builds up before it starts draining again.
+///
+/// Packets arrive on a 20ms tick that the network smears either side of, so a
+/// reader that drains to empty underruns on nearly every callback. The gaps
+/// that leaves repeat at the callback rate, which is heard as a harsh buzz
+/// over the speech rather than as the dropouts they are; a buffer this deep
+/// costs latency once and stops it.
+const PLAYBACK_PRIME_MS: u32 = 40;
+
+/// The same for the microphone, which only has device jitter to absorb rather
+/// than a network as well.
+const CAPTURE_PRIME_MS: u32 = 30;
+
+/// How long the ramp either side of a gap lasts.
+///
+/// Long enough to take the edge off the step, short enough not to swallow a
+/// consonant.
+const FADE_MS: u32 = 3;
+
+/// A ring of interleaved samples shared between an audio callback and the
+/// call.
 ///
 /// Neither side ever blocks: a starved reader gets silence and an overrun
 /// writer drops the oldest audio, since stalling either thread would be heard
 /// as a stutter across the whole call.
-#[derive(Default)]
+///
+/// Both of those are steps in the waveform, and a step is a click — the louder
+/// the audio it interrupts, the louder the click. So the ring hides them: it
+/// ramps down into a gap and back up out of one, and after a stall it waits
+/// for `prime` samples to build up rather than tearing another gap on the very
+/// next callback.
 struct SampleRing {
-    samples: Mutex<VecDeque<f32>>,
+    state: Mutex<RingState>,
+    /// Interleaved channel count. Every drain and every drop is a whole number
+    /// of frames, because losing a single sample would rotate every later one
+    /// onto the wrong channel for the rest of the call.
+    channels: usize,
+    /// Samples the reader waits for after a stall before it drains again.
+    prime: usize,
+    capacity: usize,
+    /// Length of the ramp either side of a gap, in frames.
+    fade: usize,
+}
+
+#[derive(Default)]
+struct RingState {
+    samples: VecDeque<f32>,
+    /// While set the reader emits silence: the writer hasn't built the buffer
+    /// back up since the last stall.
+    priming: bool,
+    /// The last sample emitted on each channel. A gap ramps down from here
+    /// rather than cutting straight to zero.
+    last: Vec<f32>,
+    /// Frames left of the ramp back in after a gap.
+    fade_in: usize,
 }
 
 impl SampleRing {
-    fn push(&self, samples: impl Iterator<Item = f32>) {
-        let Ok(mut buffer) = self.samples.lock() else {
-            return;
-        };
-        buffer.extend(samples);
-        // Keep the newest audio: the listener would rather skip forward than
-        // fall further behind the conversation.
-        if buffer.len() > MAX_BUFFERED {
-            let excess = buffer.len() - MAX_BUFFERED;
-            buffer.drain(..excess);
+    fn new(sample_rate: u32, channels: usize, prime_ms: u32) -> Self {
+        let channels = channels.max(1);
+        let frames = |ms: u32| (u64::from(sample_rate) * u64::from(ms) / 1000) as usize;
+        let prime = frames(prime_ms) * channels;
+        Self {
+            state: Mutex::new(RingState {
+                priming: true,
+                last: vec![0.; channels],
+                ..RingState::default()
+            }),
+            channels,
+            prime,
+            // A ring that couldn't hold what the reader waits for would never
+            // finish priming.
+            capacity: (frames(MAX_BUFFERED_MS) * channels).max(prime * 2),
+            fade: frames(FADE_MS).max(1),
         }
     }
 
-    /// Fills `out` with what's buffered, padding with silence when the writer
-    /// hasn't kept up.
+    fn push(&self, samples: impl Iterator<Item = f32>) {
+        let Ok(mut state) = self.state.lock() else {
+            return;
+        };
+        // A driver that hands back a NaN, or a mix that ran past full scale,
+        // becomes a full-scale spike once it's converted to the device's
+        // format. Neither belongs in a call, and neither is worth finding out
+        // about through the speakers.
+        state.samples.extend(samples.map(sanitize));
+
+        if state.samples.len() > self.capacity {
+            // Keep the newest audio: the listener would rather skip forward
+            // than fall further behind the conversation.
+            let excess = state.samples.len() - self.capacity;
+            let excess = (excess.div_ceil(self.channels) * self.channels).min(state.samples.len());
+            state.samples.drain(..excess);
+            // The reader is about to jump over whatever was dropped, so ramp
+            // it back in on the far side of the jump.
+            state.fade_in = self.fade;
+        }
+    }
+
+    /// Fills `out` with what's buffered, ramping into silence when the writer
+    /// hasn't kept up. `out` holds a whole number of frames.
     fn fill(&self, out: &mut [f32]) {
-        let Ok(mut buffer) = self.samples.lock() else {
+        if out.is_empty() {
+            return;
+        }
+        let Ok(mut state) = self.state.lock() else {
             out.fill(0.);
             return;
         };
-        for slot in out.iter_mut() {
-            *slot = buffer.pop_front().unwrap_or(0.);
+
+        if state.priming {
+            if state.samples.len() < self.prime {
+                self.ramp_from_last(&state, out);
+                state.last.fill(0.);
+                return;
+            }
+            state.priming = false;
+            state.fade_in = self.fade;
+        }
+
+        let available = (state.samples.len() / self.channels) * self.channels;
+        let take = available.min(out.len());
+        for slot in out[..take].iter_mut() {
+            *slot = state.samples.pop_front().unwrap_or(0.);
+        }
+
+        if take < out.len() {
+            // Underrun. Ease out of the audio there was and wait for the
+            // writer to get ahead again, rather than cutting it dead here and
+            // tearing another gap on the next callback.
+            self.fade_out(&mut out[..take]);
+            out[take..].fill(0.);
+            state.priming = true;
+        }
+
+        if state.fade_in > 0 {
+            self.fade_in(out, &mut state.fade_in);
+        }
+
+        // Remember where the waveform ended, so the next gap knows what to
+        // ramp down from.
+        let frames = out.len() / self.channels;
+        let last_frame = &out[(frames - 1) * self.channels..][..self.channels];
+        state.last.copy_from_slice(last_frame);
+    }
+
+    /// Ramps `out` down from the last sample emitted, then holds silence.
+    ///
+    /// Used when there is nothing at all to play: cutting from the previous
+    /// callback's final sample straight to zero is the click.
+    fn ramp_from_last(&self, state: &RingState, out: &mut [f32]) {
+        out.fill(0.);
+        let span = self.fade.min(out.len() / self.channels);
+        for frame in 0..span {
+            let gain = 1. - (frame + 1) as f32 / span as f32;
+            for (channel, slot) in out[frame * self.channels..][..self.channels]
+                .iter_mut()
+                .enumerate()
+            {
+                *slot = state.last[channel] * gain;
+            }
         }
     }
 
+    /// Ramps the end of what was filled down to silence, so the gap that
+    /// follows isn't a step.
+    fn fade_out(&self, filled: &mut [f32]) {
+        let frames = filled.len() / self.channels;
+        let span = self.fade.min(frames);
+        for frame in 0..span {
+            let gain = 1. - (frame + 1) as f32 / span as f32;
+            let start = (frames - span + frame) * self.channels;
+            for slot in filled[start..][..self.channels].iter_mut() {
+                *slot *= gain;
+            }
+        }
+    }
+
+    /// Ramps the start of `out` up out of a gap, carrying on across callbacks
+    /// when the ramp outlasts one of them.
+    fn fade_in(&self, out: &mut [f32], remaining: &mut usize) {
+        let span = (*remaining).min(out.len() / self.channels);
+        for frame in 0..span {
+            let done = self.fade - *remaining + frame;
+            let gain = (done + 1) as f32 / self.fade as f32;
+            for slot in out[frame * self.channels..][..self.channels].iter_mut() {
+                *slot *= gain;
+            }
+        }
+        *remaining -= span;
+    }
+
     fn clear(&self) {
-        if let Ok(mut buffer) = self.samples.lock() {
-            buffer.clear();
+        if let Ok(mut state) = self.state.lock() {
+            state.samples.clear();
+            state.priming = true;
+            state.fade_in = 0;
+            state.last.fill(0.);
+        }
+    }
+}
+
+/// Keeps a sample inside the range the device conversions assume.
+///
+/// A NaN compares false against every bound, so it has to be caught before the
+/// clamp rather than by it.
+fn sanitize(sample: f32) -> f32 {
+    if sample.is_finite() {
+        sample.clamp(-1., 1.)
+    } else {
+        0.
+    }
+}
+
+/// Eases a mix that has run past full scale back inside it.
+///
+/// Several people talking at once sum past the ceiling, and clipping there
+/// turns a loud moment into a burst of harmonics — which is the artefact that
+/// actually gets noticed. A knee above `THRESHOLD` bends the peaks instead;
+/// `tanh` is chosen for meeting the untouched signal at the same slope, so
+/// ordinary speech passes through unaltered and nothing steps as it crosses
+/// over.
+fn limit(sample: f32) -> f32 {
+    // High enough that one person talking, however loudly, is never touched:
+    // the knee is there for overlapping speakers, and a waveshaper that
+    // reaches into ordinary speech colours it for no gain.
+    const THRESHOLD: f32 = 0.85;
+    const HEADROOM: f32 = 1. - THRESHOLD;
+
+    if !sample.is_finite() {
+        return 0.;
+    }
+    if sample.abs() <= THRESHOLD {
+        return sample;
+    }
+    let over = (sample.abs() - THRESHOLD) / HEADROOM;
+    (THRESHOLD + HEADROOM * over.tanh()).copysign(sample)
+}
+
+/// Ends the call for the device thread and everything it holds open.
+///
+/// The flag is what the callbacks read, on the audio threads, where taking a
+/// lock is the one thing that must not happen. The condition variable is how
+/// the device thread hears about it: polling for the flag left the microphone
+/// light on for up to a poll interval after the user hung up.
+#[derive(Default)]
+struct Shutdown {
+    stopped: AtomicBool,
+    guard: Mutex<()>,
+    signal: Condvar,
+}
+
+impl Shutdown {
+    fn stop(&self) {
+        self.stopped.store(true, Ordering::Release);
+        // Taken and dropped purely to pair with the waiter: without it a stop
+        // landing between the waiter's check and its wait would be missed.
+        let _guard = self.guard.lock();
+        self.signal.notify_all();
+    }
+
+    fn is_stopped(&self) -> bool {
+        self.stopped.load(Ordering::Acquire)
+    }
+
+    /// Blocks until [`Shutdown::stop`] is called.
+    fn wait(&self) {
+        let Ok(mut guard) = self.guard.lock() else {
+            return;
+        };
+        while !self.is_stopped() {
+            let Ok(next) = self.signal.wait(guard) else {
+                return;
+            };
+            guard = next;
         }
     }
 }
@@ -88,7 +328,7 @@ pub struct AudioIo {
     playback: Arc<SampleRing>,
     /// Set when the call ends, which stops the device thread and every
     /// callback still running on it.
-    stopped: Arc<AtomicBool>,
+    shutdown: Arc<Shutdown>,
     /// While deafened, incoming audio is dropped rather than played.
     deafened: Arc<AtomicBool>,
     /// The sample rate and channel count the capture ring is filled at, which
@@ -109,31 +349,39 @@ impl AudioIo {
         let host = cpal::default_host();
         // The devices are picked here, on the caller's thread, because the
         // capture format has to be known before the mixer is handed the
-        // microphone. Only the streams themselves are `!Send`.
+        // microphone — and before the capture ring can be sized in it. Only
+        // the streams themselves are `!Send`.
         let input = chosen_input(&host, input_device).and_then(input_config);
         let output = host.default_output_device().and_then(output_config);
 
-        let this = Self {
-            capture: Arc::default(),
-            playback: Arc::default(),
-            stopped: Arc::new(AtomicBool::new(false)),
-            deafened: Arc::new(AtomicBool::new(false)),
-            capture_format: input
+        let capture_format =
+            input
                 .as_ref()
                 .map_or((SAMPLE_RATE, CHANNELS as u32), |(_, config)| {
                     (
                         config.sample_rate(),
                         ring_channels(config.channels()) as u32,
                     )
-                }),
+                });
+
+        let this = Self {
+            capture: Arc::new(SampleRing::new(
+                capture_format.0,
+                capture_format.1 as usize,
+                CAPTURE_PRIME_MS,
+            )),
+            playback: Arc::new(SampleRing::new(SAMPLE_RATE, CHANNELS, PLAYBACK_PRIME_MS)),
+            shutdown: Arc::default(),
+            deafened: Arc::new(AtomicBool::new(false)),
+            capture_format,
         };
 
         let capture = this.capture.clone();
         let playback = this.playback.clone();
-        let stopped = this.stopped.clone();
+        let shutdown = this.shutdown.clone();
         std::thread::Builder::new()
             .name("voice-audio".into())
-            .spawn(move || run_devices(input, output, &capture, &playback, &stopped))
+            .spawn(move || run_devices(input, output, &capture, &playback, &shutdown))
             .ok();
 
         this
@@ -146,7 +394,7 @@ impl AudioIo {
         RawAdapter::new(
             MicSource {
                 capture: self.capture.clone(),
-                stopped: self.stopped.clone(),
+                shutdown: self.shutdown.clone(),
             },
             sample_rate,
             channels,
@@ -155,13 +403,14 @@ impl AudioIo {
     }
 
     /// Queues decoded audio from the call for playback. Songbird hands over
-    /// 20ms of interleaved stereo `i16` per tick.
-    pub fn play(&self, samples: &[i16]) {
-        if self.deafened.load(Ordering::Relaxed) || self.stopped.load(Ordering::Relaxed) {
+    /// 20ms of interleaved stereo per tick, summed across everyone audible —
+    /// which is why this takes a wider sample than it stores.
+    pub fn play(&self, samples: &[i32]) {
+        if self.deafened.load(Ordering::Relaxed) || self.shutdown.is_stopped() {
             return;
         }
         self.playback
-            .push(samples.iter().map(|&sample| f32::from(sample) / 32768.));
+            .push(samples.iter().map(|&sample| limit(sample as f32 / 32768.)));
     }
 
     pub fn set_deafened(&self, deafened: bool) {
@@ -180,7 +429,7 @@ impl AudioIo {
     /// driver takes to shut down — long enough to leave the microphone light
     /// on after the user hung up.
     pub fn stop(&self) {
-        self.stopped.store(true, Ordering::Relaxed);
+        self.shutdown.stop();
         self.capture.clear();
         self.playback.clear();
     }
@@ -198,18 +447,23 @@ impl Drop for AudioIo {
 /// Ending it would end the track, and the call would go quiet for good.
 struct MicSource {
     capture: Arc<SampleRing>,
-    stopped: Arc<AtomicBool>,
+    shutdown: Arc<Shutdown>,
 }
 
 impl Read for MicSource {
     fn read(&mut self, buf: &mut [u8]) -> IoResult<usize> {
-        if self.stopped.load(Ordering::Relaxed) {
+        if self.shutdown.is_stopped() {
             return Ok(0);
         }
 
-        let count = buf.len() / size_of::<f32>();
+        // Whole frames only: handing back a partial one would put every later
+        // sample on the wrong channel. A buffer too small to hold one is the
+        // only case with nothing to hand back, and `Ok(0)` there would read as
+        // the end of the track.
+        let channels = self.capture.channels;
+        let count = (buf.len() / size_of::<f32>() / channels) * channels;
         if count == 0 {
-            return Ok(0);
+            return Err(std::io::ErrorKind::Interrupted.into());
         }
 
         let mut samples = vec![0f32; count];
@@ -320,7 +574,7 @@ fn run_devices(
     output: Option<(cpal::Device, SupportedStreamConfig)>,
     capture: &Arc<SampleRing>,
     playback: &Arc<SampleRing>,
-    stopped: &Arc<AtomicBool>,
+    shutdown: &Arc<Shutdown>,
 ) {
     let input = input.and_then(|(device, config)| build_input(&device, config, capture.clone()));
     let output =
@@ -332,9 +586,7 @@ fn run_devices(
 
     // Both streams stop when they're dropped, so the thread's only job from
     // here is to stay alive for as long as the call does.
-    while !stopped.load(Ordering::Relaxed) {
-        std::thread::sleep(std::time::Duration::from_millis(100));
-    }
+    shutdown.wait();
 }
 
 /// Fills the capture ring with what the device hears, as `f32` at the device's
@@ -371,7 +623,9 @@ where
         .build_input_stream(
             config,
             move |data: &[T], _: &_| push_capture(data, device_channels, &capture),
-            |_| {},
+            // Usually the device going away mid-call, which is worth knowing
+            // about when a call has gone one-way.
+            |err| eprintln!("microphone stream error: {err}"),
             None,
         )
         .ok()
@@ -420,73 +674,114 @@ fn output_stream<T>(
 where
     T: SizedSample + FromSample<f32>,
 {
-    let channels = usize::from(config.channels);
-    let rate = config.sample_rate;
+    let mut render = Playback::new(playback, config.sample_rate, usize::from(config.channels));
 
     device
         .build_output_stream(
             config,
-            move |data: &mut [T], _: &_| {
-                let frames = data.len() / channels.max(1);
-                // Take the call's own 48kHz stereo, then lay it out in the
-                // device's rate and channel count.
-                let wanted = (frames as u64 * u64::from(SAMPLE_RATE) / u64::from(rate.max(1)))
-                    as usize
-                    * CHANNELS;
-                let mut source = vec![0f32; wanted];
-                playback.fill(&mut source);
-                from_call_format(&source, data, channels);
-            },
-            |_| {},
+            move |data: &mut [T], _: &_| render.render(data),
+            |err| eprintln!("speaker stream error: {err}"),
             None,
         )
         .ok()
 }
 
-/// The call's format to the device's: `source` is 48kHz stereo, `out` is
-/// whatever the output stream asked for — the caller sized `source` for the
-/// device's rate, so the frame counts are all this needs.
-fn from_call_format<T>(source: &[f32], out: &mut [T], channels: usize)
-where
-    T: SizedSample + FromSample<f32>,
-{
-    if channels == 0 {
-        return;
-    }
-    let in_frames = source.len() / CHANNELS;
-    let out_frames = out.len() / channels;
-    if in_frames == 0 {
-        out.fill(T::EQUILIBRIUM);
-        return;
-    }
+/// Lays the call's 48kHz stereo out in the output device's rate and channel
+/// count.
+///
+/// The position between source frames is carried across callbacks, and so are
+/// the two frames it sits between. Resampling each callback from scratch put a
+/// step in the waveform at every buffer boundary, and a step that repeats at
+/// the callback rate is heard as a tone over the speech rather than as the
+/// glitches it is.
+struct Playback {
+    ring: Arc<SampleRing>,
+    /// The source frames the next output frame falls between.
+    previous: [f32; CHANNELS],
+    next: [f32; CHANNELS],
+    /// Where between them it falls, in `[0, 1)`.
+    phase: f64,
+    /// Source frames advanced per output frame.
+    step: f64,
+    /// The source frames one callback needs. Held across callbacks so the
+    /// audio thread stops allocating once the buffer size has settled.
+    scratch: Vec<f32>,
+    channels: usize,
+}
 
-    for frame in 0..out_frames {
-        let source_frame = source_frame(frame, out_frames, in_frames);
-        let left = source[source_frame * CHANNELS];
-        let right = source[source_frame * CHANNELS + 1];
-
-        for (channel, slot) in out[frame * channels..][..channels].iter_mut().enumerate() {
-            *slot = T::from_sample(match channel {
-                0 => left,
-                1 => right,
-                // Anything past stereo (a surround device) gets the mix, which
-                // is better than leaving those speakers silent.
-                _ => (left + right) / 2.,
-            });
+impl Playback {
+    fn new(ring: Arc<SampleRing>, sample_rate: u32, channels: usize) -> Self {
+        Self {
+            ring,
+            previous: [0.; CHANNELS],
+            next: [0.; CHANNELS],
+            phase: 0.,
+            step: f64::from(SAMPLE_RATE) / f64::from(sample_rate.max(1)),
+            scratch: Vec::new(),
+            channels: channels.max(1),
         }
     }
 
-    let filled = out_frames * channels;
-    out[filled..].fill(T::EQUILIBRIUM);
-}
+    fn render<T>(&mut self, out: &mut [T])
+    where
+        T: SizedSample + FromSample<f32>,
+    {
+        let frames = out.len() / self.channels;
+        if frames == 0 {
+            out.fill(T::EQUILIBRIUM);
+            return;
+        }
 
-/// The input frame that best lines up with output frame `frame`.
-///
-/// Nearest-neighbour is enough for speech coming out of a call, and costs
-/// nothing in an audio callback.
-fn source_frame(frame: usize, out_frames: usize, in_frames: usize) -> usize {
-    if out_frames == 0 || in_frames == 0 {
-        return 0;
+        // How many source frames the loop below will step through. Counted by
+        // walking the same additions in the same order rather than by the
+        // closed form, which rounds differently often enough to leave the
+        // resampler a frame out of step for the rest of the call.
+        let mut phase = self.phase;
+        let mut pulls = 0;
+        for _ in 0..frames {
+            phase += self.step;
+            while phase >= 1. {
+                pulls += 1;
+                phase -= 1.;
+            }
+        }
+
+        self.scratch.clear();
+        self.scratch.resize(pulls * CHANNELS, 0.);
+        self.ring.fill(&mut self.scratch);
+
+        let mut pulled = 0;
+        for frame in 0..frames {
+            let blend = self.phase as f32;
+            for (channel, slot) in out[frame * self.channels..][..self.channels]
+                .iter_mut()
+                .enumerate()
+            {
+                let (previous, next) = match channel {
+                    0 | 1 => (self.previous[channel], self.next[channel]),
+                    // Anything past stereo (a surround device) gets the mix,
+                    // which is better than leaving those speakers silent.
+                    _ => (
+                        (self.previous[0] + self.previous[1]) / 2.,
+                        (self.next[0] + self.next[1]) / 2.,
+                    ),
+                };
+                *slot = T::from_sample(sanitize(previous + (next - previous) * blend));
+            }
+
+            self.phase += self.step;
+            while self.phase >= 1. {
+                self.previous = self.next;
+                self.next = self
+                    .scratch
+                    .get(pulled * CHANNELS..(pulled + 1) * CHANNELS)
+                    .map_or([0.; CHANNELS], |frame| [frame[0], frame[1]]);
+                pulled += 1;
+                self.phase -= 1.;
+            }
+        }
+
+        // Whatever the device asked for beyond a whole number of frames.
+        out[frames * self.channels..].fill(T::EQUILIBRIUM);
     }
-    (frame * in_frames / out_frames).min(in_frames - 1)
 }
