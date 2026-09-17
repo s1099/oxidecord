@@ -68,12 +68,24 @@ impl HomeScreen {
         // counts its own padding when it clamps a scroll offset but not when it
         // reports one, and smooth scrolling needs those two to agree to land on
         // the bottom and let the list repin there. See `ui::smooth_scroll`.
-        let mut container = v_flex().flex_1().min_h_0().w_full().py_2().on_scroll_wheel(
-            cx.listener(|this, event, window, _| this.messages_scroll.absorb(event, window)),
-        );
+        let mut container = v_flex()
+            .relative()
+            .flex_1()
+            .min_h_0()
+            .w_full()
+            .py_2()
+            .on_scroll_wheel(
+                cx.listener(|this, event, window, _| this.messages_scroll.absorb(event, window)),
+            );
+        // Floats over the list rather than taking a row of its own: appearing
+        // and disappearing in the layout would resize the viewport under a
+        // scroll that is still moving, nudging the messages twice per page.
         if self.older_loading {
             container = container.child(
                 h_flex()
+                    .absolute()
+                    .top_0()
+                    .left_0()
                     .w_full()
                     .py_1()
                     .justify_center()

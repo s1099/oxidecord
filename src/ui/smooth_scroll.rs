@@ -118,11 +118,24 @@ impl SmoothScroll {
             // bottom-aligned list back to the bottom.
             self.current = self.surface.offset();
             self.target = self.current;
-        } else {
-            self.current = advance(self.current, self.target);
-            self.surface.set_offset(self.current);
-            request_step(window.current_view(), Instant::now() + MIN_STEP, window);
+            return;
         }
+
+        // Mid-glide, and the container has moved on its own since the frame we
+        // last drove it to: a page of older messages spliced in above, or items
+        // re-measured out of their estimate. Both shift what a given offset
+        // points at, so ride the shift and carry the target with it. Steering
+        // back to the raw number instead would slam a list to the very top the
+        // moment a page of history lands under a scroll that reached it.
+        let shift = self.surface.offset() - self.current;
+        if shift != px(0.) {
+            self.current += shift;
+            self.target = (self.target + shift).clamp(self.surface.min_offset(), px(0.));
+        }
+
+        self.current = advance(self.current, self.target);
+        self.surface.set_offset(self.current);
+        request_step(window.current_view(), Instant::now() + MIN_STEP, window);
     }
 
     /// Overwrite the jump the container's own handler just applied and fold this

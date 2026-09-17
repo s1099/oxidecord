@@ -36,7 +36,7 @@ impl HomeScreen {
                     .gap_1()
                     .h(px(22.))
                     .px(px(6.))
-                    .rounded(px(8.))
+                    .rounded(px(4.))
                     .border_1()
                     .border_color(if reaction.me {
                         theme.primary

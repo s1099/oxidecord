@@ -27,6 +27,11 @@ use super::folders::RailEntry;
 use super::voice::{PendingVoice, VoiceCall};
 use crate::voice::VoiceEngine;
 
+/// How many messages from the oldest loaded one the view has to reach before
+/// the next page is fetched. A page takes a round trip to arrive, and a scroll
+/// that hits the top before then has nowhere left to go.
+const OLDER_PAGE_PREFETCH: usize = 10;
+
 /// Which list occupies the sidebar: a guild's channels, or the DM list.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(super) enum View {
@@ -246,7 +251,10 @@ impl HomeScreen {
             let _ = weak.update(cx, |this, cx| {
                 this.at_bottom = event.visible_range.end >= event.count;
                 // Nearing the oldest loaded message; fetch the previous page.
-                if event.visible_range.start <= 2 {
+                // Far enough ahead that a page usually lands before the scroll
+                // reaches the top, so a continuous scroll up never stalls
+                // against it.
+                if event.visible_range.start <= OLDER_PAGE_PREFETCH {
                     this.load_older_messages(cx);
                 }
             });
