@@ -15,6 +15,7 @@ use gpui_component::{ActiveTheme as _, h_flex, v_flex};
 
 use crate::discord;
 use crate::screens::home::HomeScreen;
+use crate::ui::elevation::media_shadow;
 
 use super::super::text::render_message_text;
 
@@ -200,6 +201,7 @@ impl HomeScreen {
             // the column above and silently clip its last fields instead.
             .flex_shrink_0()
             .rounded(px(4.))
+            .shadow(media_shadow())
             .bg(theme.secondary)
             // The spine is a thick left border rather than a child, so the
             // card's rounded corners clip it for free.
@@ -256,6 +258,13 @@ impl HomeScreen {
         let mut media = img(image.url.clone())
             .image_cache(&self.image_cache)
             .rounded(px(4.))
+            // Only bare media is lifted off the background. Inside a card the
+            // card already casts the shadow, and a second one under the image
+            // would read as the picture floating above its own embed.
+            .when(
+                matches!(embed.layout, discord::EmbedLayout::Media),
+                |this| this.shadow(media_shadow()),
+            )
             .max_w(px(IMAGE_MAX_WIDTH));
         match (width, height) {
             (Some(width), Some(height)) => media = media.w(px(width)).h(px(height)),

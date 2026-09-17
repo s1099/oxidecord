@@ -12,6 +12,7 @@ use gpui_component::{
 use crate::discord;
 use crate::screens::home::HomeScreen;
 use crate::screens::home::state::{VideoKey, VideoPlayback};
+use crate::ui::elevation::media_shadow;
 
 use super::super::super::data::attachments::format_size;
 
@@ -41,6 +42,7 @@ pub(super) fn render_image(
     let mut element = img(image.url.clone())
         .image_cache(cache)
         .rounded(px(8.))
+        .shadow(media_shadow())
         .max_w(px(MAX_IMAGE_WIDTH));
     match (image.width, image.height) {
         // With intrinsic dimensions we can lay out the exact scaled box, so
@@ -97,6 +99,7 @@ impl HomeScreen {
             .w(px(width))
             .h(px(height))
             .rounded(px(8.))
+            .shadow(media_shadow())
             .overflow_hidden()
             // Black rather than a theme colour: this is the letterbox around a
             // picture, and it reads as part of the video in either theme, the
