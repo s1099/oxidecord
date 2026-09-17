@@ -17,7 +17,9 @@ mod voice;
 pub use channel::{Channel, ChannelKind, DirectMessage};
 pub use embed::{Embed, EmbedAuthor, EmbedField, EmbedFooter, EmbedLayout, EmbedMedia};
 pub use guild::Guild;
-pub use message::{ImageAttachment, Message, MessageReference, Reaction, ReactionEmoji};
+pub use message::{
+    ImageAttachment, Message, MessageReference, Reaction, ReactionEmoji, VideoAttachment,
+};
 pub use settings::GuildFolders;
 pub use user::{CurrentUser, UserProfile};
 pub use voice::{VoiceServerInfo, VoiceUserState};

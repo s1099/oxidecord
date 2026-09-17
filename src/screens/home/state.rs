@@ -5,9 +5,12 @@
 //! while nothing outside the home screen can.
 
 use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
+use std::time::Duration;
 
 use gpui::*;
 use gpui_component::input::{InputEvent, InputState};
+use gpui_component::slider::SliderState;
 use twilight_model::id::{
     Id,
     marker::{ChannelMarker, GuildMarker, MessageMarker, UserMarker},
@@ -15,6 +18,7 @@ use twilight_model::id::{
 
 use crate::discord::{self, DirectMessage, Guild};
 use crate::platform::prefs;
+use crate::platform::video::VideoPlayer;
 use crate::ui::smooth_scroll::SmoothScroll;
 
 use super::channels::ChannelGroup;
@@ -53,6 +57,60 @@ pub(super) struct ProfilePopup {
     /// the meantime.
     pub profile: Option<discord::UserProfile>,
     pub error: Option<String>,
+}
+
+/// Which video attachment a playback belongs to.
+///
+/// A message id alone isn't enough — one message can carry several videos —
+/// and the index is the message's own, so it stays stable as the list is
+/// spliced at either end.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) struct VideoKey {
+    pub message_id: u64,
+    pub index: usize,
+}
+
+impl VideoKey {
+    /// A gpui id for one of this attachment's elements. Both halves of the key
+    /// go in: two messages can each hold a video at index 0, and sharing an id
+    /// between them would share their interaction state too.
+    pub fn element_id(self, role: &str) -> ElementId {
+        ElementId::from(SharedString::from(format!(
+            "{role}-{}-{}",
+            self.message_id, self.index
+        )))
+    }
+}
+
+/// The one video playing, if any.
+///
+/// Only ever one: decoding a second clip nobody is watching is exactly the
+/// cost this feature exists to avoid, so starting one stops the other.
+pub(super) struct VideoPlayback {
+    pub key: VideoKey,
+    /// Dropping this stops the decoder, closes the output device, and deletes
+    /// the downloaded file.
+    pub player: VideoPlayer,
+    /// The frame currently on screen. Held so it can be handed back to gpui's
+    /// sprite atlas when the next one replaces it — every frame takes a slot
+    /// there, and at 30 a second an un-evicted one is a leak with a timer on
+    /// it.
+    pub frame: Option<Arc<RenderImage>>,
+    /// Zero until the source reports one, and for a stream that never does.
+    pub duration: Duration,
+    pub position: Duration,
+    /// Set until the first frame lands, which covers both the download and the
+    /// decoder opening the file.
+    pub loading: bool,
+    /// Why playback stopped, when it stopped badly. Shown over the poster.
+    pub error: Option<String>,
+    /// Set when the clip runs out, so the card offers to play it again rather
+    /// than sitting on the last frame.
+    pub ended: bool,
+    /// The progress bar, which doubles as the scrubber. Its value is a
+    /// fraction of the run time rather than a time, so it needs no resetting
+    /// when the duration arrives after the first frames.
+    pub scrubber: Entity<SliderState>,
 }
 
 pub struct HomeScreen {
@@ -153,6 +211,8 @@ pub struct HomeScreen {
     pub(super) profile_cache: HashMap<Id<UserMarker>, discord::UserProfile>,
     pub(super) message_input: Entity<InputState>,
     pub(super) messages_list: ListState,
+    /// The video attachment currently playing, if any.
+    pub(super) video: Option<VideoPlayback>,
     /// Owns the decoded bitmaps for the currently displayed messages' images.
     /// Cleared on channel switch so image memory doesn't grow without bound.
     pub(super) image_cache: Entity<RetainAllImageCache>,
@@ -236,6 +296,7 @@ impl HomeScreen {
             focus_handle: cx.focus_handle(),
             profile_popup: None,
             profile_cache: HashMap::new(),
+            video: None,
             message_input,
             messages_scroll: SmoothScroll::list(messages_list.clone()),
             messages_list,

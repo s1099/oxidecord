@@ -12,6 +12,7 @@ use gpui_component::{ActiveTheme as _, Sizable as _, avatar::Avatar, h_flex, v_f
 
 use crate::discord;
 use crate::screens::home::HomeScreen;
+use crate::screens::home::state::VideoKey;
 
 use super::text::render_message_text;
 use super::{GROUP_GAP, MESSAGE_PADDING_X};
@@ -31,6 +32,7 @@ impl HomeScreen {
         let theme = cx.theme();
 
         let has_images = !message.images.is_empty();
+        let has_videos = !message.videos.is_empty();
         let has_embeds = !message.embeds.is_empty();
         let content: AnyElement = v_flex()
             .w_full()
@@ -44,7 +46,7 @@ impl HomeScreen {
                 ))
             })
             .when(
-                message.content.is_empty() && !has_images && !has_embeds,
+                message.content.is_empty() && !has_images && !has_videos && !has_embeds,
                 |this| {
                     this.child(
                         div()
@@ -62,6 +64,23 @@ impl HomeScreen {
                             .iter()
                             .map(|image| attachment::render_image(image, &self.image_cache)),
                     ),
+                )
+            })
+            .when(has_videos, |this| {
+                this.child(
+                    v_flex()
+                        .gap_1()
+                        .children(message.videos.iter().enumerate().map(|(index, video)| {
+                            self.render_video(
+                                video,
+                                VideoKey {
+                                    message_id: message.id.get(),
+                                    index,
+                                },
+                                &self.image_cache,
+                                cx,
+                            )
+                        })),
                 )
             })
             .when(has_embeds, |this| {

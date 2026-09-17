@@ -15,7 +15,7 @@ pub use gateway::{GatewayEvent, GatewaySender, IncomingMessage, connect_gateway}
 pub use model::{
     Channel, ChannelKind, CurrentUser, DirectMessage, Embed, EmbedAuthor, EmbedField, EmbedFooter,
     EmbedLayout, EmbedMedia, Guild, GuildFolders, ImageAttachment, Message, MessageReference,
-    Reaction, ReactionEmoji, UserProfile, VoiceServerInfo, VoiceUserState,
+    Reaction, ReactionEmoji, UserProfile, VideoAttachment, VoiceServerInfo, VoiceUserState,
 };
 pub use rest::{
     MAX_ATTACHMENT_SIZE, MESSAGE_PAGE_SIZE, delete_message, fetch_channels, fetch_current_user,

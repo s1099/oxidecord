@@ -30,7 +30,7 @@ won't know that generator so either update CMake, or build through Ninja with
 - [x] Updater
 - [ ] App icon
 - [ ] Status changes
-- [ ] Video playback
+- [x] Video playback
 - [x] Voice calls
 - [ ] Screenshare and video calls
 - [ ] Caching

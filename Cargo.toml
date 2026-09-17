@@ -31,6 +31,21 @@ cpal = "0.18.2"
 # the track is dropped as an unsupported codec and nothing is transmitted.
 symphonia = { version = "0.5.5", default-features = false, features = ["pcm"] }
 async-trait = "0.1.92"
+# Only for `ImageBuffer`/`Frame`, which gpui's `RenderImage` is built from.
+# Default features off because gpui already pulls in the format decoders it
+# wants and cargo unions them; nothing here needs to add to that.
+image = { version = "0.25", default-features = false }
+
+# Video playback goes through Media Foundation, so no codec ships with the app.
+# The crate is already in the tree — this only turns on more of it.
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.62", features = [
+    "Win32_Foundation",
+    "Win32_Media_MediaFoundation",
+    "Win32_System_Com",
+    "Win32_System_Com_StructuredStorage",
+    "Win32_System_Variant",
+] }
 
 [patch.crates-io]
 twilight-http = { git = "https://github.com/s1099/twilight", branch = "main" }

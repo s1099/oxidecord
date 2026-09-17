@@ -5787,6 +5787,7 @@ dependencies = [
  "gpui",
  "gpui-component",
  "gpui-component-assets",
+ "image",
  "keyring",
  "lb-wry",
  "regex",
@@ -5799,6 +5800,7 @@ dependencies = [
  "twilight-http",
  "twilight-model",
  "twilight-util",
+ "windows 0.62.2",
  "zed-reqwest",
 ]
 

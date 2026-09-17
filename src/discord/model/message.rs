@@ -19,6 +19,8 @@ pub struct Message {
     pub content: String,
     pub timestamp: String,
     pub images: Vec<ImageAttachment>,
+    /// Video attachments, played inline by the platform decoder.
+    pub videos: Vec<VideoAttachment>,
     /// Rich embeds under the content: link previews, bot cards, and so on.
     pub embeds: Vec<Embed>,
     /// The message this one is a reply to, when it references another. Carries
@@ -79,6 +81,26 @@ pub struct ImageAttachment {
     pub height: Option<u32>,
 }
 
+/// A video attachment, played inline by [`crate::platform::video`].
+#[derive(Clone)]
+pub struct VideoAttachment {
+    /// Discord's media-proxy URL, which is what gets decoded. Both this and
+    /// `poster_url` carry a signed query string and expire, so neither is
+    /// worth caching past the session.
+    pub url: String,
+    /// A still from the video, asked of the media proxy so the message can
+    /// show something before anyone presses play. Discord doesn't promise one
+    /// for every codec, so the poster is drawn over a themed card that stands
+    /// on its own when the request comes back empty.
+    pub poster_url: String,
+    pub filename: String,
+    /// Intrinsic pixel dimensions, when Discord reports them. Used to size the
+    /// card up front so the message doesn't reflow once playback starts.
+    pub width: Option<u32>,
+    pub height: Option<u32>,
+    pub size: u64,
+}
+
 pub(in crate::discord) fn convert_message(message: twilight_model::channel::Message) -> Message {
     let author_avatar_url = small_avatar_url(&message.author);
     // Prefer the author's per-guild nickname, then their global display name,
@@ -105,6 +127,19 @@ pub(in crate::discord) fn convert_message(message: twilight_model::channel::Mess
                 url: preview_image_url(attachment),
                 width: attachment.width.map(|w| w as u32),
                 height: attachment.height.map(|h| h as u32),
+            })
+            .collect(),
+        videos: message
+            .attachments
+            .iter()
+            .filter(|attachment| is_video(attachment))
+            .map(|attachment| VideoAttachment {
+                url: attachment.proxy_url.clone(),
+                poster_url: poster_url(attachment),
+                filename: attachment.filename.clone(),
+                width: attachment.width.map(|w| w as u32),
+                height: attachment.height.map(|h| h as u32),
+                size: attachment.size,
             })
             .collect(),
         embeds: message.embeds.into_iter().map(convert_embed).collect(),
@@ -207,4 +242,35 @@ fn is_image(attachment: &twilight_model::channel::Attachment) -> bool {
     [".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"]
         .iter()
         .any(|ext| name.ends_with(ext))
+}
+
+/// Whether an attachment is a video. Mirrors [`is_image`]: Discord's reported
+/// media type first, filename extension second.
+///
+/// The extensions are the containers the platform decoders actually open, not
+/// every `video/*` Discord will accept — an attachment listed here that turns
+/// out to be undecodable still falls back to the poster card.
+fn is_video(attachment: &twilight_model::channel::Attachment) -> bool {
+    if let Some(content_type) = &attachment.content_type {
+        return content_type.starts_with("video/");
+    }
+    let name = attachment.filename.to_ascii_lowercase();
+    [".mp4", ".webm", ".mov", ".mkv", ".m4v", ".avi"]
+        .iter()
+        .any(|ext| name.ends_with(ext))
+}
+
+/// Asks the media proxy for a still frame of a video, at the size the poster
+/// card renders it. Discord serves one for the common codecs and 404s for the
+/// rest, which the card is built to survive.
+fn poster_url(attachment: &twilight_model::channel::Attachment) -> String {
+    let separator = if attachment.proxy_url.contains('?') {
+        '&'
+    } else {
+        '?'
+    };
+    format!(
+        "{}{separator}format=jpeg&width={PREVIEW_MAX_WIDTH}&height={PREVIEW_MAX_HEIGHT}",
+        attachment.proxy_url
+    )
 }

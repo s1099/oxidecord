@@ -30,6 +30,7 @@ impl HomeScreen {
         // accumulate; the new channel repopulates the cache as it renders.
         self.image_cache
             .update(cx, |cache, cx| cache.clear(window, cx));
+        self.stop_video(window, cx);
         self.messages_error = None;
         self.older_loading = false;
         self.reached_oldest = false;

@@ -26,6 +26,7 @@ impl HomeScreen {
         self.messages_list.reset(0);
         self.image_cache
             .update(cx, |cache, cx| cache.clear(window, cx));
+        self.stop_video(window, cx);
         self.messages_error = None;
         self.send_error = None;
         self.replying_to = None;
