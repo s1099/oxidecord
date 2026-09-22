@@ -1,0 +1,4 @@
+# The installed CMake is older than Visual Studio, so it can't generate for the
+# VS toolset libopus_sys asks for. Ninja sidesteps the version coupling.
+[env]
+CMAKE_GENERATOR = { value = "Ninja", force = false }

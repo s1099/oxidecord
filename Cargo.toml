@@ -1,6 +1,6 @@
 [package]
 name = "oxidecord"
-version = "0.3.0"
+version = "0.4.0"
 edition = "2024"
 
 [dependencies]
@@ -20,24 +20,13 @@ futures = "0.3"
 anyhow = "1.0.103"
 reqwest = { package = "zed-reqwest", version = "0.12.15-zed", default-features = false, features = ["rustls-tls-native-roots"] }
 keyring = "4.1.5"
-# "gateway" is only here because songbird 0.6.0 declares dashmap under it while
-# "receive" uses it, so receiving doesn't build without it. Its manager and Call
-# types go unused: a DM call is guildless and theirs require a guild id.
 songbird = { version = "0.6.0", default-features = false, features = ["driver", "gateway", "receive", "rustls", "tws"] }
 cpal = "0.18.2"
-# Songbird pulls symphonia in with every format and codec turned off, leaving
-# the registry it hands the mixer empty. Sending the microphone needs the PCM
-# decoder: the raw f32 adapter declares itself as PCM_F32LE, so without this
-# the track is dropped as an unsupported codec and nothing is transmitted.
 symphonia = { version = "0.5.5", default-features = false, features = ["pcm"] }
 async-trait = "0.1.92"
-# Only for `ImageBuffer`/`Frame`, which gpui's `RenderImage` is built from.
-# Default features off because gpui already pulls in the format decoders it
-# wants and cargo unions them; nothing here needs to add to that.
 image = { version = "0.25", default-features = false }
 
-# Video playback goes through Media Foundation, so no codec ships with the app.
-# The crate is already in the tree — this only turns on more of it.
+# Video playback goes through Media Foundation so no codec ships with the app
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.62", features = [
     "Win32_Foundation",
@@ -52,3 +41,10 @@ twilight-http = { git = "https://github.com/s1099/twilight", branch = "main" }
 twilight-model = { git = "https://github.com/s1099/twilight", branch = "main" }
 twilight-gateway = { git = "https://github.com/s1099/twilight", branch = "main" }
 twilight-util = { git = "https://github.com/s1099/twilight", branch = "main" }
+
+# Comment out if required while using debugger.
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = 0
