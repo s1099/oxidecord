@@ -5790,6 +5790,7 @@ dependencies = [
  "image",
  "keyring",
  "lb-wry",
+ "opus2",
  "regex",
  "serde",
  "serde_json",

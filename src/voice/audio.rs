@@ -1,13 +1,21 @@
 //! The microphone and the speakers.
 //!
-//! Two rings of interleaved `f32` sit between the audio devices and the call:
-//! capture, which the mixer drains through [`MicSource`], and playback, which
-//! the call fills from decoded packets and the output device drains.
+//! Rings of interleaved `f32` sit between the audio devices and the call:
+//! one for capture, which the mixer drains through [`MicSource`], and one per
+//! sender for playback, which [`Incoming`] fills from the packets as they
+//! arrive and the output device drains through [`Mixer`].
 //!
 //! Capture stays at the device's own sample rate — songbird's mixer resamples
 //! whatever an input declares, so there's nothing to convert on the way in.
-//! Playback is the other way round: decoded packets are always 48kHz stereo,
-//! and the output stream lays them out for the device.
+//! Playback is the other way round: packets are decoded to 48kHz stereo, and
+//! the output stream lays them out for the device.
+//!
+//! Packets are decoded here rather than by songbird. Its decoder hands Opus
+//! the DAVE trailer along with the frame on an end-to-end encrypted call,
+//! which SILK mostly shrugs off but CELT — music, and anything else sent at
+//! full band — reads its raw bits from the end of, and falls apart on. Its
+//! playout also holds packets back by RTP timestamp, which turns a sender
+//! whose timestamps run ahead of its packets into stretches of silence.
 //!
 //! Both directions do convert sample formats, to `f32` and back: the format a
 //! device reports is whichever one its driver prefers, and a call with no
@@ -22,7 +30,8 @@
 //! cpal streams are not `Send` on every platform, so both live on a thread of
 //! their own that does nothing but hold them open until the call ends.
 
-use std::collections::VecDeque;
+use std::collections::hash_map::Entry;
+use std::collections::{HashMap, VecDeque};
 use std::io::{Read, Result as IoResult, Seek, SeekFrom};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
@@ -31,25 +40,29 @@ use cpal::traits::{DeviceTrait as _, HostTrait as _, StreamTrait as _};
 
 use crate::platform::audio::{in_device_format, sanitize};
 use cpal::{DeviceId, FromSample, Sample as _, SizedSample, StreamConfig, SupportedStreamConfig};
-use songbird::constants::SAMPLE_RATE;
+use opus2::Decoder;
+use songbird::constants::{MONO_FRAME_SIZE, SAMPLE_RATE};
 use songbird::input::core::io::MediaSource;
 use songbird::input::{Input, RawAdapter};
 
-/// Decoded packets are stereo, which is the layout the playback ring carries.
+/// Packets are decoded to stereo, which is the layout the playback rings carry.
 const CHANNELS: usize = 2;
+
+/// Opus's longest frame, 120ms, in samples per channel.
+const MAX_FRAME: usize = 5760;
 
 /// Ceiling on each ring: enough to ride out a scheduling hiccup, short enough
 /// that recovery isn't audible as a growing delay.
 const MAX_BUFFERED_MS: u32 = 400;
 
-/// How much the playback ring builds up before it starts draining again.
+/// How much a sender's ring builds up before it starts draining again.
 ///
-/// Packets arrive on a 20ms tick that the network smears either side of, so a
-/// reader that drains to empty underruns on nearly every callback. The gaps
-/// that leaves repeat at the callback rate, which is heard as a harsh buzz
-/// over the speech rather than as the dropouts they are; a buffer this deep
-/// costs latency once and stops it.
-const PLAYBACK_PRIME_MS: u32 = 40;
+/// Packets are played straight off the network, 20ms apart give or take
+/// however much the route smears them, so a reader that drains to empty
+/// underruns on nearly every callback. The gaps that leaves repeat at the
+/// callback rate, which is heard as a harsh buzz rather than as the dropouts
+/// they are; a buffer this deep costs latency once and stops it.
+const PLAYBACK_PRIME_MS: u32 = 60;
 
 /// The same for the microphone, which only has device jitter to absorb rather
 /// than a network as well.
@@ -60,6 +73,16 @@ const CAPTURE_PRIME_MS: u32 = 30;
 /// Long enough to take the edge off the step, short enough not to swallow a
 /// consonant.
 const FADE_MS: u32 = 3;
+
+/// The most lost packets in a row that get concealed. A longer run is a
+/// sender that dropped out rather than a network that lost a few, and
+/// papering over it would only hold up the audio that comes next.
+const MAX_CONCEALED: i16 = 5;
+
+/// How far behind the expected sequence number a packet can be and still be
+/// taken for one that arrived late. Further back than this is a sender that
+/// started its count over.
+const REORDER_WINDOW: i16 = 32;
 
 /// A ring of interleaved samples shared between an audio callback and the
 /// call.
@@ -269,6 +292,133 @@ fn limit(sample: f32) -> f32 {
     (THRESHOLD + HEADROOM * over.tanh()).copysign(sample)
 }
 
+/// Everyone audible in the call, one ring per sender, summed on the way out.
+///
+/// Each sender's packets keep their own clock and their own jitter, so each
+/// gets a ring to prime, starve and ramp on its own: one person's connection
+/// stalling doesn't cut out everyone else.
+#[derive(Default)]
+struct Mixer {
+    /// Keyed by SSRC. A list rather than a map because the audio callback
+    /// walks all of it every time and looks nothing up.
+    rings: Mutex<Vec<(u32, Arc<SampleRing>)>>,
+}
+
+impl Mixer {
+    /// Fills `out` with every sender summed. `stream` is scratch space for
+    /// one sender's share, held by the caller so the audio thread doesn't
+    /// allocate.
+    fn fill(&self, out: &mut [f32], stream: &mut Vec<f32>) {
+        out.fill(0.);
+        stream.clear();
+        stream.resize(out.len(), 0.);
+
+        if let Ok(rings) = self.rings.lock() {
+            for (_, ring) in rings.iter() {
+                ring.fill(stream);
+                for (slot, sample) in out.iter_mut().zip(stream.iter()) {
+                    *slot += sample;
+                }
+            }
+        }
+
+        for slot in out.iter_mut() {
+            *slot = limit(*slot);
+        }
+    }
+
+    fn add(&self, ssrc: u32, ring: Arc<SampleRing>) {
+        if let Ok(mut rings) = self.rings.lock() {
+            rings.push((ssrc, ring));
+        }
+    }
+
+    fn remove(&self, ssrc: u32) {
+        if let Ok(mut rings) = self.rings.lock() {
+            rings.retain(|(id, _)| *id != ssrc);
+        }
+    }
+
+    fn clear(&self) {
+        if let Ok(mut rings) = self.rings.lock() {
+            rings.clear();
+        }
+    }
+}
+
+/// One sender's packets on their way to the mixer.
+struct Incoming {
+    decoder: Decoder,
+    ring: Arc<SampleRing>,
+    /// The sequence number the next packet should carry, once there has been
+    /// a first one to count from.
+    expected: Option<u16>,
+    /// Samples per channel in the last frame decoded: how much a concealed
+    /// frame has to cover, since there's no packet to say.
+    frame: usize,
+    decoded: Vec<f32>,
+}
+
+impl Incoming {
+    fn new() -> Option<Self> {
+        Some(Self {
+            decoder: Decoder::new(SAMPLE_RATE, opus2::Channels::Stereo).ok()?,
+            ring: Arc::new(SampleRing::new(SAMPLE_RATE, CHANNELS, PLAYBACK_PRIME_MS)),
+            expected: None,
+            frame: MONO_FRAME_SIZE,
+            decoded: vec![0.; MAX_FRAME * CHANNELS],
+        })
+    }
+
+    /// Decodes a packet into the ring, concealing whatever was lost before it.
+    ///
+    /// Packets are played in the order they arrive rather than held back to
+    /// be sorted: reordering is rare enough on a voice route that waiting on
+    /// it would cost every packet latency to save the odd one. A packet that
+    /// turns up after its moment has passed has already been concealed, so
+    /// it's dropped.
+    fn receive(&mut self, sequence: u16, opus: &[u8]) {
+        let gap = self
+            .expected
+            .map_or(0, |expected| sequence.wrapping_sub(expected) as i16);
+        if (-REORDER_WINDOW..0).contains(&gap) {
+            return;
+        }
+        self.expected = Some(sequence.wrapping_add(1));
+
+        if (1..=MAX_CONCEALED).contains(&gap) {
+            for _ in 1..gap {
+                self.decode(&[], false);
+            }
+            // A packet can carry a rougher copy of the one before it, which
+            // decoding with FEC recovers. Without one, Opus conceals instead.
+            self.decode(opus, true);
+        }
+        self.decode(opus, false);
+    }
+
+    fn decode(&mut self, opus: &[u8], fec: bool) {
+        // Concealment and recovery fill exactly the room they're given, which
+        // has to be a whole frame; a real packet says how long it is itself.
+        let room = if opus.is_empty() || fec {
+            self.frame * CHANNELS
+        } else {
+            self.decoded.len()
+        };
+        let Ok(frames) = self
+            .decoder
+            .decode_float(opus, &mut self.decoded[..room], fec)
+        else {
+            return;
+        };
+        if !opus.is_empty() && !fec {
+            self.frame = frames;
+        }
+        self.ring
+            .push(self.decoded[..frames * CHANNELS].iter().copied());
+    }
+}
+
 /// Ends the call for the device thread and everything it holds open.
 ///
 /// The flag is what the callbacks read, on the audio threads, where taking a
@@ -312,7 +462,12 @@ impl Shutdown {
 /// The audio devices for one call.
 pub struct AudioIo {
     capture: Arc<SampleRing>,
-    playback: Arc<SampleRing>,
+    /// What the speakers play: every sender's ring.
+    mixer: Arc<Mixer>,
+    /// Every sender's decoder, keyed by SSRC. Only the call's event handlers
+    /// touch these, so they're kept apart from the rings the audio callback
+    /// locks.
+    incoming: Mutex<HashMap<u32, Incoming>>,
     /// Set when the call ends, which stops the device thread and every
     /// callback still running on it.
     shutdown: Arc<Shutdown>,
@@ -357,18 +512,19 @@ impl AudioIo {
                 capture_format.1 as usize,
                 CAPTURE_PRIME_MS,
             )),
-            playback: Arc::new(SampleRing::new(SAMPLE_RATE, CHANNELS, PLAYBACK_PRIME_MS)),
+            mixer: Arc::default(),
+            incoming: Mutex::default(),
             shutdown: Arc::default(),
             deafened: Arc::new(AtomicBool::new(false)),
             capture_format,
         };
 
         let capture = this.capture.clone();
-        let playback = this.playback.clone();
+        let mixer = this.mixer.clone();
         let shutdown = this.shutdown.clone();
         std::thread::Builder::new()
             .name("voice-audio".into())
-            .spawn(move || run_devices(input, output, &capture, &playback, &shutdown))
+            .spawn(move || run_devices(input, output, &capture, &mixer, &shutdown))
             .ok();
 
         this
@@ -389,15 +545,43 @@ impl AudioIo {
         .into()
     }
 
-    /// Queues decoded audio from the call for playback. Songbird hands over
-    /// 20ms of interleaved stereo per tick, summed across everyone audible —
-    /// which is why this takes a wider sample than it stores.
-    pub fn play(&self, samples: &[i32]) {
+    /// Queues one Opus packet from the call for playback. `opus` is the
+    /// frame alone, with every layer of encryption already taken off.
+    pub fn receive(&self, ssrc: u32, sequence: u16, opus: &[u8]) {
         if self.deafened.load(Ordering::Relaxed) || self.shutdown.is_stopped() {
             return;
         }
-        self.playback
-            .push(samples.iter().map(|&sample| limit(sample as f32 / 32768.)));
+        let Ok(mut incoming) = self.incoming.lock() else {
+            return;
+        };
+        let stream = match incoming.entry(ssrc) {
+            Entry::Occupied(entry) => entry.into_mut(),
+            Entry::Vacant(entry) => {
+                let Some(stream) = Incoming::new() else {
+                    return;
+                };
+                self.mixer.add(ssrc, stream.ring.clone());
+                entry.insert(stream)
+            }
+        };
+        stream.receive(sequence, opus);
+    }
+
+    /// Stops playing a sender who has left the call.
+    pub fn forget(&self, ssrc: u32) {
+        if let Ok(mut incoming) = self.incoming.lock() {
+            incoming.remove(&ssrc);
+        }
+        self.mixer.remove(ssrc);
+    }
+
+    /// Stops playing everyone. Whoever is still talking starts over with a
+    /// fresh decoder at their next packet.
+    fn forget_all(&self) {
+        if let Ok(mut incoming) = self.incoming.lock() {
+            incoming.clear();
+        }
+        self.mixer.clear();
     }
 
     pub fn set_deafened(&self, deafened: bool) {
@@ -405,7 +589,7 @@ impl AudioIo {
         if deafened {
             // Drop what's already queued, so undeafening doesn't replay a
             // burst of stale audio.
-            self.playback.clear();
+            self.forget_all();
         }
     }
 
@@ -418,7 +602,7 @@ impl AudioIo {
     pub fn stop(&self) {
         self.shutdown.stop();
         self.capture.clear();
-        self.playback.clear();
+        self.forget_all();
     }
 }
 
@@ -539,12 +723,11 @@ fn run_devices(
     input: Option<(cpal::Device, SupportedStreamConfig)>,
     output: Option<(cpal::Device, SupportedStreamConfig)>,
     capture: &Arc<SampleRing>,
-    playback: &Arc<SampleRing>,
+    mixer: &Arc<Mixer>,
     shutdown: &Arc<Shutdown>,
 ) {
     let input = input.and_then(|(device, config)| build_input(&device, config, capture.clone()));
-    let output =
-        output.and_then(|(device, config)| build_output(&device, config, playback.clone()));
+    let output = output.and_then(|(device, config)| build_output(&device, config, mixer.clone()));
 
     if input.is_none() && output.is_none() {
         return;
@@ -619,14 +802,14 @@ where
 fn build_output(
     device: &cpal::Device,
     config: SupportedStreamConfig,
-    playback: Arc<SampleRing>,
+    mixer: Arc<Mixer>,
 ) -> Option<cpal::Stream> {
     let stream = in_device_format!(
         config.sample_format(),
         output_stream,
         device,
         config.into(),
-        playback,
+        mixer,
     )?;
     stream.play().ok()?;
     Some(stream)
@@ -635,12 +818,12 @@ fn build_output(
 fn output_stream<T>(
     device: &cpal::Device,
     config: StreamConfig,
-    playback: Arc<SampleRing>,
+    mixer: Arc<Mixer>,
 ) -> Option<cpal::Stream>
 where
     T: SizedSample + FromSample<f32>,
 {
-    let mut render = Playback::new(playback, config.sample_rate, usize::from(config.channels));
+    let mut render = Playback::new(mixer, config.sample_rate, usize::from(config.channels));
 
     device
         .build_output_stream(
@@ -661,7 +844,7 @@ where
 /// the callback rate is heard as a tone over the speech rather than as the
 /// glitches it is.
 struct Playback {
-    ring: Arc<SampleRing>,
+    mixer: Arc<Mixer>,
     /// The source frames the next output frame falls between.
     previous: [f32; CHANNELS],
     next: [f32; CHANNELS],
@@ -672,18 +855,21 @@ struct Playback {
     /// The source frames one callback needs. Held across callbacks so the
     /// audio thread stops allocating once the buffer size has settled.
     scratch: Vec<f32>,
+    /// One sender's share of `scratch`, for the mixer to sum from.
+    stream: Vec<f32>,
     channels: usize,
 }
 
 impl Playback {
-    fn new(ring: Arc<SampleRing>, sample_rate: u32, channels: usize) -> Self {
+    fn new(mixer: Arc<Mixer>, sample_rate: u32, channels: usize) -> Self {
         Self {
-            ring,
+            mixer,
             previous: [0.; CHANNELS],
             next: [0.; CHANNELS],
             phase: 0.,
             step: f64::from(SAMPLE_RATE) / f64::from(sample_rate.max(1)),
             scratch: Vec::new(),
+            stream: Vec::new(),
             channels: channels.max(1),
         }
     }
@@ -714,7 +900,7 @@ impl Playback {
 
         self.scratch.clear();
         self.scratch.resize(pulls * CHANNELS, 0.);
-        self.ring.fill(&mut self.scratch);
+        self.mixer.fill(&mut self.scratch, &mut self.stream);
 
         let mut pulled = 0;
         for frame in 0..frames {

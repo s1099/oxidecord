@@ -22,6 +22,7 @@ reqwest = { package = "zed-reqwest", version = "0.12.15-zed", default-features =
 keyring = "4.1.5"
 songbird = { version = "0.6.0", default-features = false, features = ["driver", "gateway", "receive", "rustls", "tws"] }
 cpal = "0.18.2"
+opus2 = "0.4.0"
 symphonia = { version = "0.5.5", default-features = false, features = ["pcm"] }
 async-trait = "0.1.92"
 image = { version = "0.25", default-features = false }

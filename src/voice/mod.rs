@@ -17,7 +17,7 @@ use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
 use futures::channel::mpsc::{UnboundedReceiver, UnboundedSender, unbounded};
-use songbird::driver::{DecodeConfig, DecodeMode, Driver};
+use songbird::driver::{DecodeMode, Driver};
 use songbird::events::{CoreEvent, Event, EventContext, EventHandler};
 use songbird::id::{ChannelId, GuildId, UserId};
 use songbird::tracks::TrackHandle;
@@ -223,9 +223,9 @@ async fn connect(
     deafened: bool,
     input_device: Option<&str>,
 ) -> Result<Call, ConnectionError> {
-    // Decoding is off by default, since a bot usually only sends. Here every
-    // packet has to become audio.
-    let config = Config::default().decode_mode(DecodeMode::Decode(DecodeConfig::default()));
+    // Decryption is off by default, since a bot usually only sends. Decoding
+    // stays off: packets are decoded in `audio`, for the reasons given there.
+    let config = Config::default().decode_mode(DecodeMode::Decrypt);
     let mut driver = Driver::new(config);
 
     let audio = Arc::new(AudioIo::start(input_device));
@@ -243,13 +243,19 @@ async fn connect(
     driver.add_global_event(
         Event::Core(CoreEvent::ClientDisconnect),
         DisconnectHandler {
+            audio: audio.clone(),
             speakers: speakers.clone(),
+        },
+    );
+    driver.add_global_event(
+        Event::Core(CoreEvent::RtpPacket),
+        PacketHandler {
+            audio: audio.clone(),
         },
     );
     driver.add_global_event(
         Event::Core(CoreEvent::VoiceTick),
         TickHandler {
-            audio: audio.clone(),
             speakers: speakers.clone(),
             events: events.clone(),
         },
@@ -340,29 +346,77 @@ impl EventHandler for SpeakingHandler {
 
 /// Forgets a user's stream when they leave the call.
 struct DisconnectHandler {
+    audio: SharedAudio,
     speakers: Arc<Mutex<Speakers>>,
 }
 
 #[async_trait]
 impl EventHandler for DisconnectHandler {
     async fn act(&self, ctx: &EventContext<'_>) -> Option<Event> {
-        if let EventContext::ClientDisconnect(disconnect) = ctx
-            && let Ok(mut speakers) = self.speakers.lock()
-        {
-            let gone = Id::new_checked(disconnect.user_id.0);
-            speakers.users.retain(|_, id| Some(*id) != gone);
-            if let Some(gone) = gone {
+        let EventContext::ClientDisconnect(disconnect) = ctx else {
+            return None;
+        };
+        let gone = Id::new_checked(disconnect.user_id.0)?;
+
+        let streams: Vec<u32> = match self.speakers.lock() {
+            Ok(mut speakers) => {
                 speakers.audible.remove(&gone);
+                let streams = speakers
+                    .users
+                    .iter()
+                    .filter(|(_, id)| **id == gone)
+                    .map(|(ssrc, _)| *ssrc)
+                    .collect();
+                speakers.users.retain(|_, id| *id != gone);
+                streams
+            }
+            Err(_) => return None,
+        };
+
+        if let Ok(audio) = self.audio.lock() {
+            for ssrc in streams {
+                audio.forget(ssrc);
             }
         }
         None
     }
 }
 
-/// One 20ms tick of the call: every speaker's decoded audio, mixed and queued
-/// for the speakers.
-struct TickHandler {
+/// Hands every packet to the speakers the moment it arrives.
+///
+/// By now songbird has taken off both the transport encryption and DAVE's,
+/// and the offsets it reports step over the header extension, the DAVE
+/// trailer, and any RTP padding, leaving the Opus frame alone.
+struct PacketHandler {
     audio: SharedAudio,
+}
+
+#[async_trait]
+impl EventHandler for PacketHandler {
+    async fn act(&self, ctx: &EventContext<'_>) -> Option<Event> {
+        let EventContext::RtpPacket(packet) = ctx else {
+            return None;
+        };
+
+        // The fixed RTP header, then four bytes per contributing source; the
+        // offsets songbird reports count from the end of those.
+        let raw = &packet.packet[..];
+        let header = 12 + 4 * usize::from(*raw.first()? & 0x0f);
+        let sequence = u16::from_be_bytes([*raw.get(2)?, *raw.get(3)?]);
+        let ssrc = u32::from_be_bytes(raw.get(8..12)?.try_into().ok()?);
+        let payload = raw.get(header..)?;
+        let end = payload.len().checked_sub(packet.payload_end_pad)?;
+        let opus = payload.get(packet.payload_offset..end)?;
+
+        if let Ok(audio) = self.audio.lock() {
+            audio.receive(ssrc, sequence, opus);
+        }
+        None
+    }
+}
+
+/// One 20ms tick of the call: who was heard in it, for the tiles.
+struct TickHandler {
     speakers: Arc<Mutex<Speakers>>,
     events: UnboundedSender<VoiceEvent>,
 }
@@ -374,41 +428,14 @@ impl EventHandler for TickHandler {
             return None;
         };
 
-        // Summing is what mixing several speakers into one stream means. The
-        // sum is kept wider than the samples that went into it so the peaks it
-        // produces survive as far as `play`, which eases them back inside full
-        // scale — clipping them flat here is what a busy call is heard as.
-        let mut mixed: Vec<i32> = Vec::new();
-        let mut audible = HashSet::new();
-
-        // One lock for the whole tick: this runs fifty times a second, and the
-        // mapping can't change underneath it in the middle either way.
-        let known = match self.speakers.lock() {
-            Ok(speakers) => speakers.users.clone(),
+        let audible: HashSet<_> = match self.speakers.lock() {
+            Ok(speakers) => tick
+                .speaking
+                .keys()
+                .filter_map(|ssrc| speakers.users.get(ssrc).copied())
+                .collect(),
             Err(_) => return None,
         };
-
-        for (ssrc, data) in &tick.speaking {
-            if let Some(user_id) = known.get(ssrc) {
-                audible.insert(*user_id);
-            }
-
-            let Some(voice) = &data.decoded_voice else {
-                continue;
-            };
-            if mixed.len() < voice.len() {
-                mixed.resize(voice.len(), 0);
-            }
-            for (slot, sample) in mixed.iter_mut().zip(voice) {
-                *slot += i32::from(*sample);
-            }
-        }
-
-        if !mixed.is_empty()
-            && let Ok(audio) = self.audio.lock()
-        {
-            audio.play(&mixed);
-        }
 
         // Tiles only repaint when the set changes; at 50 ticks a second,
         // sending every one would repaint the call for no reason.
