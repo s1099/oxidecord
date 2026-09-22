@@ -3,12 +3,13 @@
 use gpui::prelude::FluentBuilder as _;
 use gpui::*;
 use gpui_component::{
-    ActiveTheme as _, Disableable as _, Icon, Sizable as _, avatar::Avatar, button::Button,
+    ActiveTheme as _, Disableable as _, Icon, Sizable as _, button::Button,
     button::ButtonVariants as _, v_flex,
 };
 
 use crate::discord::DirectMessage;
 use crate::screens::home::HomeScreen;
+use crate::screens::home::view::avatar;
 
 use super::{header, header_content, pane};
 
@@ -39,10 +40,7 @@ impl HomeScreen {
     }
 
     fn render_dm_header(&self, dm: &DirectMessage, cx: &Context<Self>) -> impl IntoElement {
-        let mut avatar = Avatar::new().name(dm.name.clone()).with_size(px(28.));
-        if let Some(url) = dm.avatar_url.clone() {
-            avatar = avatar.src(url);
-        }
+        let avatar = avatar(dm.name.clone(), dm.avatar_url.clone(), px(28.));
 
         // The call buttons drop out while this conversation's call is up —
         // hanging up is the stage's job from there.

@@ -22,6 +22,7 @@ mod output;
 #[cfg_attr(not(windows), path = "unsupported.rs")]
 mod backend;
 
+use std::io::Write as _;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
@@ -29,7 +30,7 @@ use std::time::Duration;
 
 use futures::channel::mpsc::UnboundedSender;
 
-use super::runtime;
+use super::{http, runtime};
 use clock::AudioRing;
 
 /// How many decoded frames may be in flight to the UI before the decoder
@@ -262,21 +263,6 @@ fn play(url: String, target: (u32, u32), control: &Control, events: &UnboundedSe
 /// file, so scrubbing works without a byte-range implementation, and Discord's
 /// signed URL is only ever handled by the HTTP client that already knows how.
 fn fetch_to_temp(url: &str, control: &Control) -> Result<PathBuf, String> {
-    let url = url.to_owned();
-    // Blocking here is fine: this is the decoder's own thread, and it has
-    // nothing to do until the file has arrived.
-    let bytes = runtime::handle()
-        .block_on(async move {
-            let client = reqwest::Client::new();
-            let response = client.get(&url).send().await?.error_for_status()?;
-            response.bytes().await
-        })
-        .map_err(|err| format!("Couldn't download the video: {err}"))?;
-
-    if control.is_stopped() {
-        return Err(String::from("cancelled"));
-    }
-
     // Unique per player so two clips playing in sequence can't collide, and
     // named so a leaked file is obvious in a temp directory.
     let unique = std::time::SystemTime::now()
@@ -284,6 +270,35 @@ fn fetch_to_temp(url: &str, control: &Control) -> Result<PathBuf, String> {
         .map_or(0, |since| since.as_nanos());
     let path = std::env::temp_dir().join(format!("oxidecord-video-{unique:x}"));
 
-    std::fs::write(&path, &bytes).map_err(|err| format!("Couldn't buffer the video: {err}"))?;
-    Ok(path)
+    // Blocking here is fine: this is the decoder's own thread, and it has
+    // nothing to do until the file has arrived. Streamed to disk so a big clip
+    // is never held in memory whole, and so stopping cancels mid-download.
+    let url = url.to_owned();
+    let result = runtime::handle().block_on(async {
+        let mut file = std::fs::File::create(&path)
+            .map_err(|err| format!("Couldn't buffer the video: {err}"))?;
+        let download = |err: reqwest::Error| format!("Couldn't download the video: {err}");
+        let mut response = http::client()
+            .get(&url)
+            .send()
+            .await
+            .and_then(reqwest::Response::error_for_status)
+            .map_err(download)?;
+        while let Some(chunk) = response.chunk().await.map_err(download)? {
+            if control.is_stopped() {
+                return Err(String::from("cancelled"));
+            }
+            file.write_all(&chunk)
+                .map_err(|err| format!("Couldn't buffer the video: {err}"))?;
+        }
+        Ok(())
+    });
+
+    match result {
+        Ok(()) => Ok(path),
+        Err(err) => {
+            _ = std::fs::remove_file(&path);
+            Err(err)
+        }
+    }
 }

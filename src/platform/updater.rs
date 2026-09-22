@@ -23,7 +23,7 @@ use std::{
 use futures::{StreamExt as _, channel::mpsc};
 use gpui::{App, Global, SharedString};
 
-use super::runtime;
+use super::{http, runtime};
 
 /// Where releases are published. The API returns the newest one, including its
 /// tag and the download URL for each asset.
@@ -116,7 +116,9 @@ pub fn check(cx: &mut App) {
     set_status(Status::Checking, cx);
 
     cx.spawn(async move |cx| {
-        let result = on_runtime(fetch_latest()).await;
+        let result = runtime::run(fetch_latest())
+            .await
+            .unwrap_or_else(|_| Err("the check was cut short".into()));
         _ = cx.update(|cx| {
             let status = match result {
                 Ok(Some(release)) => Status::Available {
@@ -267,7 +269,7 @@ struct Release {
 
 /// Fetches the newest release, or `None` when it isn't newer than this build.
 async fn fetch_latest() -> Result<Option<Release>, String> {
-    let response = reqwest::Client::new()
+    let response = http::client()
         .get(LATEST_RELEASE_API)
         .header("User-Agent", USER_AGENT)
         .header("Accept", "application/vnd.github+json")
@@ -323,7 +325,7 @@ async fn write_asset(
     staged: &Path,
     tx: &mpsc::UnboundedSender<Progress>,
 ) -> Result<(), String> {
-    let mut response = reqwest::Client::new()
+    let mut response = http::client()
         .get(url)
         .header("User-Agent", USER_AGENT)
         .send()
@@ -361,22 +363,6 @@ async fn write_asset(
 
     file.flush()
         .map_err(|error| format!("couldn't finish writing the download: {error}"))
-}
-
-/// Runs a future on the Tokio runtime the network crates need, and awaits the
-/// result from gpui's executor.
-async fn on_runtime<T>(
-    future: impl Future<Output = Result<T, String>> + Send + 'static,
-) -> Result<T, String>
-where
-    T: Send + 'static,
-{
-    let (tx, rx) = futures::channel::oneshot::channel();
-    runtime::handle().spawn(async move {
-        _ = tx.send(future.await);
-    });
-    rx.await
-        .unwrap_or_else(|_| Err("the check was cut short".into()))
 }
 
 /// A path beside the running binary.

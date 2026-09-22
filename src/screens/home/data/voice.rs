@@ -15,9 +15,7 @@ use twilight_model::id::{
 use crate::discord;
 use crate::platform::prefs;
 use crate::screens::home::HomeScreen;
-use crate::screens::home::voice::{
-    PendingVoice, VoiceCall, VoiceKind, VoiceParticipant, VoiceStatus,
-};
+use crate::screens::home::voice::{PendingVoice, VoiceCall, VoiceParticipant, VoiceStatus};
 use crate::voice::{VoiceConnection, VoiceEvent};
 
 impl HomeScreen {
@@ -40,12 +38,7 @@ impl HomeScreen {
             return;
         }
 
-        let Some(channel) = self
-            .channel_groups
-            .iter()
-            .flat_map(|group| &group.channels)
-            .find(|channel| channel.id == channel_id)
-        else {
+        let Some(channel) = self.channel_info(channel_id) else {
             return;
         };
         let name = channel.name.clone();
@@ -58,7 +51,6 @@ impl HomeScreen {
             VoiceCall {
                 channel_id,
                 guild_id,
-                kind: VoiceKind::Channel,
                 name,
                 context: guild_name,
                 status: VoiceStatus::Connecting,
@@ -84,7 +76,6 @@ impl HomeScreen {
             VoiceCall {
                 channel_id: dm.id,
                 guild_id: None,
-                kind: VoiceKind::Direct,
                 name: dm.name,
                 context: None,
                 status: VoiceStatus::Connecting,
@@ -117,13 +108,19 @@ impl HomeScreen {
         if let Some(gateway) = &self.gateway {
             gateway.update_voice_state(guild_id, None, self.voice_muted, self.voice_deafened);
         }
+        self.end_call_locally();
+        cx.notify();
+    }
+
+    /// Tears down this side of the call: the connection and everything waiting
+    /// on or drawn from it.
+    fn end_call_locally(&mut self) {
         if let Some(engine) = &self.voice_engine {
             engine.disconnect();
         }
         self.voice = None;
         self.pending_voice = None;
         self.voice_speaking.clear();
-        cx.notify();
     }
 
     /// Toggles self-mute: whether the microphone is sent.
@@ -246,14 +243,7 @@ impl HomeScreen {
                 }
                 // Disconnected from the far end: the call is already over, so
                 // only the local side is torn down.
-                None => {
-                    if let Some(engine) = &self.voice_engine {
-                        engine.disconnect();
-                    }
-                    self.voice = None;
-                    self.pending_voice = None;
-                    self.voice_speaking.clear();
-                }
+                None => self.end_call_locally(),
             }
         }
 
@@ -266,10 +256,7 @@ impl HomeScreen {
         // A move within the guild is the common case; a name the app hasn't
         // loaded keeps the one already on the call rather than blanking it.
         let name = self
-            .channel_groups
-            .iter()
-            .flat_map(|group| &group.channels)
-            .find(|channel| channel.id == channel_id)
+            .channel_info(channel_id)
             .map(|channel| channel.name.clone());
 
         let mut previous = None;
@@ -423,11 +410,7 @@ impl HomeScreen {
             })
             .collect();
 
-        participants.sort_by(|a, b| {
-            b.is_self
-                .cmp(&a.is_self)
-                .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
-        });
+        participants.sort_by_cached_key(|p| (!p.is_self, p.name.to_lowercase()));
         participants
     }
 }

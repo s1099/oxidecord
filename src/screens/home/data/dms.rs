@@ -22,48 +22,21 @@ impl HomeScreen {
         // No conversation is open yet; reset the message pane to its empty
         // state so the previously viewed channel's messages don't linger.
         self.selected_channel = None;
-        self.messages.clear();
-        self.messages_list.reset(0);
-        self.image_cache
-            .update(cx, |cache, cx| cache.clear(window, cx));
-        self.stop_video(window, cx);
-        self.messages_error = None;
-        self.send_error = None;
-        self.replying_to = None;
-        self.older_loading = false;
-        self.reached_oldest = false;
-        self.message_input.update(cx, |input, cx| {
-            input.set_placeholder("Send a message", window, cx);
-        });
-        cx.notify();
+        self.reset_conversation(None, window, cx);
 
         if !self.dms_loaded && !self.dms_loading {
-            self.load_dms(window, cx);
+            self.load_dms(cx);
         }
     }
 
-    fn load_dms(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    fn load_dms(&mut self, cx: &mut Context<Self>) {
         self.dms_error = None;
         self.dms_loading = true;
         cx.notify();
 
-        let Some(token) = discord::load_token() else {
-            self.dms_loading = false;
-            self.dms_error = Some("No token found. Please log in first.".into());
-            return;
-        };
-
-        let (tx, rx) = futures::channel::oneshot::channel();
-        discord::fetch_dms(token, move |result| {
-            let _ = tx.send(result);
-        });
-
-        cx.spawn_in(window, async move |this, cx| {
-            let Ok(result) = rx.await else {
-                return;
-            };
-
-            let _ = this.update_in(cx, |this, _window, cx| {
+        cx.spawn(async move |this, cx| {
+            let result = discord::fetch_dms().await;
+            let _ = this.update(cx, |this, cx| {
                 match result {
                     Ok(dms) => {
                         this.dms = dms;

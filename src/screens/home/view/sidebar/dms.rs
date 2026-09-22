@@ -2,12 +2,11 @@
 
 use gpui::prelude::FluentBuilder as _;
 use gpui::*;
-use gpui_component::{
-    ActiveTheme as _, Sizable as _, avatar::Avatar, h_flex, skeleton::Skeleton, v_flex,
-};
+use gpui_component::{ActiveTheme as _, h_flex, skeleton::Skeleton, v_flex};
 
 use crate::discord::DirectMessage;
 use crate::screens::home::HomeScreen;
+use crate::screens::home::view::avatar;
 
 use super::shell;
 
@@ -23,10 +22,7 @@ impl HomeScreen {
         let channel_id = dm.id;
         let is_selected = self.selected_channel == Some(channel_id);
 
-        let mut avatar = Avatar::new().name(dm.name.clone()).with_size(px(32.));
-        if let Some(url) = dm.avatar_url.clone() {
-            avatar = avatar.src(url);
-        }
+        let avatar = avatar(dm.name.clone(), dm.avatar_url.clone(), px(32.));
 
         h_flex()
             .id(("dm", channel_id.get()))

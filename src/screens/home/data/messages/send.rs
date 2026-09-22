@@ -29,12 +29,6 @@ impl HomeScreen {
             return;
         }
 
-        let Some(token) = discord::load_token() else {
-            self.send_error = Some("No token found. Please log in first.".into());
-            cx.notify();
-            return;
-        };
-
         let reply_to = self.replying_to.as_ref().map(|target| target.message_id);
         let attachments: Vec<(String, Vec<u8>)> = self
             .pending_attachments
@@ -52,23 +46,8 @@ impl HomeScreen {
         self.replying_to = None;
         cx.notify();
 
-        let (tx, rx) = futures::channel::oneshot::channel();
-        discord::send_message(
-            token,
-            channel_id,
-            content,
-            reply_to,
-            attachments,
-            move |result| {
-                let _ = tx.send(result);
-            },
-        );
-
         cx.spawn(async move |this, cx| {
-            let Ok(result) = rx.await else {
-                return;
-            };
-
+            let result = discord::send_message(channel_id, content, reply_to, attachments).await;
             let _ = this.update(cx, |this, cx| {
                 // Drop the response if the user switched channels meanwhile.
                 if this.selected_channel != Some(channel_id) {

@@ -24,58 +24,19 @@ impl HomeScreen {
         let Some(channel_id) = self.selected_channel else {
             return;
         };
-        self.messages.clear();
-        self.messages_list.reset(0);
-        // Release the previous channel's decoded images instead of letting them
-        // accumulate; the new channel repopulates the cache as it renders.
-        self.image_cache
-            .update(cx, |cache, cx| cache.clear(window, cx));
-        self.stop_video(window, cx);
-        self.messages_error = None;
-        self.older_loading = false;
-        self.reached_oldest = false;
-        // A freshly opened channel starts pinned to its newest message, so
-        // live messages should follow along until the user scrolls up.
-        self.at_bottom = true;
-        self.send_error = None;
-        self.replying_to = None;
-        for attachment in &self.pending_attachments {
-            attachment.release_preview(cx);
-        }
-        self.pending_attachments.clear();
-        self.messages_loading = true;
-
         let placeholder = match self.view {
             View::DirectMessages => self
                 .selected_dm_info()
-                .map(|dm| format!("Message @{}", dm.name))
-                .unwrap_or_else(|| "Send a message".into()),
+                .map(|dm| format!("Message @{}", dm.name)),
             View::Guild => self
                 .selected_channel_info()
-                .map(|channel| format!("Message #{}", channel.name))
-                .unwrap_or_else(|| "Send a message".into()),
+                .map(|channel| format!("Message #{}", channel.name)),
         };
-        self.message_input.update(cx, |input, cx| {
-            input.set_placeholder(placeholder, window, cx);
-        });
-        cx.notify();
-
-        let Some(token) = discord::load_token() else {
-            self.messages_loading = false;
-            self.messages_error = Some("No token found. Please log in first.".into());
-            return;
-        };
-
-        let (tx, rx) = futures::channel::oneshot::channel();
-        discord::fetch_messages(token, channel_id, None, move |result| {
-            let _ = tx.send(result);
-        });
+        self.reset_conversation(placeholder, window, cx);
+        self.messages_loading = true;
 
         cx.spawn(async move |this, cx| {
-            let Ok(result) = rx.await else {
-                return;
-            };
-
+            let result = discord::fetch_messages(channel_id, None).await;
             let _ = this.update(cx, |this, cx| {
                 // The user may have clicked another channel while this request
                 // was in flight; drop the stale response.
@@ -99,6 +60,39 @@ impl HomeScreen {
         .detach();
     }
 
+    /// Empties the message pane and everything tied to the conversation that
+    /// was open, ready for the next one (or none).
+    pub(in crate::screens::home) fn reset_conversation(
+        &mut self,
+        placeholder: Option<String>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.messages.clear();
+        self.messages_list.reset(0);
+        // Release the previous conversation's decoded images instead of letting
+        // them accumulate; the next one repopulates the cache as it renders.
+        self.image_cache
+            .update(cx, |cache, cx| cache.clear(window, cx));
+        self.stop_video(window, cx);
+        self.messages_error = None;
+        self.older_loading = false;
+        self.reached_oldest = false;
+        // A freshly opened conversation starts pinned to its newest message, so
+        // live messages should follow along until the user scrolls up.
+        self.at_bottom = true;
+        self.send_error = None;
+        self.replying_to = None;
+        for attachment in self.pending_attachments.drain(..) {
+            attachment.release_preview(cx);
+        }
+        let placeholder = placeholder.unwrap_or_else(|| "Send a message".into());
+        self.message_input.update(cx, |input, cx| {
+            input.set_placeholder(placeholder, window, cx);
+        });
+        cx.notify();
+    }
+
     /// Fetches the page of messages older than the oldest loaded one and
     /// prepends it, keeping the current scroll position.
     pub(in crate::screens::home) fn load_older_messages(&mut self, cx: &mut Context<Self>) {
@@ -111,23 +105,11 @@ impl HomeScreen {
         let Some(oldest_id) = self.messages.first().map(|message| message.id) else {
             return;
         };
-        let Some(token) = discord::load_token() else {
-            return;
-        };
-
         self.older_loading = true;
         cx.notify();
 
-        let (tx, rx) = futures::channel::oneshot::channel();
-        discord::fetch_messages(token, channel_id, Some(oldest_id), move |result| {
-            let _ = tx.send(result);
-        });
-
         cx.spawn(async move |this, cx| {
-            let Ok(result) = rx.await else {
-                return;
-            };
-
+            let result = discord::fetch_messages(channel_id, Some(oldest_id)).await;
             let _ = this.update(cx, |this, cx| {
                 // Drop the response if the channel changed or the messages
                 // were reloaded while this request was in flight.

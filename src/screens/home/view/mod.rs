@@ -11,7 +11,7 @@ mod user_panel;
 mod voice;
 
 use gpui::*;
-use gpui_component::{ActiveTheme as _, h_flex};
+use gpui_component::{ActiveTheme as _, Sizable as _, avatar::Avatar, h_flex};
 
 use super::{HomeScreen, View};
 
@@ -67,5 +67,15 @@ impl Render for HomeScreen {
             .children(sidebar)
             .child(self.render_content(cx))
             .children(self.render_profile_popup(cx))
+    }
+}
+
+/// An avatar with its picture when there is one, and the name's initials
+/// otherwise.
+fn avatar(name: String, url: Option<String>, size: Pixels) -> Avatar {
+    let avatar = Avatar::new().name(name).with_size(size);
+    match url {
+        Some(url) => avatar.src(url),
+        None => avatar,
     }
 }

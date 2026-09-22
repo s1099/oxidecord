@@ -2,16 +2,14 @@
 
 use gpui::prelude::FluentBuilder as _;
 use gpui::*;
-use gpui_component::{
-    ActiveTheme as _, Icon, IconName, Sizable as _, avatar::Avatar, collapsible::Collapsible,
-    h_flex, v_flex,
-};
+use gpui_component::{ActiveTheme as _, Icon, IconName, collapsible::Collapsible, h_flex, v_flex};
 
 use twilight_model::id::{Id, marker::ChannelMarker};
 
 use crate::discord::Channel;
 use crate::screens::home::HomeScreen;
 use crate::screens::home::channels::{ChannelGroup, channel_icon_path};
+use crate::screens::home::view::avatar;
 
 impl HomeScreen {
     pub(super) fn render_channel_row(
@@ -83,12 +81,11 @@ impl HomeScreen {
         self.voice_participants(channel_id)
             .into_iter()
             .map(|participant| {
-                let mut avatar = Avatar::new()
-                    .name(participant.name.clone())
-                    .with_size(px(20.));
-                if let Some(url) = participant.avatar_url.clone() {
-                    avatar = avatar.src(url);
-                }
+                let avatar = avatar(
+                    participant.name.clone(),
+                    participant.avatar_url.clone(),
+                    px(20.),
+                );
 
                 h_flex()
                     .id(("voice-member", participant.user_id.get()))

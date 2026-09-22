@@ -2,12 +2,10 @@
 
 use gpui::prelude::FluentBuilder as _;
 use gpui::*;
-use gpui_component::{
-    ActiveTheme as _, Sizable as _, avatar::Avatar, divider::Divider, h_flex, skeleton::Skeleton,
-    v_flex,
-};
+use gpui_component::{ActiveTheme as _, divider::Divider, h_flex, skeleton::Skeleton, v_flex};
 
 use crate::discord::UserProfile;
+use crate::screens::home::view::avatar;
 use crate::screens::home::{HomeScreen, ProfilePopup};
 
 /// Card width. Discord's small popout is 300px wide.
@@ -57,12 +55,7 @@ impl HomeScreen {
         let avatar_url = profile
             .and_then(|profile| profile.avatar_url.clone())
             .or_else(|| popup.avatar_url.clone());
-        let mut avatar = Avatar::new()
-            .name(popup.name.clone())
-            .with_size(px(AVATAR_SIZE));
-        if let Some(avatar_url) = avatar_url {
-            avatar = avatar.src(avatar_url);
-        }
+        let avatar = avatar(popup.name.clone(), avatar_url, px(AVATAR_SIZE));
 
         div()
             .relative()

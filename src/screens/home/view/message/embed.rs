@@ -15,9 +15,11 @@ use gpui_component::{ActiveTheme as _, h_flex, v_flex};
 
 use crate::discord;
 use crate::screens::home::HomeScreen;
+use crate::screens::home::state::MediaKey;
 use crate::ui::elevation::media_shadow;
 
 use super::super::text::render_message_text;
+use super::{MEDIA_MAX_HEIGHT, MEDIA_MAX_WIDTH, fit_within};
 
 /// The card's width: Discord's 432px cap, or the message column when that is
 /// narrower. Unlike Discord, a short embed doesn't hug its text — see the width
@@ -34,9 +36,6 @@ const CARD_PADDING_LEFT: f32 = 12.;
 const SPINE_WIDTH: f32 = 4.;
 /// The square the top-right thumbnail is fitted into.
 const THUMBNAIL_BOX: f32 = 80.;
-/// The box a large image is fitted into, in both the card and bare media.
-const IMAGE_MAX_WIDTH: f32 = 400.;
-const IMAGE_MAX_HEIGHT: f32 = 300.;
 /// Vertical gap between the card's rows.
 const ROW_GAP: f32 = 8.;
 /// The large image gets twice the usual gap above it, so it reads as its own
@@ -64,10 +63,7 @@ impl HomeScreen {
             .flex_shrink_0()
             .gap_2()
             .children(embeds.iter().enumerate().map(|(index, embed)| {
-                let id = EmbedId {
-                    message_id,
-                    index: index as u64,
-                };
+                let id = MediaKey { message_id, index };
                 match embed.layout {
                     discord::EmbedLayout::Card => self.render_embed_card(id, embed, cx),
                     discord::EmbedLayout::Media => self.render_embed_media(id, embed, cx),
@@ -79,7 +75,7 @@ impl HomeScreen {
     /// previews.
     fn render_embed_card(
         &self,
-        id: EmbedId,
+        id: MediaKey,
         embed: &discord::Embed,
         cx: &Context<Self>,
     ) -> AnyElement {
@@ -114,7 +110,7 @@ impl HomeScreen {
                 // line is clickable and takes the theme's link colour.
                 match embed.url.clone() {
                     Some(url) => div()
-                        .id(id.element("embed-title"))
+                        .id(id.element_id("embed-title"))
                         .cursor_pointer()
                         .text_color(theme.link)
                         .hover(|this| this.text_color(theme.link_hover))
@@ -129,7 +125,7 @@ impl HomeScreen {
                     .text_sm()
                     .line_height(px(LINE_HEIGHT_BODY))
                     .child(render_message_text(
-                        id.element("embed-description"),
+                        id.element_id("embed-description"),
                         description,
                         theme.link,
                     ))
@@ -184,7 +180,7 @@ impl HomeScreen {
             );
 
         div()
-            .id(id.element("embed"))
+            .id(id.element_id("embed"))
             .group(id.group())
             .relative()
             // An absolute width, not a percentage of the message column. Every
@@ -216,7 +212,7 @@ impl HomeScreen {
     /// the way Discord renders a lone media link.
     fn render_embed_media(
         &self,
-        id: EmbedId,
+        id: MediaKey,
         embed: &discord::Embed,
         cx: &Context<Self>,
     ) -> AnyElement {
@@ -226,13 +222,15 @@ impl HomeScreen {
 
         // Sized to the media rather than stretched across the message, so the
         // debug copy button anchors to the image's own corner.
-        let (width, _) = scaled_size(image);
+        let size = fit_within(image.width, image.height, MEDIA_MAX_WIDTH, MEDIA_MAX_HEIGHT);
         div()
-            .id(id.element("embed"))
+            .id(id.element_id("embed"))
             .group(id.group())
             .relative()
-            .when_some(width, |this, width| this.w(px(width)))
-            .when(width.is_none(), |this| this.max_w(px(IMAGE_MAX_WIDTH)))
+            .map(|this| match size {
+                Some((width, _)) => this.w(px(width)),
+                None => this.max_w(px(MEDIA_MAX_WIDTH)),
+            })
             .child(self.render_embed_image(id, embed, image, 0., cx))
             .children(self.render_embed_debug_copy(id, embed, cx))
             .into_any_element()
@@ -242,14 +240,14 @@ impl HomeScreen {
     /// get a play badge over it and open the source link instead of the frame.
     fn render_embed_image(
         &self,
-        id: EmbedId,
+        id: MediaKey,
         embed: &discord::Embed,
         image: &discord::EmbedMedia,
         top_gap: f32,
         cx: &Context<Self>,
     ) -> impl IntoElement {
         let theme = cx.theme();
-        let (width, height) = scaled_size(image);
+        let size = fit_within(image.width, image.height, MEDIA_MAX_WIDTH, MEDIA_MAX_HEIGHT);
 
         // The cache has to be named on the element itself: `list` renders its
         // items during prepaint, so an ancestor `image_cache(..)` — which only
@@ -265,10 +263,10 @@ impl HomeScreen {
                 matches!(embed.layout, discord::EmbedLayout::Media),
                 |this| this.shadow(media_shadow()),
             )
-            .max_w(px(IMAGE_MAX_WIDTH));
-        match (width, height) {
-            (Some(width), Some(height)) => media = media.w(px(width)).h(px(height)),
-            _ => media = media.max_h(px(IMAGE_MAX_HEIGHT)),
+            .max_w(px(MEDIA_MAX_WIDTH));
+        match size {
+            Some((width, height)) => media = media.w(px(width)).h(px(height)),
+            None => media = media.max_h(px(MEDIA_MAX_HEIGHT)),
         }
 
         // Clicking opens the source page for a video and the image itself
@@ -281,7 +279,7 @@ impl HomeScreen {
         };
 
         div()
-            .id(id.element("embed-image"))
+            .id(id.element_id("embed-image"))
             .relative()
             .flex()
             .mt(px(top_gap))
@@ -326,7 +324,7 @@ impl HomeScreen {
     #[cfg(debug_assertions)]
     fn render_embed_debug_copy(
         &self,
-        id: EmbedId,
+        id: MediaKey,
         embed: &discord::Embed,
         cx: &Context<Self>,
     ) -> Option<impl IntoElement> {
@@ -346,14 +344,14 @@ impl HomeScreen {
                 .border_1()
                 .border_color(theme.border)
                 .shadow_sm()
-                .child(Clipboard::new(id.element("embed-copy-raw")).value(embed.raw.clone())),
+                .child(Clipboard::new(id.element_id("embed-copy-raw")).value(embed.raw.clone())),
         )
     }
 
     #[cfg(not(debug_assertions))]
     fn render_embed_debug_copy(
         &self,
-        _id: EmbedId,
+        _id: MediaKey,
         _embed: &discord::Embed,
         _cx: &Context<Self>,
     ) -> Option<impl IntoElement> {
@@ -361,33 +359,11 @@ impl HomeScreen {
     }
 }
 
-/// Identifies one embed within the message list, so each of its interactive
-/// parts can be given an id that is unique across every message on screen.
-#[derive(Clone, Copy)]
-struct EmbedId {
-    message_id: u64,
-    index: u64,
-}
-
-impl EmbedId {
-    fn element(self, name: &'static str) -> ElementId {
-        ElementId::NamedInteger(
-            SharedString::from(format!("{name}-{}", self.message_id)),
-            self.index,
-        )
-    }
-
-    /// The hover group the whole embed shares, which the copy button watches.
-    fn group(self) -> SharedString {
-        SharedString::from(format!("embed-{}-{}", self.message_id, self.index))
-    }
-}
-
 /// The author row: a small round icon and the name. Unlike the title, an author
 /// link keeps the body text colour and only underlines on hover, the way
 /// Discord draws it.
 fn render_author(
-    id: EmbedId,
+    id: MediaKey,
     author: &discord::EmbedAuthor,
     cache: &Entity<RetainAllImageCache>,
     hover_color: Hsla,
@@ -410,7 +386,7 @@ fn render_author(
         }))
         .child(match author.url.clone() {
             Some(url) => div()
-                .id(id.element("embed-author"))
+                .id(id.element_id("embed-author"))
                 .cursor_pointer()
                 .hover(|this| this.text_color(hover_color).underline())
                 .child(name)
@@ -430,13 +406,14 @@ fn render_thumbnail(
         .image_cache(cache)
         .rounded(px(4.))
         .flex_shrink_0();
-    match (thumbnail.width, thumbnail.height) {
-        (Some(width), Some(height)) if width > 0 && height > 0 => {
-            let (width, height) = (width as f32, height as f32);
-            let scale = (THUMBNAIL_BOX / width).min(THUMBNAIL_BOX / height).min(1.);
-            element = element.w(px(width * scale)).h(px(height * scale));
-        }
-        _ => element = element.size(px(THUMBNAIL_BOX)),
+    match fit_within(
+        thumbnail.width,
+        thumbnail.height,
+        THUMBNAIL_BOX,
+        THUMBNAIL_BOX,
+    ) {
+        Some((width, height)) => element = element.w(px(width)).h(px(height)),
+        None => element = element.size(px(THUMBNAIL_BOX)),
     }
     element
 }
@@ -447,7 +424,7 @@ fn render_thumbnail(
 /// third of the width, so a leftover inline field stays narrow rather than
 /// stretching across the card.
 fn render_fields(
-    id: EmbedId,
+    id: MediaKey,
     fields: &[discord::EmbedField],
     link_color: Hsla,
 ) -> impl IntoElement {
@@ -501,7 +478,7 @@ fn render_fields(
 
 /// One field: its bold name over its value.
 fn render_field(
-    id: EmbedId,
+    id: MediaKey,
     index: usize,
     field: &discord::EmbedField,
     link_color: Hsla,
@@ -566,20 +543,4 @@ fn render_footer(
         // Deliberately no `min_w_0`: the min-content floor is what stops a
         // squeezed row from wrapping the timestamp one character per line.
         .child(div().child(parts.join(" • ")))
-}
-
-/// The box a large image is laid out in, scaled down to fit 400x300 with its
-/// aspect ratio preserved. `None` when Discord didn't report dimensions, in
-/// which case the element is capped rather than sized.
-fn scaled_size(image: &discord::EmbedMedia) -> (Option<f32>, Option<f32>) {
-    match (image.width, image.height) {
-        (Some(width), Some(height)) if width > 0 && height > 0 => {
-            let (width, height) = (width as f32, height as f32);
-            let scale = (IMAGE_MAX_WIDTH / width)
-                .min(IMAGE_MAX_HEIGHT / height)
-                .min(1.);
-            (Some(width * scale), Some(height * scale))
-        }
-        _ => (None, None),
-    }
 }

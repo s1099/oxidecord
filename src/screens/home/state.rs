@@ -64,18 +64,19 @@ pub(super) struct ProfilePopup {
     pub error: Option<String>,
 }
 
-/// Which video attachment a playback belongs to.
+/// One video attachment or embed in the message list: which playback is
+/// which, and a source of element ids unique across every message on screen.
 ///
-/// A message id alone isn't enough — one message can carry several videos —
+/// A message id alone isn't enough — one message can carry several of either —
 /// and the index is the message's own, so it stays stable as the list is
 /// spliced at either end.
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub(super) struct VideoKey {
+pub(super) struct MediaKey {
     pub message_id: u64,
     pub index: usize,
 }
 
-impl VideoKey {
+impl MediaKey {
     /// A gpui id for one of this attachment's elements. Both halves of the key
     /// go in: two messages can each hold a video at index 0, and sharing an id
     /// between them would share their interaction state too.
@@ -85,6 +86,25 @@ impl VideoKey {
             self.message_id, self.index
         )))
     }
+
+    /// A hover group shared by the whole item.
+    pub fn group(self) -> SharedString {
+        SharedString::from(format!("media-{}-{}", self.message_id, self.index))
+    }
+}
+
+/// Where a playback is in its life.
+#[derive(Clone, PartialEq, Eq)]
+pub(super) enum PlaybackState {
+    /// Until the first frame lands, which covers both the download and the
+    /// decoder opening the file.
+    Loading,
+    Playing,
+    /// The clip ran out, so the card offers to play it again rather than
+    /// sitting on the last frame.
+    Ended,
+    /// Why playback stopped badly. Shown over the poster.
+    Failed(String),
 }
 
 /// The one video playing, if any.
@@ -92,7 +112,7 @@ impl VideoKey {
 /// Only ever one: decoding a second clip nobody is watching is exactly the
 /// cost this feature exists to avoid, so starting one stops the other.
 pub(super) struct VideoPlayback {
-    pub key: VideoKey,
+    pub key: MediaKey,
     /// Dropping this stops the decoder, closes the output device, and deletes
     /// the downloaded file.
     pub player: VideoPlayer,
@@ -104,14 +124,7 @@ pub(super) struct VideoPlayback {
     /// Zero until the source reports one, and for a stream that never does.
     pub duration: Duration,
     pub position: Duration,
-    /// Set until the first frame lands, which covers both the download and the
-    /// decoder opening the file.
-    pub loading: bool,
-    /// Why playback stopped, when it stopped badly. Shown over the poster.
-    pub error: Option<String>,
-    /// Set when the clip runs out, so the card offers to play it again rather
-    /// than sitting on the last frame.
-    pub ended: bool,
+    pub state: PlaybackState,
     /// The progress bar, which doubles as the scrubber. Its value is a
     /// fraction of the run time rather than a time, so it needs no resetting
     /// when the duration arrives after the first frames.

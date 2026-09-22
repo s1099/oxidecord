@@ -30,13 +30,6 @@ impl VoiceStatus {
     }
 }
 
-/// Whether the call sits in a guild's voice channel or in a DM conversation.
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub(super) enum VoiceKind {
-    Channel,
-    Direct,
-}
-
 /// The call the user is in. At most one at a time, like Discord.
 pub(super) struct VoiceCall {
     /// The voice channel, or the DM the call is placed in.
@@ -44,7 +37,6 @@ pub(super) struct VoiceCall {
     /// The channel's guild. `None` for a DM call, which Discord treats as a
     /// guildless one.
     pub guild_id: Option<Id<GuildMarker>>,
-    pub kind: VoiceKind,
     /// The channel or conversation name, shown wherever the call is labelled.
     pub name: String,
     /// The guild the channel belongs to; `None` for a DM call.

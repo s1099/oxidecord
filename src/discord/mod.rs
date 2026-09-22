@@ -2,9 +2,8 @@
 //! and the gateway connection that keeps it live.
 //!
 //! Every request runs on the shared background Tokio runtime
-//! ([`crate::runtime`]) and reports back through a callback, so nothing here
-//! blocks gpui's foreground thread. Callbacks are therefore invoked from that
-//! runtime's thread, not the foreground one.
+//! ([`crate::platform::runtime`]) and is awaited from gpui's executor, so
+//! nothing here blocks the foreground thread.
 
 mod gateway;
 mod model;

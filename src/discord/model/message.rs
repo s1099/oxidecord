@@ -124,7 +124,13 @@ pub(in crate::discord) fn convert_message(message: twilight_model::channel::Mess
             .iter()
             .filter(|attachment| is_image(attachment))
             .map(|attachment| ImageAttachment {
-                url: preview_image_url(attachment),
+                url: cdn::scaled_url(
+                    &attachment.proxy_url,
+                    attachment.width,
+                    attachment.height,
+                    PREVIEW_MAX_WIDTH,
+                    PREVIEW_MAX_HEIGHT,
+                ),
                 width: attachment.width.map(|w| w as u32),
                 height: attachment.height.map(|h| h as u32),
             })
@@ -204,33 +210,6 @@ fn single_line_preview(content: &str) -> String {
 
 const PREVIEW_MAX_WIDTH: u32 = 480;
 const PREVIEW_MAX_HEIGHT: u32 = 390;
-
-/// Asks the CDN for the image already scaled to the size the message list
-/// renders it at, so the full-resolution original is never downloaded.
-fn preview_image_url(attachment: &twilight_model::channel::Attachment) -> String {
-    let (target_w, target_h) = match (attachment.width, attachment.height) {
-        (Some(w), Some(h)) if w > 0 && h > 0 => {
-            let scale = (PREVIEW_MAX_WIDTH as f64 / w as f64)
-                .min(PREVIEW_MAX_HEIGHT as f64 / h as f64)
-                .min(1.0);
-            (
-                (w as f64 * scale).round().max(1.0) as u32,
-                (h as f64 * scale).round().max(1.0) as u32,
-            )
-        }
-        _ => (PREVIEW_MAX_WIDTH, PREVIEW_MAX_HEIGHT),
-    };
-    // proxy_url already carries a signed query string, so append with `&`.
-    let separator = if attachment.proxy_url.contains('?') {
-        '&'
-    } else {
-        '?'
-    };
-    format!(
-        "{}{separator}width={target_w}&height={target_h}",
-        attachment.proxy_url
-    )
-}
 
 /// Whether an attachment is an image we can render inline. Prefers Discord's
 /// reported media type and falls back to the filename extension.

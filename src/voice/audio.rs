@@ -28,10 +28,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
 
 use cpal::traits::{DeviceTrait as _, HostTrait as _, StreamTrait as _};
-use cpal::{
-    DeviceId, FromSample, Sample as _, SampleFormat, SizedSample, StreamConfig,
-    SupportedStreamConfig,
-};
+
+use crate::platform::audio::{in_device_format, sanitize};
+use cpal::{DeviceId, FromSample, Sample as _, SizedSample, StreamConfig, SupportedStreamConfig};
 use songbird::constants::SAMPLE_RATE;
 use songbird::input::core::io::MediaSource;
 use songbird::input::{Input, RawAdapter};
@@ -242,18 +241,6 @@ impl SampleRing {
             state.fade_in = 0;
             state.last.fill(0.);
         }
-    }
-}
-
-/// Keeps a sample inside the range the device conversions assume.
-///
-/// A NaN compares false against every bound, so it has to be caught before the
-/// clamp rather than by it.
-fn sanitize(sample: f32) -> f32 {
-    if sample.is_finite() {
-        sample.clamp(-1., 1.)
-    } else {
-        0.
     }
 }
 
@@ -543,27 +530,6 @@ fn output_config(device: cpal::Device) -> Option<(cpal::Device, SupportedStreamC
 /// stereo pair it starts with rather than refused outright.
 fn ring_channels(device_channels: u16) -> usize {
     usize::from(device_channels).clamp(1, CHANNELS)
-}
-
-/// Opens a stream in whichever sample format the device reports.
-///
-/// `build` names a function generic over the sample type, and the arguments
-/// after it are handed to it unchanged. The formats left out are the ones no
-/// host offers as a device default.
-macro_rules! in_device_format {
-    ($format:expr, $build:ident $(, $arg:expr)* $(,)?) => {
-        match $format {
-            SampleFormat::F32 => $build::<f32>($($arg),*),
-            SampleFormat::F64 => $build::<f64>($($arg),*),
-            SampleFormat::I8 => $build::<i8>($($arg),*),
-            SampleFormat::I16 => $build::<i16>($($arg),*),
-            SampleFormat::I32 => $build::<i32>($($arg),*),
-            SampleFormat::U8 => $build::<u8>($($arg),*),
-            SampleFormat::U16 => $build::<u16>($($arg),*),
-            SampleFormat::U32 => $build::<u32>($($arg),*),
-            _ => None,
-        }
-    };
 }
 
 /// Opens both streams and holds them until the call ends. Runs on its own

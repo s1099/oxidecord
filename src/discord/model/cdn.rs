@@ -48,3 +48,34 @@ pub(super) fn emoji_url(id: impl std::fmt::Display, animated: bool) -> String {
         if animated { "gif" } else { "webp" }
     )
 }
+
+/// Asks the CDN for an image already scaled to the box it will be drawn in,
+/// preserving its aspect ratio.
+pub(super) fn scaled_url(
+    url: &str,
+    width: Option<u64>,
+    height: Option<u64>,
+    max_w: u32,
+    max_h: u32,
+) -> String {
+    // Only Discord's own proxy understands the resize query; asking a third
+    // party host for it would at best be ignored and at worst break a signature.
+    if !url.contains("discordapp.") && !url.contains("discord.com") {
+        return url.to_string();
+    }
+    let (target_w, target_h) = match (width, height) {
+        (Some(w), Some(h)) if w > 0 && h > 0 => {
+            let scale = (f64::from(max_w) / w as f64)
+                .min(f64::from(max_h) / h as f64)
+                .min(1.0);
+            (
+                (w as f64 * scale).round().max(1.0) as u32,
+                (h as f64 * scale).round().max(1.0) as u32,
+            )
+        }
+        _ => (max_w, max_h),
+    };
+    // A proxy URL already carries a signed query string, so append with `&`.
+    let separator = if url.contains('?') { '&' } else { '?' };
+    format!("{url}{separator}width={target_w}&height={target_h}")
+}

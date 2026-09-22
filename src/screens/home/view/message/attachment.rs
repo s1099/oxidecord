@@ -11,24 +11,16 @@ use gpui_component::{
 
 use crate::discord;
 use crate::screens::home::HomeScreen;
-use crate::screens::home::state::{VideoKey, VideoPlayback};
+use crate::screens::home::state::{MediaKey, PlaybackState, VideoPlayback};
 use crate::ui::elevation::media_shadow;
 
 use super::super::super::data::attachments::format_size;
-
-/// Largest inline preview an image is scaled down to, in pixels. Discord uses
-/// similar bounds; the aspect ratio is preserved within them.
-const MAX_IMAGE_WIDTH: f32 = 400.;
-const MAX_IMAGE_HEIGHT: f32 = 300.;
-
-/// Video cards use the same bounds, so a message holding both lines up.
-const MAX_VIDEO_WIDTH: f32 = MAX_IMAGE_WIDTH;
-const MAX_VIDEO_HEIGHT: f32 = MAX_IMAGE_HEIGHT;
+use super::{MEDIA_MAX_HEIGHT, MEDIA_MAX_WIDTH, fit_within};
 
 /// What a video card falls back to when Discord reports no dimensions —
 /// roughly 16:9 at the width cap, which is what most attachments turn out to
 /// be, so the card rarely resizes once the first frame arrives.
-const FALLBACK_VIDEO_SIZE: (f32, f32) = (MAX_VIDEO_WIDTH, MAX_VIDEO_WIDTH * 9. / 16.);
+const FALLBACK_VIDEO_SIZE: (f32, f32) = (MEDIA_MAX_WIDTH, MEDIA_MAX_WIDTH * 9. / 16.);
 
 pub(super) fn render_image(
     image: &discord::ImageAttachment,
@@ -43,18 +35,12 @@ pub(super) fn render_image(
         .image_cache(cache)
         .rounded(px(8.))
         .shadow(media_shadow())
-        .max_w(px(MAX_IMAGE_WIDTH));
-    match (image.width, image.height) {
-        // With intrinsic dimensions we can lay out the exact scaled box, so
-        // the message doesn't reflow once the image finishes loading.
-        (Some(width), Some(height)) if width > 0 && height > 0 => {
-            let (width, height) = (width as f32, height as f32);
-            let scale = (MAX_IMAGE_WIDTH / width)
-                .min(MAX_IMAGE_HEIGHT / height)
-                .min(1.);
-            element = element.w(px(width * scale)).h(px(height * scale));
-        }
-        _ => element = element.max_h(px(MAX_IMAGE_HEIGHT)),
+        .max_w(px(MEDIA_MAX_WIDTH));
+    // With intrinsic dimensions we can lay out the exact scaled box, so the
+    // message doesn't reflow once the image finishes loading.
+    match fit_within(image.width, image.height, MEDIA_MAX_WIDTH, MEDIA_MAX_HEIGHT) {
+        Some((width, height)) => element = element.w(px(width)).h(px(height)),
+        None => element = element.max_h(px(MEDIA_MAX_HEIGHT)),
     }
     element
 }
@@ -69,8 +55,7 @@ impl HomeScreen {
     pub(super) fn render_video(
         &self,
         video: &discord::VideoAttachment,
-        key: VideoKey,
-        cache: &Entity<RetainAllImageCache>,
+        key: MediaKey,
         cx: &Context<Self>,
     ) -> AnyElement {
         let theme = cx.theme();
@@ -114,7 +99,7 @@ impl HomeScreen {
             Some(frame) => surface.child(img(frame).size_full()),
             None => surface.child(
                 img(video.poster_url.clone())
-                    .image_cache(cache)
+                    .image_cache(&self.image_cache)
                     .size_full()
                     // A poster Discord can't produce leaves the card black,
                     // which the play button still reads against.
@@ -126,16 +111,24 @@ impl HomeScreen {
         // — the thread exits on both, releasing the output device and the
         // downloaded file — so the card goes back to offering to play, which
         // opens it again from the start. Only a live playback gets controls.
-        let finished = playback.is_some_and(|playback| playback.ended || playback.error.is_some());
+        let finished = playback.is_some_and(|playback| {
+            matches!(
+                playback.state,
+                PlaybackState::Ended | PlaybackState::Failed(_)
+            )
+        });
         let surface = match playback.filter(|_| !finished) {
             Some(playback) => surface
-                .when(playback.loading, |this| {
+                .when(playback.state == PlaybackState::Loading, |this| {
                     this.child(centered(Spinner::new().large().color(white())))
                 })
                 .child(self.video_controls(playback, key, cx)),
             None => surface
                 .when_some(
-                    playback.and_then(|playback| playback.error.clone()),
+                    playback.and_then(|playback| match &playback.state {
+                        PlaybackState::Failed(error) => Some(error.clone()),
+                        _ => None,
+                    }),
                     |this, error| {
                         this.child(
                             div()
@@ -173,7 +166,7 @@ impl HomeScreen {
     fn video_play_button(
         &self,
         video: &discord::VideoAttachment,
-        key: VideoKey,
+        key: MediaKey,
         again: bool,
         cx: &Context<Self>,
     ) -> impl IntoElement {
@@ -196,8 +189,8 @@ impl HomeScreen {
                     // on any display above 1x.
                     let scale = window.scale_factor();
                     let target = (
-                        (MAX_VIDEO_WIDTH * scale).round().max(1.) as u32,
-                        (MAX_VIDEO_HEIGHT * scale).round().max(1.) as u32,
+                        (MEDIA_MAX_WIDTH * scale).round().max(1.) as u32,
+                        (MEDIA_MAX_HEIGHT * scale).round().max(1.) as u32,
                     );
                     this.play_video(key, url.clone(), target, window, cx);
                 })),
@@ -208,7 +201,7 @@ impl HomeScreen {
     fn video_controls(
         &self,
         playback: &VideoPlayback,
-        key: VideoKey,
+        key: MediaKey,
         cx: &Context<Self>,
     ) -> impl IntoElement {
         let paused = playback.player.is_paused();
@@ -312,7 +305,7 @@ fn video_size(video: &discord::VideoAttachment) -> (f32, f32) {
 /// Unlike the decoder's own fit this one may scale up, because a small video
 /// still gets a card big enough to put controls in.
 fn fit_preview(width: f64, height: f64) -> (f32, f32) {
-    let scale = (f64::from(MAX_VIDEO_WIDTH) / width).min(f64::from(MAX_VIDEO_HEIGHT) / height);
+    let scale = (f64::from(MEDIA_MAX_WIDTH) / width).min(f64::from(MEDIA_MAX_HEIGHT) / height);
     ((width * scale) as f32, (height * scale) as f32)
 }
 

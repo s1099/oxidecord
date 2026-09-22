@@ -5,7 +5,6 @@ use gpui::prelude::FluentBuilder as _;
 use gpui::*;
 use gpui_component::{
     ActiveTheme as _, Disableable as _, Icon, IconName, Selectable as _, Sizable as _,
-    avatar::Avatar,
     button::Button,
     button::ButtonVariants as _,
     h_flex,
@@ -14,7 +13,8 @@ use gpui_component::{
 };
 
 use crate::screens::home::HomeScreen;
-use crate::screens::home::voice::{VoiceCall, VoiceKind, VoiceParticipant, VoiceStatus};
+use crate::screens::home::view::avatar;
+use crate::screens::home::voice::{VoiceCall, VoiceParticipant, VoiceStatus};
 use crate::voice;
 
 /// Height of the call band shown above a DM conversation. A voice channel's
@@ -150,7 +150,7 @@ impl HomeScreen {
         let call = self
             .voice
             .as_ref()
-            .filter(|call| call.kind == VoiceKind::Direct)
+            .filter(|call| call.guild_id.is_none())
             .filter(|call| Some(call.channel_id) == self.selected_channel)?;
 
         Some(
@@ -203,12 +203,11 @@ impl HomeScreen {
     fn participant_tile(&self, participant: &VoiceParticipant, cx: &Context<Self>) -> Div {
         let theme = cx.theme();
 
-        let mut avatar = Avatar::new()
-            .name(participant.name.clone())
-            .with_size(px(TILE_AVATAR));
-        if let Some(url) = participant.avatar_url.clone() {
-            avatar = avatar.src(url);
-        }
+        let avatar = avatar(
+            participant.name.clone(),
+            participant.avatar_url.clone(),
+            px(TILE_AVATAR),
+        );
 
         v_flex()
             .w(px(180.))
@@ -467,8 +466,8 @@ fn control(id: &'static str, icon: &'static str, tooltip: &'static str, active: 
 /// Where the call is, as the sidebar panel labels it: `Guild / channel` for a
 /// voice channel, the other person's name for a DM call.
 fn call_location(call: &VoiceCall) -> String {
-    match (&call.context, call.kind) {
-        (Some(guild), VoiceKind::Channel) => format!("{guild} / {}", call.name),
-        _ => call.name.clone(),
+    match &call.context {
+        Some(guild) => format!("{guild} / {}", call.name),
+        None => call.name.clone(),
     }
 }

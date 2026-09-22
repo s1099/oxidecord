@@ -1,19 +1,28 @@
 //! The left-hand server rail: the DMs button, the guild icons, and the folders
 //! grouping them.
 
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
 
 use gpui::prelude::FluentBuilder as _;
 use gpui::*;
 use gpui_component::{
-    ActiveTheme as _, Icon, IconName, Sizable as _, avatar::Avatar, divider::Divider, h_flex,
-    tooltip::Tooltip, v_flex,
+    ActiveTheme as _, Icon, IconName, avatar::Avatar, divider::Divider, h_flex, tooltip::Tooltip,
+    v_flex,
 };
 
 use crate::assets::icons::DISCORD_ICON;
 use crate::discord::Guild;
 use crate::screens::home::folders::{RailEntry, RailFolder};
 use crate::screens::home::{HomeScreen, View};
+
+/// Built once: `Image::from_bytes` hashes the whole buffer, and the rail
+/// renders on every frame of a scroll glide or a playing video.
+static DISCORD_LOGO: LazyLock<Arc<Image>> = LazyLock::new(|| {
+    Arc::new(Image::from_bytes(
+        ImageFormat::Svg,
+        DISCORD_ICON.as_bytes().to_vec(),
+    ))
+});
 
 impl HomeScreen {
     pub(super) fn render_server_rail(&self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -57,13 +66,7 @@ impl HomeScreen {
                             .justify_center()
                             .rounded_full()
                             .bg(logo_bg)
-                            .child(
-                                img(Arc::new(Image::from_bytes(
-                                    ImageFormat::Svg,
-                                    DISCORD_ICON.as_bytes().to_vec(),
-                                )))
-                                .size(px(28.)),
-                            ),
+                            .child(img(DISCORD_LOGO.clone()).size(px(28.))),
                     )
                     .tooltip(|window, cx| Tooltip::new("Direct Messages").build(window, cx))
                     .on_click(cx.listener(|this, _, window, cx| {
@@ -183,9 +186,5 @@ fn folder_preview(guilds: &[Guild]) -> impl IntoElement + use<> {
 }
 
 fn guild_avatar(guild: &Guild, size: Pixels) -> Avatar {
-    let avatar = Avatar::new().name(guild.name.clone()).with_size(size);
-    match guild.icon_url.clone() {
-        Some(icon_url) => avatar.src(icon_url),
-        None => avatar,
-    }
+    super::avatar(guild.name.clone(), guild.icon_url.clone(), size)
 }

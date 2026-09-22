@@ -7,6 +7,7 @@
 use std::sync::OnceLock;
 
 use tokio::runtime::Handle;
+use tokio::task::JoinError;
 
 static RUNTIME: OnceLock<Handle> = OnceLock::new();
 
@@ -21,4 +22,13 @@ pub fn handle() -> &'static Handle {
         });
         rx.recv().expect("failed to receive tokio runtime handle")
     })
+}
+
+/// Runs `future` on the runtime and resolves with its output. The returned
+/// future can be awaited from any executor, gpui's included; it only fails if
+/// the task panicked.
+pub async fn run<T: Send + 'static>(
+    future: impl Future<Output = T> + Send + 'static,
+) -> Result<T, JoinError> {
+    handle().spawn(future).await
 }

@@ -14,7 +14,7 @@ twilight-gateway = "0.17.1"
 twilight-util = { version = "0.17.0", features = ["permission-calculator"] }
 tokio = { version = "1", features = ["rt-multi-thread", "time"] }
 serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+serde_json = { version = "1", features = ["raw_value"] }
 regex = "1"
 futures = "0.3"
 anyhow = "1.0.103"

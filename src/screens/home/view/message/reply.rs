@@ -1,12 +1,11 @@
 //! The quoted line shown above a message that replies to another.
 
 use gpui::*;
-use gpui_component::{
-    ActiveTheme as _, Icon, IconName, IconNamed as _, Sizable as _, avatar::Avatar, h_flex,
-};
+use gpui_component::{ActiveTheme as _, Icon, IconName, IconNamed as _, h_flex};
 
 use crate::discord;
 use crate::screens::home::HomeScreen;
+use crate::screens::home::view::avatar;
 
 impl HomeScreen {
     /// The "↱ <author> <preview>" line, aligned with the message's content
@@ -18,12 +17,11 @@ impl HomeScreen {
     ) -> impl IntoElement {
         let theme = cx.theme();
 
-        let mut avatar = Avatar::new()
-            .name(reference.author_name.clone())
-            .with_size(px(16.));
-        if let Some(avatar_url) = reference.author_avatar_url.clone() {
-            avatar = avatar.src(avatar_url);
-        }
+        let avatar = avatar(
+            reference.author_name.clone(),
+            reference.author_avatar_url.clone(),
+            px(16.),
+        );
 
         h_flex()
             .w_full()

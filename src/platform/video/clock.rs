@@ -11,6 +11,7 @@
 //! A file with no audio track has no such clock, so [`Clock::Wall`] stands in
 //! with elapsed time and has to be paused explicitly.
 
+use std::collections::VecDeque;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -29,7 +30,7 @@ const MAX_BUFFERED_MS: u32 = 200;
 /// Samples between the decoder and the output device, plus the play position
 /// derived from what the device has consumed.
 pub(super) struct AudioRing {
-    samples: Mutex<Vec<f32>>,
+    samples: Mutex<VecDeque<f32>>,
     capacity: usize,
     sample_rate: u32,
     /// Where the ring was last seeked to. The play position is this plus
@@ -49,7 +50,7 @@ impl AudioRing {
         let sample_rate = sample_rate.max(1);
         let capacity = (sample_rate as usize * MAX_BUFFERED_MS as usize / 1000) * CHANNELS;
         Self {
-            samples: Mutex::new(Vec::with_capacity(capacity)),
+            samples: Mutex::new(VecDeque::with_capacity(capacity)),
             capacity: capacity.max(CHANNELS),
             sample_rate,
             base_micros: AtomicU64::new(0),
@@ -67,7 +68,7 @@ impl AudioRing {
         };
         let room = self.capacity.saturating_sub(samples.len());
         let taken = room.min(input.len());
-        samples.extend_from_slice(&input[..taken]);
+        samples.extend(&input[..taken]);
         taken
     }
 
@@ -97,8 +98,9 @@ impl AudioRing {
         };
 
         let taken = out.len().min(samples.len()) / CHANNELS * CHANNELS;
-        out[..taken].copy_from_slice(&samples[..taken]);
-        samples.drain(..taken);
+        for (slot, sample) in out[..taken].iter_mut().zip(samples.drain(..taken)) {
+            *slot = sample;
+        }
 
         self.frames_since_base
             .fetch_add((taken / CHANNELS) as u64, Ordering::Relaxed);
@@ -127,80 +129,68 @@ impl AudioRing {
     }
 }
 
-/// Elapsed time, for a video with no audio track to be paced against.
-pub(super) struct WallClock {
-    state: Mutex<WallState>,
-}
-
-struct WallState {
-    /// Position reached before the current run started.
-    base: Duration,
-    /// When the current run started; `None` while paused.
-    running_since: Option<Instant>,
-}
-
 /// What the decoder reads to decide when a frame is due.
 pub(super) enum Clock {
     /// The output device's, for anything with sound.
     Audio(Arc<AudioRing>),
     /// Elapsed time, for a video with no audio track — or one whose audio
     /// could not be opened, which is still better than refusing to play it.
-    Wall(WallClock),
+    Wall {
+        /// Position reached before the current run started.
+        base: Duration,
+        /// When the current run started; `None` while paused.
+        running_since: Option<Instant>,
+    },
 }
 
 impl Clock {
     pub(super) fn wall() -> Self {
-        Self::Wall(WallClock {
-            state: Mutex::new(WallState {
-                base: Duration::ZERO,
-                running_since: Some(Instant::now()),
-            }),
-        })
+        Self::Wall {
+            base: Duration::ZERO,
+            running_since: Some(Instant::now()),
+        }
     }
 
     pub(super) fn position(&self) -> Duration {
         match self {
             Self::Audio(ring) => ring.position(),
-            Self::Wall(wall) => {
-                let Ok(state) = wall.state.lock() else {
-                    return Duration::ZERO;
-                };
-                match state.running_since {
-                    Some(since) => state.base + since.elapsed(),
-                    None => state.base,
-                }
-            }
+            Self::Wall {
+                base,
+                running_since,
+            } => *base + running_since.map_or(Duration::ZERO, |since| since.elapsed()),
         }
     }
 
     /// An audio clock pauses by itself — the ring stops being drained, so it
     /// stops advancing — but a wall clock has to be told.
-    pub(super) fn set_paused(&self, paused: bool) {
-        let Self::Wall(wall) = self else {
+    pub(super) fn set_paused(&mut self, paused: bool) {
+        let Self::Wall {
+            base,
+            running_since,
+        } = self
+        else {
             return;
         };
-        let Ok(mut state) = wall.state.lock() else {
-            return;
-        };
-        match (paused, state.running_since) {
+        match (paused, *running_since) {
             (true, Some(since)) => {
-                state.base += since.elapsed();
-                state.running_since = None;
+                *base += since.elapsed();
+                *running_since = None;
             }
-            (false, None) => state.running_since = Some(Instant::now()),
+            (false, None) => *running_since = Some(Instant::now()),
             _ => {}
         }
     }
 
-    pub(super) fn reset_to(&self, position: Duration) {
+    pub(super) fn reset_to(&mut self, position: Duration) {
         match self {
             Self::Audio(ring) => ring.reset_to(position),
-            Self::Wall(wall) => {
-                if let Ok(mut state) = wall.state.lock() {
-                    state.base = position;
-                    if state.running_since.is_some() {
-                        state.running_since = Some(Instant::now());
-                    }
+            Self::Wall {
+                base,
+                running_since,
+            } => {
+                *base = position;
+                if running_since.is_some() {
+                    *running_since = Some(Instant::now());
                 }
             }
         }

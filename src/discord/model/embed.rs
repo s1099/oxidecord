@@ -5,6 +5,7 @@
 //! ([`EmbedLayout`]): a bordered card with a coloured spine, and a bare piece of
 //! media with no card at all.
 
+use super::cdn::scaled_url;
 use super::time::format_embed_timestamp;
 
 /// The widest the CDN is asked to scale an embed's large image to. Matches the
@@ -112,54 +113,53 @@ pub(in crate::discord) fn convert_embed(embed: twilight_model::channel::message:
     let has_video = embed.video.is_some() || embed.kind == "video" || embed.kind == "gifv";
     let layout = layout_for(&embed);
 
-    let mut image = embed.image.map(|image| EmbedMedia {
-        url: scaled_url(
-            image.proxy_url.as_deref().unwrap_or(&image.url),
-            image.width,
-            image.height,
-            IMAGE_MAX_WIDTH,
-            IMAGE_MAX_HEIGHT,
-        ),
-        width: image.width.map(|w| w as u32),
-        height: image.height.map(|h| h as u32),
-    });
-    let mut thumbnail = embed.thumbnail.map(|thumbnail| EmbedMedia {
-        url: scaled_url(
-            thumbnail.proxy_url.as_deref().unwrap_or(&thumbnail.url),
-            thumbnail.width,
-            thumbnail.height,
-            THUMBNAIL_REQUEST_SIZE,
-            THUMBNAIL_REQUEST_SIZE,
-        ),
-        width: thumbnail.width.map(|w| w as u32),
-        height: thumbnail.height.map(|h| h as u32),
-    });
-
     // Link previews and video embeds carry their artwork in `thumbnail` but
     // render it large, the way `image` is drawn — Discord promotes it whenever
     // there's no real image competing for the space and it's big enough to be
     // worth it. Bare media has no corner to tuck a thumbnail into at all.
-    let promote_thumbnail = image.is_none()
+    let promote_thumbnail = embed.image.is_none()
         && match layout {
             EmbedLayout::Media => true,
             EmbedLayout::Card => {
                 has_video
                     || (embed.kind == "article"
-                        && thumbnail
+                        && embed
+                            .thumbnail
                             .as_ref()
                             .is_some_and(|thumbnail| thumbnail.width.unwrap_or(0) >= 300))
             }
         };
-    if promote_thumbnail && let Some(mut promoted) = thumbnail.take() {
-        // It was sized for the 80x80 corner box; re-ask at the large size.
-        promoted.url = scaled_url(
-            &strip_size_query(&promoted.url),
-            promoted.width.map(u64::from),
-            promoted.height.map(u64::from),
-            IMAGE_MAX_WIDTH,
-            IMAGE_MAX_HEIGHT,
-        );
-        image = Some(promoted);
+
+    let large = |url: &str, width, height| EmbedMedia {
+        url: scaled_url(url, width, height, IMAGE_MAX_WIDTH, IMAGE_MAX_HEIGHT),
+        width: width.map(|w| w as u32),
+        height: height.map(|h| h as u32),
+    };
+    let mut image = embed.image.map(|image| {
+        large(
+            image.proxy_url.as_deref().unwrap_or(&image.url),
+            image.width,
+            image.height,
+        )
+    });
+    let mut thumbnail = None;
+    if let Some(raw) = embed.thumbnail {
+        let url = raw.proxy_url.as_deref().unwrap_or(&raw.url);
+        if promote_thumbnail {
+            image = Some(large(url, raw.width, raw.height));
+        } else {
+            thumbnail = Some(EmbedMedia {
+                url: scaled_url(
+                    url,
+                    raw.width,
+                    raw.height,
+                    THUMBNAIL_REQUEST_SIZE,
+                    THUMBNAIL_REQUEST_SIZE,
+                ),
+                width: raw.width.map(|w| w as u32),
+                height: raw.height.map(|h| h as u32),
+            });
+        }
     }
 
     Embed {
@@ -218,54 +218,5 @@ fn layout_for(embed: &twilight_model::channel::message::Embed) -> EmbedLayout {
         EmbedLayout::Media
     } else {
         EmbedLayout::Card
-    }
-}
-
-/// Asks the CDN for an image already scaled to the box it will be drawn in,
-/// preserving its aspect ratio.
-fn scaled_url(
-    url: &str,
-    width: Option<u64>,
-    height: Option<u64>,
-    max_w: u32,
-    max_h: u32,
-) -> String {
-    // Only Discord's own proxy understands the resize query; asking a third
-    // party host for it would at best be ignored and at worst break a signature.
-    if !url.contains("discordapp.") && !url.contains("discord.com") {
-        return url.to_string();
-    }
-    let (target_w, target_h) = match (width, height) {
-        (Some(w), Some(h)) if w > 0 && h > 0 => {
-            let scale = (f64::from(max_w) / w as f64)
-                .min(f64::from(max_h) / h as f64)
-                .min(1.0);
-            (
-                (w as f64 * scale).round().max(1.0) as u32,
-                (h as f64 * scale).round().max(1.0) as u32,
-            )
-        }
-        _ => (max_w, max_h),
-    };
-    // A proxy URL already carries a signed query string, so append with `&`.
-    let separator = if url.contains('?') { '&' } else { '?' };
-    format!("{url}{separator}width={target_w}&height={target_h}")
-}
-
-/// Drops the `width`/`height` query [`scaled_url`] added, so a promoted
-/// thumbnail can be re-requested at a different size without stacking duplicate
-/// keys.
-fn strip_size_query(url: &str) -> String {
-    let Some((base, query)) = url.split_once('?') else {
-        return url.to_string();
-    };
-    let kept: Vec<&str> = query
-        .split('&')
-        .filter(|pair| !pair.starts_with("width=") && !pair.starts_with("height="))
-        .collect();
-    if kept.is_empty() {
-        base.to_string()
-    } else {
-        format!("{base}?{}", kept.join("&"))
     }
 }

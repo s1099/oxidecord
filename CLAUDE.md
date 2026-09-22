@@ -33,10 +33,9 @@ older than the installed Visual Studio, build through Ninja: `CMAKE_GENERATOR=Ni
 ## Threading
 
 gpui's foreground thread is `!Send` and twilight/reqwest need Tokio, so a shared background
-runtime lives in `platform/runtime.rs`. Every REST call spawns onto it and reports back
-through a callback that runs **on that runtime's thread** — loaders in `data/` bridge it to
-gpui over a `Send`-safe channel drained by a foreground task. Never block the foreground
-thread, and never assume a callback runs on it.
+runtime lives in `platform/runtime.rs`. `runtime::run` spawns a future onto it and hands
+back one gpui can await, so the REST calls in `discord/rest/` are plain `async fn`s that
+loaders in `data/` await inside `cx.spawn`. Never block the foreground thread.
 
 ## Video playback
 

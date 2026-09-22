@@ -30,11 +30,6 @@ impl HomeScreen {
         let Some(channel_id) = self.selected_channel else {
             return;
         };
-        let Some(token) = discord::load_token() else {
-            self.send_error = Some("No token found. Please log in first.".into());
-            cx.notify();
-            return;
-        };
         let Some(ix) = self
             .messages
             .iter()
@@ -49,13 +44,8 @@ impl HomeScreen {
         self.messages_list.splice(ix..ix + 1, 0);
         cx.notify();
 
-        let (tx, rx) = futures::channel::oneshot::channel();
-        discord::delete_message(token, channel_id, message_id, move |result| {
-            let _ = tx.send(result);
-        });
-
         cx.spawn(async move |this, cx| {
-            let Ok(Err(err)) = rx.await else {
+            let Err(err) = discord::delete_message(channel_id, message_id).await else {
                 return;
             };
             let _ = this.update(cx, |this, cx| {

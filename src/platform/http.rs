@@ -1,24 +1,33 @@
 //! Minimal [`HttpClient`] for gpui.
 
+use std::sync::OnceLock;
+
 use futures::{AsyncReadExt as _, FutureExt as _, future::BoxFuture};
 use gpui::http_client::{AsyncBody, HttpClient, Url, http, http::HeaderValue};
 
 use super::runtime;
 
+const USER_AGENT: &str = "oxidecord/0.1";
+
+/// The one reqwest client, so every download shares its connection pool.
+pub fn client() -> &'static reqwest::Client {
+    static CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
+    CLIENT.get_or_init(|| {
+        reqwest::Client::builder()
+            .user_agent(USER_AGENT)
+            .build()
+            .expect("failed to build reqwest client")
+    })
+}
+
 pub struct ReqwestClient {
-    client: reqwest::Client,
     user_agent: HeaderValue,
 }
 
 impl ReqwestClient {
     pub fn new() -> Self {
-        let client = reqwest::Client::builder()
-            .user_agent("oxidecord/0.1")
-            .build()
-            .expect("failed to build reqwest client");
         Self {
-            client,
-            user_agent: HeaderValue::from_static("oxidecord/0.1"),
+            user_agent: HeaderValue::from_static(USER_AGENT),
         }
     }
 }
@@ -40,8 +49,7 @@ impl HttpClient for ReqwestClient {
         &self,
         req: http::Request<AsyncBody>,
     ) -> BoxFuture<'static, anyhow::Result<http::Response<AsyncBody>>> {
-        let client = self.client.clone();
-        let handle = runtime::handle().clone();
+        let client = client();
 
         async move {
             let (parts, mut body) = req.into_parts();
@@ -65,33 +73,26 @@ impl HttpClient for ReqwestClient {
             }
 
             // reqwest must run inside the Tokio runtime; gpui's executor is not
-            // one. Hand the work off and await the result over a channel.
-            let (tx, rx) = futures::channel::oneshot::channel();
-            handle.spawn(async move {
-                let result = async {
-                    let response = client
-                        .request(method, url)
-                        .headers(headers)
-                        .body(body_bytes)
-                        .send()
-                        .await?;
-
-                    let status = response.status();
-                    let headers = response.headers().clone();
-                    let bytes = response.bytes().await?;
-                    Ok::<_, reqwest::Error>((status, headers, bytes))
-                }
-                .await;
-                let _ = tx.send(result);
-            });
-
-            let (status, headers, bytes) = rx.await??;
+            // one.
+            let (status, headers, bytes) = runtime::run(async move {
+                let mut response = client
+                    .request(method, url)
+                    .headers(headers)
+                    .body(body_bytes)
+                    .send()
+                    .await?;
+                let status = response.status();
+                let headers = std::mem::take(response.headers_mut());
+                let bytes = response.bytes().await?;
+                Ok::<_, reqwest::Error>((status, headers, bytes))
+            })
+            .await??;
 
             let mut builder = http::Response::builder().status(status.as_u16());
             for (name, value) in headers.iter() {
                 builder = builder.header(name.as_str(), value.as_bytes());
             }
-            let response = builder.body(AsyncBody::from(bytes.to_vec()))?;
+            let response = builder.body(AsyncBody::from_bytes(bytes))?;
             Ok(response)
         }
         .boxed()

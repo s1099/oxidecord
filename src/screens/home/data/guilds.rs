@@ -17,22 +17,8 @@ impl HomeScreen {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let Some(token) = discord::load_token() else {
-            self.loading = false;
-            self.error = Some("No token found. Please log in first.".into());
-            return;
-        };
-
-        let (tx, rx) = futures::channel::oneshot::channel();
-        discord::fetch_guilds(token, move |result| {
-            let _ = tx.send(result);
-        });
-
         cx.spawn_in(window, async move |this, cx| {
-            let Ok(result) = rx.await else {
-                return;
-            };
-
+            let result = discord::fetch_guilds().await;
             let _ = this.update_in(cx, |this, window, cx| {
                 match result {
                     Ok(guilds) => {
@@ -56,19 +42,8 @@ impl HomeScreen {
     /// Loads the user's folder settings, which decide the rail's order.
     /// Best-effort: until it lands the rail uses the plain guild list.
     pub(in crate::screens::home) fn load_guild_folders(&mut self, cx: &mut Context<Self>) {
-        let Some(token) = discord::load_token() else {
-            return;
-        };
-
-        let (tx, rx) = futures::channel::oneshot::channel();
-        discord::fetch_guild_folders(token, move |result| {
-            let _ = tx.send(result);
-        });
-
         cx.spawn(async move |this, cx| {
-            let Ok(result) = rx.await else {
-                return;
-            };
+            let result = discord::fetch_guild_folders().await;
             let _ = this.update(cx, |this, cx| {
                 match result {
                     Ok(folders) => this.guild_folders = Some(folders),
@@ -91,17 +66,8 @@ impl HomeScreen {
     /// Loads the signed-in user for the sidebar account panel. Best-effort:
     /// on failure the panel just stays empty.
     pub(in crate::screens::home) fn load_current_user(&mut self, cx: &mut Context<Self>) {
-        let Some(token) = discord::load_token() else {
-            return;
-        };
-
-        let (tx, rx) = futures::channel::oneshot::channel();
-        discord::fetch_current_user(token, move |result| {
-            let _ = tx.send(result);
-        });
-
         cx.spawn(async move |this, cx| {
-            let Ok(Ok(user)) = rx.await else {
+            let Ok(user) = discord::fetch_current_user().await else {
                 return;
             };
             let _ = this.update(cx, |this, cx| {
@@ -144,12 +110,6 @@ impl HomeScreen {
         self.channels_loading = true;
         cx.notify();
 
-        let Some(token) = discord::load_token() else {
-            self.channels_loading = false;
-            self.channels_error = Some("No token found. Please log in first.".into());
-            return;
-        };
-
         // The guild list already carries the user's guild-wide permissions, so
         // channel visibility only needs the member object on top of them.
         let (base_permissions, owner) = self
@@ -159,16 +119,8 @@ impl HomeScreen {
             .map(|guild| (guild.permissions, guild.owner))
             .unwrap_or((discord::Permissions::empty(), false));
 
-        let (tx, rx) = futures::channel::oneshot::channel();
-        discord::fetch_channels(token, guild_id, base_permissions, owner, move |result| {
-            let _ = tx.send(result);
-        });
-
         cx.spawn_in(window, async move |this, cx| {
-            let Ok(result) = rx.await else {
-                return;
-            };
-
+            let result = discord::fetch_channels(guild_id, base_permissions, owner).await;
             let _ = this.update_in(cx, |this, window, cx| {
                 // The user may have clicked another guild while this request
                 // was in flight; drop the stale response.
@@ -192,7 +144,11 @@ impl HomeScreen {
     }
 
     pub(in crate::screens::home) fn selected_channel_info(&self) -> Option<&Channel> {
-        let id = self.selected_channel?;
+        self.channel_info(self.selected_channel?)
+    }
+
+    /// A channel of the loaded guild, by id.
+    pub(in crate::screens::home) fn channel_info(&self, id: Id<ChannelMarker>) -> Option<&Channel> {
         self.channel_groups
             .iter()
             .flat_map(|group| &group.channels)

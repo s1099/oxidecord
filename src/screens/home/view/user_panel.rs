@@ -3,11 +3,12 @@
 
 use gpui::*;
 use gpui_component::{
-    ActiveTheme as _, Icon, IconName, Selectable as _, Sizable as _, avatar::Avatar,
-    button::Button, button::ButtonVariants as _, h_flex, v_flex,
+    ActiveTheme as _, Icon, IconName, Selectable as _, Sizable as _, button::Button,
+    button::ButtonVariants as _, h_flex, v_flex,
 };
 
 use crate::screens::home::HomeScreen;
+use crate::screens::home::view::avatar;
 use crate::ui::settings;
 
 impl HomeScreen {
@@ -23,10 +24,7 @@ impl HomeScreen {
             None => (String::new(), String::new(), None),
         };
 
-        let mut avatar = Avatar::new().name(name.clone()).with_size(px(32.));
-        if let Some(src) = avatar_src {
-            avatar = avatar.src(src);
-        }
+        let avatar = avatar(name.clone(), avatar_src, px(32.));
 
         h_flex()
             .flex_shrink_0()

@@ -8,11 +8,12 @@ mod toolbar;
 
 use gpui::prelude::FluentBuilder as _;
 use gpui::*;
-use gpui_component::{ActiveTheme as _, Sizable as _, avatar::Avatar, h_flex, v_flex};
+use gpui_component::{ActiveTheme as _, h_flex, v_flex};
 
 use crate::discord;
 use crate::screens::home::HomeScreen;
-use crate::screens::home::state::VideoKey;
+use crate::screens::home::state::MediaKey;
+use crate::screens::home::view::avatar;
 
 use super::text::render_message_text;
 use super::{GROUP_GAP, MESSAGE_PADDING_X};
@@ -20,6 +21,28 @@ use super::{GROUP_GAP, MESSAGE_PADDING_X};
 /// How far a continuation message and a reply quote are indented, so both line
 /// up with the content column beside the avatar.
 const CONTENT_INDENT: f32 = 52.;
+
+/// The box inline media is fitted into, attachments and embeds alike. Discord
+/// uses similar bounds; the aspect ratio is preserved within them.
+const MEDIA_MAX_WIDTH: f32 = 400.;
+const MEDIA_MAX_HEIGHT: f32 = 300.;
+
+/// Scales reported dimensions down into a box, keeping their shape. `None`
+/// when Discord didn't report them, in which case the element is capped rather
+/// than sized.
+fn fit_within(
+    width: Option<u32>,
+    height: Option<u32>,
+    max_width: f32,
+    max_height: f32,
+) -> Option<(f32, f32)> {
+    let (width, height) = (width? as f32, height? as f32);
+    if width <= 0. || height <= 0. {
+        return None;
+    }
+    let scale = (max_width / width).min(max_height / height).min(1.);
+    Some((width * scale, height * scale))
+}
 
 impl HomeScreen {
     pub(super) fn render_message(
@@ -73,11 +96,10 @@ impl HomeScreen {
                         .children(message.videos.iter().enumerate().map(|(index, video)| {
                             self.render_video(
                                 video,
-                                VideoKey {
+                                MediaKey {
                                     message_id: message.id.get(),
                                     index,
                                 },
-                                &self.image_cache,
                                 cx,
                             )
                         })),
@@ -123,12 +145,11 @@ impl HomeScreen {
     ) -> AnyElement {
         let theme = cx.theme();
 
-        let mut avatar = Avatar::new()
-            .name(message.author_name.clone())
-            .with_size(px(40.));
-        if let Some(avatar_url) = message.author_avatar_url.clone() {
-            avatar = avatar.src(avatar_url);
-        }
+        let avatar = avatar(
+            message.author_name.clone(),
+            message.author_avatar_url.clone(),
+            px(40.),
+        );
 
         // Clicking the avatar opens the author's profile card, anchored at the
         // click. Handled on mouse-down rather than click so the card's dismiss
@@ -144,14 +165,13 @@ impl HomeScreen {
             .child(avatar)
             .on_mouse_down(
                 MouseButton::Left,
-                cx.listener(move |this, event: &MouseDownEvent, window, cx| {
+                cx.listener(move |this, event: &MouseDownEvent, _window, cx| {
                     cx.stop_propagation();
                     this.open_profile(
                         author_id,
                         author_name.clone(),
                         author_avatar_url.clone(),
                         event.position,
-                        window,
                         cx,
                     );
                 }),

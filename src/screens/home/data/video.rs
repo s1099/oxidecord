@@ -16,7 +16,7 @@ use image::{Frame, ImageBuffer};
 
 use crate::platform::video::{VideoEvent, VideoFrame, VideoPlayer};
 use crate::screens::home::HomeScreen;
-use crate::screens::home::state::{VideoKey, VideoPlayback};
+use crate::screens::home::state::{MediaKey, PlaybackState, VideoPlayback};
 
 impl HomeScreen {
     /// Starts playing one video attachment, stopping whatever was playing.
@@ -27,7 +27,7 @@ impl HomeScreen {
     /// kilobytes of frames instead of tens of megabytes.
     pub(in crate::screens::home) fn play_video(
         &mut self,
-        key: VideoKey,
+        key: MediaKey,
         url: String,
         target: (u32, u32),
         window: &mut Window,
@@ -56,9 +56,7 @@ impl HomeScreen {
             frame: None,
             duration: Duration::ZERO,
             position: Duration::ZERO,
-            loading: true,
-            error: None,
-            ended: false,
+            state: PlaybackState::Loading,
             scrubber,
         });
 
@@ -132,7 +130,9 @@ impl HomeScreen {
         // Moved now rather than waiting for the next frame, so the handle
         // follows the click instead of lagging a decode behind it.
         playback.position = position;
-        playback.ended = false;
+        if playback.state == PlaybackState::Ended {
+            playback.state = PlaybackState::Playing;
+        }
         cx.notify();
     }
 
@@ -140,7 +140,7 @@ impl HomeScreen {
     /// one; once it isn't, the pump feeding it stops.
     fn handle_video_event(
         &mut self,
-        key: VideoKey,
+        key: MediaKey,
         event: VideoEvent,
         window: &mut Window,
         cx: &mut Context<Self>,
@@ -165,14 +165,12 @@ impl HomeScreen {
             VideoEvent::Frame(frame) => self.show_frame(frame, window, cx),
             VideoEvent::Ended => {
                 if let Some(playback) = &mut self.video {
-                    playback.loading = false;
-                    playback.ended = true;
+                    playback.state = PlaybackState::Ended;
                 }
             }
             VideoEvent::Failed(reason) => {
                 if let Some(playback) = &mut self.video {
-                    playback.loading = false;
-                    playback.error = Some(reason);
+                    playback.state = PlaybackState::Failed(reason);
                 }
             }
         }
@@ -203,8 +201,7 @@ impl HomeScreen {
         };
 
         playback.position = position;
-        playback.loading = false;
-        playback.ended = false;
+        playback.state = PlaybackState::Playing;
         if let Some(previous) = playback.frame.replace(image) {
             let _ = window.drop_image(previous);
         }

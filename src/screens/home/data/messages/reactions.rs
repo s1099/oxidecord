@@ -19,9 +19,6 @@ impl HomeScreen {
         let Some(channel_id) = self.selected_channel else {
             return;
         };
-        let Some(token) = discord::load_token() else {
-            return;
-        };
         let Some(add) = self
             .messages
             .iter()
@@ -40,20 +37,9 @@ impl HomeScreen {
         self.apply_reaction(message_id, &emoji, add);
         cx.notify();
 
-        let (tx, rx) = futures::channel::oneshot::channel();
-        discord::toggle_reaction(
-            token,
-            channel_id,
-            message_id,
-            emoji.clone(),
-            add,
-            move |result| {
-                let _ = tx.send(result);
-            },
-        );
-
+        let request = discord::toggle_reaction(channel_id, message_id, emoji.clone(), add);
         cx.spawn(async move |this, cx| {
-            let Ok(Err(_)) = rx.await else {
+            let Err(_) = request.await else {
                 return;
             };
             let _ = this.update(cx, |this, cx| {

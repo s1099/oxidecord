@@ -79,7 +79,7 @@ fn run(session: Session) -> Result<(), String> {
     // one on a machine with no output device.
     let audio = audio.filter(|(_, rate)| configure_audio(&reader, *rate).is_ok());
 
-    let clock = match &audio {
+    let mut clock = match &audio {
         Some((ring, _)) => Clock::Audio(ring.clone()),
         None => Clock::wall(),
     };

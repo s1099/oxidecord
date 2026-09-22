@@ -13,9 +13,10 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use cpal::traits::{DeviceTrait as _, HostTrait as _, StreamTrait as _};
-use cpal::{FromSample, SampleFormat, SizedSample, StreamConfig};
+use cpal::{FromSample, SizedSample, StreamConfig};
 
 use super::clock::{AudioRing, CHANNELS};
+use crate::platform::audio::{in_device_format, sanitize};
 
 /// How often the holder thread checks whether playback has ended. The stream
 /// stops when it is dropped, so this only bounds teardown, and nothing is
@@ -56,18 +57,14 @@ fn run(
     stop: &AtomicBool,
 ) {
     let channels = usize::from(config.channels());
-    let format = config.sample_format();
-    let stream = match format {
-        SampleFormat::F32 => build::<f32>(device, config.into(), channels, ring),
-        SampleFormat::F64 => build::<f64>(device, config.into(), channels, ring),
-        SampleFormat::I8 => build::<i8>(device, config.into(), channels, ring),
-        SampleFormat::I16 => build::<i16>(device, config.into(), channels, ring),
-        SampleFormat::I32 => build::<i32>(device, config.into(), channels, ring),
-        SampleFormat::U8 => build::<u8>(device, config.into(), channels, ring),
-        SampleFormat::U16 => build::<u16>(device, config.into(), channels, ring),
-        SampleFormat::U32 => build::<u32>(device, config.into(), channels, ring),
-        _ => None,
-    };
+    let stream = in_device_format!(
+        config.sample_format(),
+        build,
+        device,
+        config.into(),
+        channels,
+        ring
+    );
     let Some(stream) = stream else {
         return;
     };
@@ -132,16 +129,5 @@ where
             };
             *sample = T::from_sample(sanitize(value));
         }
-    }
-}
-
-/// Keeps a sample inside the range the device conversions assume. A NaN
-/// compares false against every bound, so it has to be caught before the clamp
-/// rather than by it.
-fn sanitize(sample: f32) -> f32 {
-    if sample.is_finite() {
-        sample.clamp(-1., 1.)
-    } else {
-        0.
     }
 }

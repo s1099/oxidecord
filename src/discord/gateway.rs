@@ -8,6 +8,7 @@
 
 use futures::StreamExt as _;
 use serde::Deserialize;
+use serde_json::value::RawValue;
 use twilight_gateway::{Intents, Message as ShardMessage, MessageSender, Shard, ShardId};
 use twilight_model::id::{
     Id,
@@ -81,33 +82,16 @@ impl GatewaySender {
     }
 }
 
-/// The dispatches the app reads. Everything else — presence updates, typing,
-/// the rest of a user account's firehose — is dropped before its payload is
-/// parsed, which is most of the traffic.
-const HANDLED: &[&str] = &[
-    "READY",
-    "MESSAGE_CREATE",
-    "VOICE_STATE_UPDATE",
-    "VOICE_SERVER_UPDATE",
-    "GUILD_CREATE",
-];
-
-/// Just enough of a payload to tell what it is. Deserializing this walks the
-/// JSON without building it, so an unwanted dispatch costs no allocations.
+/// The envelope every gateway payload arrives in. Only dispatches (opcode 0)
+/// carry a name and data the app cares about. Both borrow from the frame, so
+/// telling what a payload is costs no allocations — which matters, because
+/// most of a user account's firehose (presences, typing) is dropped unread.
 #[derive(Deserialize)]
 struct Envelope<'a> {
     #[serde(default, borrow)]
     t: Option<&'a str>,
-}
-
-/// The envelope every gateway payload arrives in. Only dispatches (opcode 0)
-/// carry a name and data the app cares about.
-#[derive(Deserialize)]
-struct Payload {
-    #[serde(default)]
-    t: Option<String>,
-    #[serde(default)]
-    d: Option<serde_json::Value>,
+    #[serde(default, borrow)]
+    d: Option<&'a RawValue>,
 }
 
 #[derive(Deserialize)]
@@ -160,20 +144,17 @@ pub fn connect_gateway(
             let Ok(ShardMessage::Text(json)) = item else {
                 continue;
             };
-            match serde_json::from_str::<Envelope>(&json) {
-                Ok(Envelope { t: Some(name) }) if HANDLED.contains(&name) => {}
-                _ => continue,
-            }
-            let Ok(payload) = serde_json::from_str::<Payload>(&json) else {
-                continue;
-            };
-            let (Some(name), Some(data)) = (payload.t, payload.d) else {
+            let Ok(Envelope {
+                t: Some(name),
+                d: Some(data),
+            }) = serde_json::from_str::<Envelope>(&json)
+            else {
                 continue;
             };
 
             // A dispatch the app doesn't handle, or one whose shape doesn't
             // match, yields nothing rather than ending the loop.
-            for event in dispatch(&name, data) {
+            for event in dispatch(name, data) {
                 if !on_event(event) {
                     return;
                 }
@@ -186,16 +167,17 @@ pub fn connect_gateway(
 
 /// Turns one dispatch into the events the app acts on. `GUILD_CREATE` is the
 /// only one that fans out into several.
-fn dispatch(name: &str, data: serde_json::Value) -> Vec<GatewayEvent> {
+fn dispatch(name: &str, data: &RawValue) -> Vec<GatewayEvent> {
+    let data = data.get();
     match name {
-        "READY" => serde_json::from_value::<ReadyPayload>(data)
+        "READY" => serde_json::from_str::<ReadyPayload>(data)
             .map(|ready| {
                 vec![GatewayEvent::Ready {
                     user_id: ready.user.id,
                 }]
             })
             .unwrap_or_default(),
-        "MESSAGE_CREATE" => serde_json::from_value::<twilight_model::channel::Message>(data)
+        "MESSAGE_CREATE" => serde_json::from_str::<twilight_model::channel::Message>(data)
             .map(|message| {
                 vec![GatewayEvent::Message(IncomingMessage {
                     channel_id: message.channel_id,
@@ -203,13 +185,13 @@ fn dispatch(name: &str, data: serde_json::Value) -> Vec<GatewayEvent> {
                 })]
             })
             .unwrap_or_default(),
-        "VOICE_STATE_UPDATE" => serde_json::from_value::<RawVoiceState>(data)
+        "VOICE_STATE_UPDATE" => serde_json::from_str::<RawVoiceState>(data)
             .map(|state| vec![GatewayEvent::VoiceState(convert_voice_state(state, None))])
             .unwrap_or_default(),
-        "VOICE_SERVER_UPDATE" => serde_json::from_value::<RawVoiceServer>(data)
+        "VOICE_SERVER_UPDATE" => serde_json::from_str::<RawVoiceServer>(data)
             .map(|server| vec![GatewayEvent::VoiceServer(convert_voice_server(server))])
             .unwrap_or_default(),
-        "GUILD_CREATE" => serde_json::from_value::<GuildCreatePayload>(data)
+        "GUILD_CREATE" => serde_json::from_str::<GuildCreatePayload>(data)
             .map(|guild| {
                 guild
                     .voice_states

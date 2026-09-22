@@ -19,7 +19,6 @@ impl HomeScreen {
         name: String,
         avatar_url: Option<String>,
         position: Point<Pixels>,
-        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         let cached = self.profile_cache.get(&user_id).cloned();
@@ -34,7 +33,7 @@ impl HomeScreen {
         cx.notify();
 
         if cached.is_none() {
-            self.load_profile(user_id, window, cx);
+            self.load_profile(user_id, cx);
         }
     }
 
@@ -44,31 +43,10 @@ impl HomeScreen {
         }
     }
 
-    fn load_profile(
-        &mut self,
-        user_id: Id<UserMarker>,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        let Some(token) = discord::load_token() else {
-            if let Some(popup) = &mut self.profile_popup {
-                popup.error = Some("No token found. Please log in first.".into());
-            }
-            cx.notify();
-            return;
-        };
-
-        let (tx, rx) = futures::channel::oneshot::channel();
-        discord::fetch_user_profile(token, user_id, move |result| {
-            let _ = tx.send(result);
-        });
-
-        cx.spawn_in(window, async move |this, cx| {
-            let Ok(result) = rx.await else {
-                return;
-            };
-
-            let _ = this.update_in(cx, |this, _window, cx| {
+    fn load_profile(&mut self, user_id: Id<UserMarker>, cx: &mut Context<Self>) {
+        cx.spawn(async move |this, cx| {
+            let result = discord::fetch_user_profile(user_id).await;
+            let _ = this.update(cx, |this, cx| {
                 match result {
                     Ok(profile) => {
                         this.profile_cache.insert(user_id, profile.clone());
