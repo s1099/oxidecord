@@ -55,7 +55,7 @@ impl HomeScreen {
                 div()
                     .id("home-dms")
                     .p(px(4.))
-                    .rounded(px(16.))
+                    .rounded(px(20.))
                     .cursor_pointer()
                     .when(in_dms, |this| this.bg(selected_bg))
                     .child(
@@ -64,7 +64,7 @@ impl HomeScreen {
                             .flex()
                             .items_center()
                             .justify_center()
-                            .rounded_full()
+                            .rounded(px(16.))
                             .bg(logo_bg)
                             .child(img(DISCORD_LOGO.clone()).size(px(28.))),
                     )
@@ -90,7 +90,7 @@ impl HomeScreen {
             .id(("guild", guild_id.get()))
             .cursor_pointer()
             .p(px(4.))
-            .rounded(px(16.))
+            .rounded(px(20.))
             .when(is_selected, |this| this.bg(selected_bg))
             .child(guild_avatar(guild, px(48.)))
             .tooltip({
@@ -185,6 +185,8 @@ fn folder_preview(guilds: &[Guild]) -> impl IntoElement + use<> {
         )
 }
 
+/// Guild icons are rounded squares rather than circles, as in Discord: a
+/// third of the side, so 48px gets its 16px radius and previews scale down.
 fn guild_avatar(guild: &Guild, size: Pixels) -> Avatar {
-    super::avatar(guild.name.clone(), guild.icon_url.clone(), size)
+    super::avatar(guild.name.clone(), guild.icon_url.clone(), size).rounded(size / 3.)
 }
