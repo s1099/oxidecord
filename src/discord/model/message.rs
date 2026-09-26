@@ -18,6 +18,9 @@ pub struct Message {
     pub author_avatar_url: Option<String>,
     pub content: String,
     pub timestamp: String,
+    /// Whether the message has been edited since it was sent, which the view
+    /// marks with "(edited)" after the content.
+    pub edited: bool,
     pub images: Vec<ImageAttachment>,
     /// Video attachments, played inline by the platform decoder.
     pub videos: Vec<VideoAttachment>,
@@ -28,6 +31,25 @@ pub struct Message {
     pub reply: Option<MessageReference>,
     /// Reactions on the message, in Discord's order (first reacted first).
     pub reactions: Vec<Reaction>,
+}
+
+impl Message {
+    /// Takes on what an edit can change from `edited`, the same message as the
+    /// server now has it.
+    ///
+    /// Only the edited parts are copied: an update doesn't reliably carry the
+    /// author's guild member (so the nickname would fall back to the global
+    /// name), the quoted reply, or the current user's own reactions, and none
+    /// of those change with an edit anyway.
+    pub fn apply_edit(&mut self, edited: Message) {
+        self.content = edited.content;
+        self.edited = edited.edited;
+        // Attachments can be removed in an edit, and links added or removed
+        // change the embeds.
+        self.images = edited.images;
+        self.videos = edited.videos;
+        self.embeds = edited.embeds;
+    }
 }
 
 /// One emoji's reaction tally on a message.
@@ -119,6 +141,7 @@ pub(in crate::discord) fn convert_message(message: twilight_model::channel::Mess
         author_avatar_url,
         content: message.content,
         timestamp: format_timestamp(message.timestamp),
+        edited: message.edited_timestamp.is_some(),
         images: message
             .attachments
             .iter()

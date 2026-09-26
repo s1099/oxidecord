@@ -71,6 +71,9 @@ impl HomeScreen {
                 self.self_user_id = Some(user_id);
             }
             discord::GatewayEvent::Message(incoming) => self.handle_incoming_message(incoming, cx),
+            discord::GatewayEvent::MessageUpdate(incoming) => {
+                self.handle_message_update(incoming, cx)
+            }
             discord::GatewayEvent::VoiceState(state) => self.handle_voice_state(state, cx),
             discord::GatewayEvent::VoiceServer(server) => self.handle_voice_server(server, cx),
         }

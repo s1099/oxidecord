@@ -17,9 +17,9 @@ pub use model::{
     Reaction, ReactionEmoji, UserProfile, VideoAttachment, VoiceServerInfo, VoiceUserState,
 };
 pub use rest::{
-    MAX_ATTACHMENT_SIZE, MESSAGE_PAGE_SIZE, delete_message, fetch_channels, fetch_current_user,
-    fetch_dms, fetch_guild_folders, fetch_guilds, fetch_messages, fetch_user_profile, send_message,
-    toggle_reaction,
+    MAX_ATTACHMENT_SIZE, MESSAGE_PAGE_SIZE, delete_message, edit_message, fetch_channels,
+    fetch_current_user, fetch_dms, fetch_guild_folders, fetch_guilds, fetch_messages,
+    fetch_user_profile, send_message, toggle_reaction,
 };
 pub use token::{load_token, save_token};
 pub use twilight_model::guild::Permissions;

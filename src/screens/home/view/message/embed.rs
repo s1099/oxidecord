@@ -128,6 +128,7 @@ impl HomeScreen {
                         id.element_id("embed-description"),
                         description,
                         theme.link,
+                        None,
                     ))
             }))
             .when(!embed.fields.is_empty(), |this| {
@@ -504,7 +505,12 @@ fn render_field(
             div()
                 .text_sm()
                 .line_height(px(LINE_HEIGHT_BODY))
-                .child(render_message_text(value_id, &field.value, link_color)),
+                .child(render_message_text(
+                    value_id,
+                    &field.value,
+                    link_color,
+                    None,
+                )),
         )
 }
 

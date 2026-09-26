@@ -1,6 +1,7 @@
 //! A single message row: its header, content, attachments, and hover toolbar.
 
 mod attachment;
+mod edit;
 mod embed;
 mod reactions;
 mod reply;
@@ -53,6 +54,10 @@ impl HomeScreen {
         cx: &Context<Self>,
     ) -> AnyElement {
         let theme = cx.theme();
+        let editing = self
+            .editing
+            .as_ref()
+            .filter(|editing| editing.message_id == message.id);
 
         let has_images = !message.images.is_empty();
         let has_videos = !message.videos.is_empty();
@@ -61,15 +66,23 @@ impl HomeScreen {
             .w_full()
             .min_w_0()
             .gap_1()
-            .when(!message.content.is_empty(), |this| {
+            .when_some(editing, |this, editing| {
+                this.child(self.render_edit_box(editing, cx))
+            })
+            .when(editing.is_none() && !message.content.is_empty(), |this| {
                 this.child(render_message_text(
                     ("message-content", message.id.get()),
                     &message.content,
                     theme.link,
+                    message.edited.then_some(theme.muted_foreground),
                 ))
             })
             .when(
-                message.content.is_empty() && !has_images && !has_videos && !has_embeds,
+                editing.is_none()
+                    && message.content.is_empty()
+                    && !has_images
+                    && !has_videos
+                    && !has_embeds,
                 |this| {
                     this.child(
                         div()
@@ -129,6 +142,9 @@ impl HomeScreen {
             .w_full()
             .min_w_0()
             .hover(|this| this.bg(theme.accent.opacity(0.4)))
+            // A message open for editing stays lit while the pointer is
+            // elsewhere, so it's clear which one the box belongs to.
+            .when(editing.is_some(), |this| this.bg(theme.accent.opacity(0.4)))
             .child(inner)
             .child(self.render_message_toolbar(message, &group_name, cx))
             .into_any_element()

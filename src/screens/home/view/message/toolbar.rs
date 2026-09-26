@@ -30,6 +30,12 @@ impl HomeScreen {
         let theme = cx.theme();
         let message_id = message.id;
         let can_delete = self.can_delete_message(message);
+        // Already open for editing, the button would have nothing to do.
+        let can_edit = self.is_own_message(message)
+            && self
+                .editing
+                .as_ref()
+                .is_none_or(|editing| editing.message_id != message_id);
         let expanded = self.shift_held;
 
         div()
@@ -65,6 +71,18 @@ impl HomeScreen {
                                 })),
                         )
                     })
+                    .when(can_edit, |this| {
+                        this.child(
+                            Button::new(("message-edit", message_id.get()))
+                                .icon(Icon::default().path("icons/pencil.svg"))
+                                .ghost()
+                                .small()
+                                .tooltip("Edit")
+                                .on_click(cx.listener(move |this, _, window, cx| {
+                                    this.start_editing(message_id, window, cx);
+                                })),
+                        )
+                    })
                     .child(self.reply_button(message, cx))
                     .when(expanded && can_delete, |this| {
                         this.child(
@@ -80,7 +98,7 @@ impl HomeScreen {
                         )
                     })
                     .when(!expanded, |this| {
-                        this.child(self.more_menu(message_id, can_delete, cx))
+                        this.child(self.more_menu(message_id, can_edit, can_delete, cx))
                     }),
             )
     }
@@ -109,6 +127,7 @@ impl HomeScreen {
     fn more_menu(
         &self,
         message_id: Id<MessageMarker>,
+        can_edit: bool,
         can_delete: bool,
         cx: &Context<Self>,
     ) -> impl IntoElement {
@@ -121,6 +140,22 @@ impl HomeScreen {
             .small()
             .tooltip("More")
             .dropdown_menu_with_anchor(Corner::TopRight, move |menu, _, _| {
+                let menu = menu.when(can_edit, |menu| {
+                    menu.item(
+                        PopupMenuItem::new("Edit Message")
+                            .icon(Icon::default().path("icons/pencil.svg"))
+                            .on_click({
+                                let screen = screen.clone();
+                                move |_, window, cx| {
+                                    if let Some(screen) = screen.upgrade() {
+                                        screen.update(cx, |this, cx| {
+                                            this.start_editing(message_id, window, cx)
+                                        });
+                                    }
+                                }
+                            }),
+                    )
+                });
                 let menu = menu.item(
                     PopupMenuItem::new("Copy Message Link")
                         .icon(Icon::default().path("icons/link.svg"))

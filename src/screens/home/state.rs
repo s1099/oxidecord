@@ -9,7 +9,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use gpui::*;
-use gpui_component::input::{InputEvent, InputState};
+use gpui_component::input::InputState;
 use gpui_component::slider::SliderState;
 use twilight_model::id::{
     Id,
@@ -26,6 +26,9 @@ use super::data::attachments::PendingAttachment;
 use super::folders::RailEntry;
 use super::voice::{PendingVoice, VoiceCall};
 use crate::voice::VoiceEngine;
+
+/// How many lines the composer grows to before it scrolls.
+const COMPOSER_MAX_ROWS: usize = 12;
 
 /// How many messages from the oldest loaded one the view has to reach before
 /// the next page is fetched. A page takes a round trip to arrive, and a scroll
@@ -46,6 +49,16 @@ pub(super) enum View {
 pub(super) struct ReplyTarget {
     pub message_id: Id<MessageMarker>,
     pub author_name: String,
+}
+
+/// The message being edited in place, and the input standing in for its text.
+///
+/// The input is made per edit rather than kept on the screen like the
+/// composer's: it only exists while a message is open for editing, and a fresh
+/// one comes with no leftover undo history from the last.
+pub(super) struct EditingMessage {
+    pub message_id: Id<MessageMarker>,
+    pub input: Entity<InputState>,
 }
 
 /// The open profile popout: which user it's for, where it's anchored, and the
@@ -175,6 +188,9 @@ pub struct HomeScreen {
     /// Set while composing a reply; drives the "Replying to …" banner and is
     /// cleared when the reply is sent, dismissed, or the channel changes.
     pub(super) replying_to: Option<ReplyTarget>,
+    /// The message open for editing, if any. At most one, like Discord; it's
+    /// closed when saved, cancelled, or the channel changes.
+    pub(super) editing: Option<EditingMessage>,
     /// Images pasted into the composer, shown as removable thumbnails and
     /// uploaded when the message is sent. Cleared on send and on channel switch.
     pub(super) pending_attachments: Vec<PendingAttachment>,
@@ -243,18 +259,14 @@ pub struct HomeScreen {
 
 impl HomeScreen {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let message_input = cx.new(|cx| InputState::new(window, cx).placeholder("Send a message"));
-
-        cx.subscribe_in(
-            &message_input,
-            window,
-            |this, _, event: &InputEvent, window, cx| {
-                if let InputEvent::PressEnter { .. } = event {
-                    this.send_current_message(window, cx);
-                }
-            },
-        )
-        .detach();
+        // Multi-line so shift-enter can start a new line. Enter itself is
+        // rebound to send (see `SendMessage`); the input's `PressEnter` event
+        // can't be used for that, since it fires for the newlines too.
+        let message_input = cx.new(|cx| {
+            InputState::new(window, cx)
+                .auto_grow(1, COMPOSER_MAX_ROWS)
+                .placeholder("Send a message")
+        });
 
         // Bottom-aligned like a chat log; items are measured lazily, and
         // splicing older items in at the front keeps the scroll position.
@@ -300,6 +312,7 @@ impl HomeScreen {
             at_bottom: true,
             send_error: None,
             replying_to: None,
+            editing: None,
             pending_attachments: Vec::new(),
             next_attachment_id: 0,
             voice: None,

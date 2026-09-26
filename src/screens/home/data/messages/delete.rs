@@ -13,13 +13,10 @@ impl HomeScreen {
     /// Whether the current user is allowed to delete `message`: their own
     /// message anywhere, or anyone's in a channel they manage.
     pub(in crate::screens::home) fn can_delete_message(&self, message: &discord::Message) -> bool {
-        let own = self
-            .current_user
-            .as_ref()
-            .is_some_and(|user| user.id == message.author_id);
-        own || self
-            .selected_channel_info()
-            .is_some_and(|channel| channel.can_manage_messages)
+        self.is_own_message(message)
+            || self
+                .selected_channel_info()
+                .is_some_and(|channel| channel.can_manage_messages)
     }
 
     pub(in crate::screens::home) fn delete_message(
@@ -41,6 +38,13 @@ impl HomeScreen {
         // Drop the row now; the request usually succeeds, and waiting on it
         // would leave the message sitting there after the click.
         let removed = self.messages.remove(ix);
+        if self
+            .editing
+            .as_ref()
+            .is_some_and(|editing| editing.message_id == message_id)
+        {
+            self.editing = None;
+        }
         self.messages_list.splice(ix..ix + 1, 0);
         cx.notify();
 

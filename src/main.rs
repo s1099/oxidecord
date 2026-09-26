@@ -12,10 +12,12 @@ mod voice;
 use std::sync::Arc;
 
 use gpui::*;
-use gpui_component::Root;
+use gpui_component::{Root, input};
 
 use crate::screens::app::AppScreen;
-use crate::screens::home::PasteAttachment;
+use crate::screens::home::{
+    COMPOSER_CONTEXT, EDIT_CONTEXT, EditLastMessage, PasteAttachment, SaveEdit, SendMessage,
+};
 
 fn main() {
     // The app doubles as its own update helper: started with this flag it only
@@ -44,6 +46,28 @@ fn main() {
         cx.bind_keys([
             KeyBinding::new("ctrl-v", PasteAttachment, None),
             KeyBinding::new("cmd-v", PasteAttachment, None),
+        ]);
+
+        // These share the input's own context depth, where a later binding
+        // wins, so they have to be bound after `gpui_component::init`. In both
+        // the composer and the edit box, enter sends and shift-enter is handed
+        // the input's own enter, which starts a new line, as in Discord.
+        let edit_input = format!("{EDIT_CONTEXT} > Input");
+        let composer_input = format!("{COMPOSER_CONTEXT} > Input");
+        cx.bind_keys([
+            KeyBinding::new("enter", SendMessage, Some(&composer_input)),
+            KeyBinding::new("enter", SaveEdit, Some(&edit_input)),
+            KeyBinding::new(
+                "shift-enter",
+                input::Enter { secondary: false },
+                Some(&composer_input),
+            ),
+            KeyBinding::new(
+                "shift-enter",
+                input::Enter { secondary: false },
+                Some(&edit_input),
+            ),
+            KeyBinding::new("up", EditLastMessage, Some(&composer_input)),
         ]);
 
         let options = WindowOptions {

@@ -10,7 +10,7 @@ use gpui_component::{
     ActiveTheme as _, IconName, Sizable as _, Size, StyleSized as _, h_flex, input::Input, v_flex,
 };
 
-use crate::screens::home::HomeScreen;
+use crate::screens::home::{COMPOSER_CONTEXT, HomeScreen, SendMessage};
 use crate::ui::button::Button;
 use crate::ui::depth::radius;
 
@@ -72,25 +72,49 @@ impl HomeScreen {
                     .child(
                         h_flex()
                             .w_full()
-                            .items_center()
+                            // The button stays by the first line as the input
+                            // grows, the way Discord's does.
+                            .items_start()
                             .pl_1()
                             .child(
-                                Button::new("add-attachment")
-                                    .icon(IconName::Plus)
-                                    .ghost()
-                                    .small()
+                                h_flex()
+                                    .h(COMPOSER_LINE_HEIGHT)
                                     .flex_shrink_0()
-                                    .tooltip("Add attachment")
-                                    .on_click(cx.listener(|this, _, window, cx| {
-                                        this.pick_attachments(window, cx);
-                                    })),
+                                    .items_center()
+                                    .child(
+                                        Button::new("add-attachment")
+                                            .icon(IconName::Plus)
+                                            .ghost()
+                                            .small()
+                                            .tooltip("Add attachment")
+                                            .on_click(cx.listener(|this, _, window, cx| {
+                                                this.pick_attachments(window, cx);
+                                            })),
+                                    ),
                             )
                             .child(
-                                div().flex_1().min_w_0().child(
-                                    Input::new(&self.message_input)
-                                        .appearance(false)
-                                        .focus_bordered(false),
-                                ),
+                                // Gives enter its send binding and the up arrow
+                                // its edit-last-message one while the composer
+                                // is focused.
+                                div()
+                                    .flex_1()
+                                    .min_w_0()
+                                    .key_context(COMPOSER_CONTEXT)
+                                    .on_action(cx.listener(|this, _: &SendMessage, window, cx| {
+                                        this.send_current_message(window, cx);
+                                    }))
+                                    .child(
+                                        Input::new(&self.message_input)
+                                            .appearance(false)
+                                            .focus_bordered(false)
+                                            // A multi-line input sizes to its
+                                            // padding and line height, not the
+                                            // fixed height a single-line one
+                                            // takes. This puts one line back
+                                            // on that height, which the
+                                            // can't-send notice is sized to.
+                                            .py(px(6.)),
+                                    ),
                             ),
                     ),
             )
@@ -98,10 +122,16 @@ impl HomeScreen {
     }
 }
 
+/// A one-line composer's height: a medium single-line input's.
+const COMPOSER_LINE_HEIGHT: Pixels = px(32.);
+
 /// The composer's surface. Flat, unlike the buttons around it: a shadow made
 /// the input read as a box sitting on the page rather than a field. Dark themes
 /// wash it with the input colour rather than leaving it the page's.
-fn surface(base: Div, cx: &App) -> Div {
+///
+/// The inline edit box wears it too, so editing a message looks like writing
+/// one.
+pub(super) fn surface(base: Div, cx: &App) -> Div {
     let theme = cx.theme();
     base.w_full()
         .bg(if theme.mode.is_dark() {

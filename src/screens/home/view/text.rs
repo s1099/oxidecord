@@ -37,21 +37,42 @@ fn find_links(text: &str) -> Vec<Link> {
         .collect()
 }
 
+/// Follows the text of a message that's been edited, set in a muted colour.
+const EDITED_MARKER: &str = "(edited)";
+
 /// Renders message text with any `http`/`https` URLs shown in the theme's link
 /// colour, underlined, and clickable — a click opens the URL in the default
-/// browser. Text without links renders as a plain string.
+/// browser. With `edited_color`, the text ends in an "(edited)" marker in that
+/// colour, part of the same run of text so it wraps with the last line the
+/// way Discord's does. Text with neither renders as a plain string.
 pub(in crate::screens::home::view) fn render_message_text(
     id: impl Into<ElementId>,
     content: &str,
     link_color: Hsla,
+    edited_color: Option<Hsla>,
 ) -> AnyElement {
     let links = find_links(content);
-    if links.is_empty() {
+    if links.is_empty() && edited_color.is_none() {
         return div()
             .w_full()
             .min_w_0()
             .child(content.to_string())
             .into_any_element();
+    }
+
+    let mut text = content.to_string();
+    let mut marker = None;
+    if let Some(color) = edited_color {
+        text.push(' ');
+        let start = text.len();
+        text.push_str(EDITED_MARKER);
+        marker = Some((
+            start..text.len(),
+            HighlightStyle {
+                color: Some(color),
+                ..Default::default()
+            },
+        ));
     }
 
     let highlight = HighlightStyle {
@@ -68,12 +89,16 @@ pub(in crate::screens::home::view) fn render_message_text(
     let highlights: Vec<(Range<usize>, HighlightStyle)> = ranges
         .iter()
         .map(|range| (range.clone(), highlight))
+        .chain(marker)
         .collect();
 
     // `with_highlights` computes the plain runs from the ambient text style at
     // layout time, so the non-link text keeps the surrounding size and colour;
-    // only the link ranges get the highlight overlaid.
-    let styled = StyledText::new(content.to_string()).with_highlights(highlights);
+    // only the highlighted ranges get their style overlaid.
+    let styled = StyledText::new(text).with_highlights(highlights);
+    if ranges.is_empty() {
+        return div().w_full().min_w_0().child(styled).into_any_element();
+    }
     div()
         .w_full()
         .min_w_0()

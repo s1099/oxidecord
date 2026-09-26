@@ -104,6 +104,25 @@ pub async fn send_message(
     .await
 }
 
+/// Replaces a message's text. Only ever permitted on the current user's own
+/// messages; attachments and embeds are left as they are.
+pub async fn edit_message(
+    channel_id: Id<ChannelMarker>,
+    message_id: Id<MessageMarker>,
+    content: String,
+) -> Result<Message, String> {
+    request(move |client| async move {
+        let message = client
+            .update_message(channel_id, message_id)
+            .content(Some(&content))
+            .await?
+            .model()
+            .await?;
+        Ok(convert_message(message))
+    })
+    .await
+}
+
 /// Deletes a message. Permitted for the author's own messages, or anywhere the
 /// user holds `MANAGE_MESSAGES`.
 pub async fn delete_message(

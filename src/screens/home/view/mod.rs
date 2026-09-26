@@ -56,6 +56,7 @@ impl Render for HomeScreen {
             // is a panel lifted off it (see `inset`).
             .bg(cx.theme().sidebar)
             .on_action(cx.listener(Self::on_paste_attachment))
+            .on_action(cx.listener(Self::on_edit_last_message))
             .on_modifiers_changed(cx.listener(|this, event: &ModifiersChangedEvent, _, cx| {
                 if this.shift_held != event.modifiers.shift {
                     cx.notify();

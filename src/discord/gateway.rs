@@ -37,6 +37,8 @@ pub enum GatewayEvent {
         user_id: Id<UserMarker>,
     },
     Message(IncomingMessage),
+    /// A message was edited. Carries the whole message as it now stands.
+    MessageUpdate(IncomingMessage),
     /// Someone joined, left, or changed their state in a voice channel. Also
     /// synthesized for the states bundled into `GUILD_CREATE`, so the app
     /// learns who was already in a channel before it connected.
@@ -180,6 +182,17 @@ fn dispatch(name: &str, data: &RawValue) -> Vec<GatewayEvent> {
         "MESSAGE_CREATE" => serde_json::from_str::<twilight_model::channel::Message>(data)
             .map(|message| {
                 vec![GatewayEvent::Message(IncomingMessage {
+                    channel_id: message.channel_id,
+                    message: convert_message(message),
+                })]
+            })
+            .unwrap_or_default(),
+        // twilight models this dispatch as a partial message, because Discord
+        // hasn't always sent the whole thing. Parsing it as a full one takes
+        // the updates that do and skips any that don't.
+        "MESSAGE_UPDATE" => serde_json::from_str::<twilight_model::channel::Message>(data)
+            .map(|message| {
+                vec![GatewayEvent::MessageUpdate(IncomingMessage {
                     channel_id: message.channel_id,
                     message: convert_message(message),
                 })]
