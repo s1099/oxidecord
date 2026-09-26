@@ -3,7 +3,8 @@
 //! account panel.
 //!
 //! Both pages are real: themes picks a preset, and updates drives the
-//! self-updater in [`crate::platform::updater`].
+//! self-updater in [`crate::platform::updater`]. Typing [`DEBUG_CODE`] into the
+//! search adds a third, [`gallery`], for the rest of the session.
 
 use std::rc::Rc;
 
@@ -14,11 +15,12 @@ use gpui_component::{
     button::{Button, ButtonVariants as _},
     group_box::GroupBoxVariant,
     h_flex,
+    input::{InputEvent, InputState},
     setting::{RenderOptions, SettingField, SettingGroup, SettingItem, SettingPage, Settings},
 };
 
 use crate::platform::updater::{self, Status};
-use crate::ui::theme;
+use crate::ui::{gallery, theme};
 
 /// Size the popup aims for. Both are capped to the window with [`WINDOW_MARGIN`]
 /// to spare, since the dialog is positioned from a fixed size and would
@@ -39,10 +41,18 @@ const DIALOG_BORDER: f32 = 2.;
 const CARD_WIDTH: f32 = 148.;
 const PREVIEW_HEIGHT: f32 = 84.;
 
+/// Typed into the settings search, reveals the debug page.
+const DEBUG_CODE: &str = "debug";
+
 /// Opens the settings popup. Closed by the dialog's own close button, Escape,
 /// or a click on the overlay.
 pub fn open(window: &mut Window, cx: &mut App) {
-    window.open_dialog(cx, |dialog, window, _cx| {
+    arm_debug_code(cx);
+
+    window.open_dialog(cx, |dialog, window, cx| {
+        let debug = cx
+            .try_global::<DebugCode>()
+            .is_some_and(|code| code.unlocked);
         let viewport = window.viewport_size();
         let width = px(WIDTH).min(viewport.width - px(WINDOW_MARGIN));
         let height = px(HEIGHT).min(viewport.height - px(WINDOW_MARGIN));
@@ -69,10 +79,61 @@ pub fn open(window: &mut Window, cx: &mut App) {
                         .with_group_variant(GroupBoxVariant::Outline)
                         .sidebar_width(px(SIDEBAR_WIDTH))
                         .page(themes_page())
-                        .page(updates_page()),
+                        .page(updates_page())
+                        .when(debug, |this| this.page(gallery::page())),
                 ),
             )
     });
+}
+
+/// Watches the settings search for [`DEBUG_CODE`]. The unlock is never saved,
+/// so it lasts until the app quits.
+#[derive(Default)]
+struct DebugCode {
+    unlocked: bool,
+    armed: bool,
+    _observer: Option<Subscription>,
+}
+
+impl Global for DebugCode {}
+
+/// The [`Settings`] component builds its search input privately and offers no
+/// way to read it, so the only way in is to catch the input being created.
+/// Every input in the app goes through the same hook, so it's armed just
+/// before the dialog opens and claims the next one made: the search box, which
+/// the component creates on its first render, ahead of any page content.
+fn arm_debug_code(cx: &mut App) {
+    if !cx.has_global::<DebugCode>() {
+        let observer = cx.observe_new(|_: &mut InputState, window, cx| {
+            let armed = &mut cx.global_mut::<DebugCode>().armed;
+            if !std::mem::take(armed) {
+                return;
+            }
+            let Some(window) = window else {
+                return;
+            };
+            let search = cx.entity();
+            cx.subscribe_in(&search, window, |search, _, event, window, cx| {
+                if matches!(event, InputEvent::Change)
+                    && search.value().trim().eq_ignore_ascii_case(DEBUG_CODE)
+                {
+                    cx.global_mut::<DebugCode>().unlocked = true;
+                    // Left in place, the code would filter every page out,
+                    // the new one included — its content is custom-rendered,
+                    // which the search never matches.
+                    search.set_value("", window, cx);
+                }
+            })
+            .detach();
+        });
+        cx.set_global(DebugCode {
+            _observer: Some(observer),
+            ..Default::default()
+        });
+    }
+
+    let code = cx.global_mut::<DebugCode>();
+    code.armed = !code.unlocked;
 }
 
 fn themes_page() -> SettingPage {
