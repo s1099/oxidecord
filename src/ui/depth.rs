@@ -64,10 +64,10 @@ pub fn shadow(level: Level, cx: &App) -> Vec<BoxShadow> {
     };
 
     match (level, dark) {
-        (Level::Raised, false) => vec![drop(1., 2., 0., 0.05)],
-        (Level::Raised, true) => vec![drop(1., 2., 0., 0.25)],
-        (Level::RaisedStrong, false) => vec![drop(1., 2., 0., 0.1)],
-        (Level::RaisedStrong, true) => vec![drop(1., 2., 0., 0.35)],
+        (Level::Raised, false) => vec![drop(1., 2., 0., 0.035)],
+        (Level::Raised, true) => vec![drop(1., 2., 0., 0.18)],
+        (Level::RaisedStrong, false) => vec![drop(1., 2., 0., 0.07)],
+        (Level::RaisedStrong, true) => vec![drop(1., 2., 0., 0.25)],
         (Level::Pressed, _) => vec![],
         (Level::Surface, false) => vec![drop(1., 2., 0., 0.03)],
         (Level::Surface, true) => vec![drop(1., 2., 0., 0.15)],
@@ -86,16 +86,16 @@ pub fn layers(level: Level, finish: Finish, height: Pixels, radius: Pixels, cx: 
     match finish {
         Finish::Matte => {}
         Finish::Subtle => {
-            let alpha = if dark { 0.03 } else { 0.35 };
+            let alpha = if dark { 0.02 } else { 0.25 };
             layers.push(top_fade(white_a(alpha), 0.7, radius));
         }
     }
 
     let (highlight, shade) = match (level, dark) {
-        (Level::Raised, false) => (0.5, 0.),
-        (Level::Raised, true) => (0.05, 0.),
-        (Level::RaisedStrong, false) => (0.1, 0.08),
-        (Level::RaisedStrong, true) => (0.2, 0.08),
+        (Level::Raised, false) => (0.35, 0.),
+        (Level::Raised, true) => (0.035, 0.),
+        (Level::RaisedStrong, false) => (0.07, 0.05),
+        (Level::RaisedStrong, true) => (0.14, 0.05),
         (Level::Overlay, false) => (0.5, 0.),
         (Level::Overlay, true) => (0.05, 0.),
         _ => (0., 0.),
@@ -118,11 +118,7 @@ pub fn layers(level: Level, finish: Finish, height: Pixels, radius: Pixels, cx: 
 /// The inner shadow of a pushed-in control, as a layer of its own so it can be
 /// shown only while the control is held (see [`PRESS_GROUP`]).
 pub fn pressed(height: Pixels, radius: Pixels, cx: &App) -> Div {
-    let alpha = if cx.theme().mode.is_dark() {
-        0.25
-    } else {
-        0.08
-    };
+    let alpha = if cx.theme().mode.is_dark() { 0.2 } else { 0.06 };
     let reach = (INNER_SHADOW / f32::from(height)).min(0.5);
     top_fade(black_a(alpha), reach, radius)
 }
