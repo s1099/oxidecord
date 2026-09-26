@@ -21,9 +21,13 @@ older than the installed Visual Studio, build through Ninja: `CMAKE_GENERATOR=Ni
 
 - `src/discord/` — the Discord client: `model/` (app-side types), `rest/` (HTTP calls),
   `gateway.rs` (live events), `token.rs` (keyring storage). The app's own types are defined
-  here rather than using twilight's directly.
+  here rather than using twilight's directly. `model/markdown/` parses Discord's markdown
+  once, when a message or embed is converted; mentions stay ids until the view names them.
 - `src/screens/home/` — the main screen. `state.rs` owns all state; `data/` mutates it and
   talks to `discord`; `view/` renders it. Both extend `HomeScreen` with inherent methods.
+  `view/markdown/` draws parsed markdown. Its `RichText` element exists because gpui text
+  can't change font family per run or hold images, so custom emoji are painted into
+  placeholder gaps once the text has wrapped.
 - `src/platform/` — runtime, http client, prefs, updater, and `video/` (inline video
   playback, decoded by the OS).
 - `src/ui/` — theming, settings, dialogs, shared widgets.

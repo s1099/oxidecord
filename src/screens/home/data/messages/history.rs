@@ -84,6 +84,7 @@ impl HomeScreen {
         self.send_error = None;
         self.replying_to = None;
         self.editing = None;
+        self.revealed_spoilers.clear();
         for attachment in self.pending_attachments.drain(..) {
             attachment.release_preview(cx);
         }

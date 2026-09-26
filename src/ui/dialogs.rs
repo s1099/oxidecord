@@ -140,3 +140,47 @@ pub fn show_error(
             )
     });
 }
+
+/// Asks before following a masked link. Its text can claim to lead anywhere,
+/// so the dialog shows where it really goes, as Discord does.
+pub fn confirm_open_link(url: impl Into<SharedString>, window: &mut Window, cx: &mut App) {
+    let url: SharedString = url.into();
+    window.open_dialog(cx, move |dialog, _window, cx| {
+        let theme = cx.theme();
+        let target = url.clone();
+        dialog
+            .confirm()
+            .overlay_closable(true)
+            .border_color(depth::ring(cx))
+            .w(px(440.))
+            .button_props(
+                DialogButtonProps::default()
+                    .ok_text("Visit Site")
+                    .cancel_text("Go Back"),
+            )
+            .title("Leaving Oxidecord")
+            .child(
+                v_flex()
+                    .gap_2()
+                    .text_sm()
+                    .child(
+                        div()
+                            .text_color(theme.muted_foreground)
+                            .child("This link is taking you to the following website"),
+                    )
+                    .child(
+                        div()
+                            .p_2()
+                            .rounded(px(4.))
+                            .bg(theme.muted)
+                            .font_family(theme.mono_font_family.clone())
+                            .text_xs()
+                            .child(url.clone()),
+                    ),
+            )
+            .on_ok(move |_, _, cx| {
+                cx.open_url(&target);
+                true
+            })
+    });
+}

@@ -6,6 +6,7 @@
 //! media with no card at all.
 
 use super::cdn::scaled_url;
+use super::markdown::{self, Inline, Markdown};
 use super::time::format_embed_timestamp;
 
 /// The widest the CDN is asked to scale an embed's large image to. Matches the
@@ -27,10 +28,11 @@ pub struct Embed {
     /// The site name, shown as a small line above the author.
     pub provider: Option<String>,
     pub author: Option<EmbedAuthor>,
-    pub title: Option<String>,
+    /// Inline formatting only; the whole title is the link when there is one.
+    pub title: Option<Vec<Inline>>,
     /// Where the title links to, when it is a link.
     pub url: Option<String>,
-    pub description: Option<String>,
+    pub description: Option<Markdown>,
     pub fields: Vec<EmbedField>,
     /// The large image below the fields.
     pub image: Option<EmbedMedia>,
@@ -69,8 +71,9 @@ pub struct EmbedAuthor {
 
 #[derive(Clone)]
 pub struct EmbedField {
-    pub name: String,
-    pub value: String,
+    /// Inline formatting only, without links.
+    pub name: Vec<Inline>,
+    pub value: Markdown,
     /// Whether the field shares a row with its neighbours.
     pub inline: bool,
 }
@@ -174,17 +177,21 @@ pub(in crate::discord) fn convert_embed(embed: twilight_model::channel::message:
             icon_url: author.proxy_icon_url.or(author.icon_url),
             url: author.url,
         }),
-        title: embed.title.filter(|title| !title.is_empty()),
+        title: embed
+            .title
+            .filter(|title| !title.is_empty())
+            .map(|title| markdown::parse_inline(&title)),
         url: embed.url,
         description: embed
             .description
-            .filter(|description| !description.is_empty()),
+            .filter(|description| !description.is_empty())
+            .map(|description| Markdown::parse(&description)),
         fields: embed
             .fields
             .into_iter()
             .map(|field| EmbedField {
-                name: field.name,
-                value: field.value,
+                name: markdown::parse_inline(&field.name),
+                value: Markdown::parse(&field.value),
                 inline: field.inline,
             })
             .collect(),

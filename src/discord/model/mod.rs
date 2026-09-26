@@ -8,6 +8,7 @@ mod cdn;
 mod channel;
 mod embed;
 mod guild;
+mod markdown;
 mod message;
 mod settings;
 mod time;
@@ -16,16 +17,18 @@ mod voice;
 
 pub use channel::{Channel, ChannelKind, DirectMessage};
 pub use embed::{Embed, EmbedAuthor, EmbedField, EmbedFooter, EmbedLayout, EmbedMedia};
-pub use guild::Guild;
+pub use guild::{Guild, Role};
+pub use markdown::{Block, Inline, List, Markdown, Mention};
 pub use message::{
-    ImageAttachment, Message, MessageReference, Reaction, ReactionEmoji, VideoAttachment,
+    ImageAttachment, MentionedUser, Message, MessageReference, Reaction, ReactionEmoji,
+    VideoAttachment,
 };
 pub use settings::GuildFolders;
 pub use user::{CurrentUser, UserProfile};
 pub use voice::{VoiceServerInfo, VoiceUserState};
 
 pub(super) use channel::{convert_channel, convert_dms};
-pub(super) use guild::convert_guild;
+pub(super) use guild::{RawRole, convert_guild, convert_role};
 pub(super) use message::convert_message;
 pub(super) use settings::{RawSettingsProto, parse_guild_folders};
 pub(super) use user::{RawProfile, convert_current_user, convert_user_profile};

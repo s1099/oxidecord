@@ -4,14 +4,11 @@
 
 | Feature | Status | Notes |
 |---|---|---|
-| Markdown rendering (bold, italic, underline, strikethrough, headers, lists, block quotes, subtext) | Missing | `view/text.rs` renders plain text and links only |
-| Code blocks and inline code with syntax highlighting | Missing | |
-| Spoiler text and spoiler attachments | Missing | |
-| Rendering user, role and channel mentions (`<@id>`, `<@&id>`, `<#id>`) | Missing | Show up as raw IDs |
-| `@everyone` / `@here` highlighting and mention-highlighted messages | Missing | |
-| Custom emoji inside message text (`<:name:id>`) | Missing | Custom emoji are rendered only in reactions |
-| Discord timestamp markup (`<t:unix:R>`, etc.) | Missing | |
-| Masked links (`[text](url)`) and the suspicious-link warning | Missing | |
+| Syntax highlighting in code blocks | Missing | Code blocks and inline code render as plain monospace; the language tag is parsed but unused |
+| Spoiler attachments | Missing | Spoiler text is done |
+| Mention-highlighted messages (the tinted row when you're mentioned) | Missing | Mentions, `@everyone` and `@here` render as pills, but the row isn't highlighted |
+| Local time zone for timestamps | Missing | `<t:…>` markup, like every other time in the app, is shown in UTC |
+| Global display names in mentions | Partial | twilight's `Mention` model drops `global_name`, so a mention shows the nickname or username |
 | Emoji picker | Missing | No way to insert emoji in the composer |
 | Adding a new reaction to a message | Partial | Existing reactions can be toggled; there's no picker to add another |
 | Viewing who reacted | Missing | |

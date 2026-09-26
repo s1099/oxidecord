@@ -126,7 +126,7 @@ impl HomeScreen {
         // succeeds, and the box closing onto the old text would read as the
         // edit being lost.
         let previous = (message.content.clone(), message.edited);
-        message.content = content.clone();
+        message.set_content(content.clone());
         message.edited = true;
         self.editing = None;
         self.send_error = None;
@@ -153,7 +153,9 @@ impl HomeScreen {
                     // added, which the local one can't know about.
                     Ok(edited) => message.apply_edit(edited),
                     Err(err) => {
-                        (message.content, message.edited) = previous;
+                        let (content, edited) = previous;
+                        message.set_content(content);
+                        message.edited = edited;
                         this.send_error = Some(err);
                     }
                 }

@@ -18,7 +18,7 @@ use crate::screens::home::HomeScreen;
 use crate::screens::home::state::MediaKey;
 use crate::ui::depth::media_shadow;
 
-use super::super::text::render_message_text;
+use super::super::markdown::MarkdownOptions;
 use super::{MEDIA_MAX_HEIGHT, MEDIA_MAX_WIDTH, fit_within};
 
 /// The card's width: Discord's 432px cap, or the message column when that is
@@ -55,6 +55,7 @@ impl HomeScreen {
         &self,
         message_id: u64,
         embeds: &[discord::Embed],
+        mentions: &[discord::MentionedUser],
         cx: &Context<Self>,
     ) -> impl IntoElement {
         v_flex()
@@ -65,7 +66,7 @@ impl HomeScreen {
             .children(embeds.iter().enumerate().map(|(index, embed)| {
                 let id = MediaKey { message_id, index };
                 match embed.layout {
-                    discord::EmbedLayout::Card => self.render_embed_card(id, embed, cx),
+                    discord::EmbedLayout::Card => self.render_embed_card(id, embed, mentions, cx),
                     discord::EmbedLayout::Media => self.render_embed_media(id, embed, cx),
                 }
             }))
@@ -77,9 +78,11 @@ impl HomeScreen {
         &self,
         id: MediaKey,
         embed: &discord::Embed,
+        mentions: &[discord::MentionedUser],
         cx: &Context<Self>,
     ) -> AnyElement {
         let theme = cx.theme();
+        let scope = |part: &str| format!("embed-{part}-{}-{}", id.message_id, id.index);
 
         // Everything in the left column, in Discord's order. The thumbnail sits
         // beside it rather than in it, so text wraps around the corner square.
@@ -100,12 +103,16 @@ impl HomeScreen {
                     .as_ref()
                     .map(|author| render_author(id, author, &self.image_cache, theme.link_hover)),
             )
-            .children(embed.title.clone().map(|title| {
+            .children(embed.title.as_ref().map(|title| {
+                // A linked title is clickable as a whole, so nothing inside it
+                // can take the click for itself.
+                let options =
+                    MarkdownOptions::new(scope("title"), mentions).interactive(embed.url.is_none());
                 let styled = div()
                     .text_size(px(16.))
                     .line_height(px(LINE_HEIGHT_TITLE))
                     .font_weight(FontWeight::SEMIBOLD)
-                    .child(title);
+                    .child(self.render_inline_markdown(title, options, cx));
                 // A title with a URL is the embed's primary link, so the whole
                 // line is clickable and takes the theme's link colour.
                 match embed.url.clone() {
@@ -124,15 +131,14 @@ impl HomeScreen {
                 div()
                     .text_sm()
                     .line_height(px(LINE_HEIGHT_BODY))
-                    .child(render_message_text(
-                        id.element_id("embed-description"),
+                    .child(self.render_markdown(
                         description,
-                        theme.link,
-                        None,
+                        MarkdownOptions::new(scope("description"), mentions),
+                        cx,
                     ))
             }))
             .when(!embed.fields.is_empty(), |this| {
-                this.child(render_fields(id, &embed.fields, theme.link))
+                this.child(self.render_fields(id, &embed.fields, mentions, cx))
             });
 
         let body = h_flex()
@@ -322,6 +328,106 @@ impl HomeScreen {
     /// The debug-only button that copies the embed's raw JSON, revealed while
     /// the embed is hovered. Release builds don't carry the JSON, so there is
     /// nothing to render.
+    /// The field grid. Discord lays fields over twelve columns: a run of `inline`
+    /// fields packs up to three to a row, and anything not inline takes a row of its
+    /// own. A row of two splits in half; rows of one or three give each field a
+    /// third of the width, so a leftover inline field stays narrow rather than
+    /// stretching across the card.
+    fn render_fields(
+        &self,
+        id: MediaKey,
+        fields: &[discord::EmbedField],
+        mentions: &[discord::MentionedUser],
+        cx: &Context<Self>,
+    ) -> impl IntoElement {
+        let mut rows: Vec<Vec<(usize, &discord::EmbedField)>> = Vec::new();
+        for (index, field) in fields.iter().enumerate() {
+            let extends_run = field.inline
+                && rows
+                    .last()
+                    .is_some_and(|row| row.len() < 3 && row[0].1.inline);
+            if extends_run {
+                rows.last_mut().expect("row exists").push((index, field));
+            } else {
+                rows.push(vec![(index, field)]);
+            }
+        }
+
+        v_flex()
+            .w_full()
+            .min_w_0()
+            .gap(px(ROW_GAP))
+            .children(rows.into_iter().map(|row| {
+                // A row holding one full-width field is emitted as a plain block
+                // rather than a flex row. `flex_1` would give it a percentage
+                // flex-basis, and a percentage that resolves differently while the
+                // row is being measured than when it is painted makes the text wrap
+                // to a different number of lines in each pass — so the card ends up
+                // shorter than the text it paints.
+                if !row[0].1.inline {
+                    let (index, field) = row[0];
+                    return div()
+                        .w_full()
+                        .child(self.render_field(id, index, field, mentions, cx))
+                        .into_any_element();
+                }
+
+                let share = if row.len() == 2 { 0.5 } else { 1. / 3. };
+                h_flex()
+                    .w_full()
+                    .min_w_0()
+                    .gap(px(8.))
+                    .items_start()
+                    .children(row.into_iter().map(|(index, field)| {
+                        div()
+                            .w(relative(share))
+                            .min_w_0()
+                            .child(self.render_field(id, index, field, mentions, cx))
+                    }))
+                    .into_any_element()
+            }))
+    }
+
+    /// One field: its bold name over its value.
+    fn render_field(
+        &self,
+        id: MediaKey,
+        index: usize,
+        field: &discord::EmbedField,
+        mentions: &[discord::MentionedUser],
+        cx: &Context<Self>,
+    ) -> impl IntoElement {
+        // Both halves need ids unique across the message list, and the field index
+        // is the only thing distinguishing them within an embed.
+        let scope =
+            |part: &str| format!("embed-field-{part}-{}-{}-{index}", id.message_id, id.index);
+
+        v_flex()
+            .min_w_0()
+            .gap(px(2.))
+            .child(
+                div()
+                    .text_sm()
+                    .line_height(px(LINE_HEIGHT_BODY))
+                    .font_weight(FontWeight::SEMIBOLD)
+                    .child(self.render_inline_markdown(
+                        &field.name,
+                        MarkdownOptions::new(scope("name"), mentions),
+                        cx,
+                    )),
+            )
+            .child(
+                div()
+                    .text_sm()
+                    .line_height(px(LINE_HEIGHT_BODY))
+                    .child(self.render_markdown(
+                        &field.value,
+                        MarkdownOptions::new(scope("value"), mentions),
+                        cx,
+                    )),
+            )
+    }
+
     #[cfg(debug_assertions)]
     fn render_embed_debug_copy(
         &self,
@@ -417,101 +523,6 @@ fn render_thumbnail(
         None => element = element.size(px(THUMBNAIL_BOX)),
     }
     element
-}
-
-/// The field grid. Discord lays fields over twelve columns: a run of `inline`
-/// fields packs up to three to a row, and anything not inline takes a row of its
-/// own. A row of two splits in half; rows of one or three give each field a
-/// third of the width, so a leftover inline field stays narrow rather than
-/// stretching across the card.
-fn render_fields(
-    id: MediaKey,
-    fields: &[discord::EmbedField],
-    link_color: Hsla,
-) -> impl IntoElement {
-    let mut rows: Vec<Vec<(usize, &discord::EmbedField)>> = Vec::new();
-    for (index, field) in fields.iter().enumerate() {
-        let extends_run = field.inline
-            && rows
-                .last()
-                .is_some_and(|row| row.len() < 3 && row[0].1.inline);
-        if extends_run {
-            rows.last_mut().expect("row exists").push((index, field));
-        } else {
-            rows.push(vec![(index, field)]);
-        }
-    }
-
-    v_flex()
-        .w_full()
-        .min_w_0()
-        .gap(px(ROW_GAP))
-        .children(rows.into_iter().map(|row| {
-            // A row holding one full-width field is emitted as a plain block
-            // rather than a flex row. `flex_1` would give it a percentage
-            // flex-basis, and a percentage that resolves differently while the
-            // row is being measured than when it is painted makes the text wrap
-            // to a different number of lines in each pass — so the card ends up
-            // shorter than the text it paints.
-            if !row[0].1.inline {
-                let (index, field) = row[0];
-                return div()
-                    .w_full()
-                    .child(render_field(id, index, field, link_color))
-                    .into_any_element();
-            }
-
-            let share = if row.len() == 2 { 0.5 } else { 1. / 3. };
-            h_flex()
-                .w_full()
-                .min_w_0()
-                .gap(px(8.))
-                .items_start()
-                .children(row.into_iter().map(|(index, field)| {
-                    div()
-                        .w(relative(share))
-                        .min_w_0()
-                        .child(render_field(id, index, field, link_color))
-                }))
-                .into_any_element()
-        }))
-}
-
-/// One field: its bold name over its value.
-fn render_field(
-    id: MediaKey,
-    index: usize,
-    field: &discord::EmbedField,
-    link_color: Hsla,
-) -> impl IntoElement {
-    // Both halves need ids unique across the message list, and the field index
-    // is the only thing distinguishing them within an embed.
-    let value_id = ElementId::NamedInteger(
-        SharedString::from(format!("embed-field-{}-{}", id.message_id, id.index)),
-        index as u64,
-    );
-
-    v_flex()
-        .min_w_0()
-        .gap(px(2.))
-        .child(
-            div()
-                .text_sm()
-                .line_height(px(LINE_HEIGHT_BODY))
-                .font_weight(FontWeight::SEMIBOLD)
-                .child(field.name.clone()),
-        )
-        .child(
-            div()
-                .text_sm()
-                .line_height(px(LINE_HEIGHT_BODY))
-                .child(render_message_text(
-                    value_id,
-                    &field.value,
-                    link_color,
-                    None,
-                )),
-        )
 }
 
 /// The footer line: a small round icon, the footer text, and the timestamp,

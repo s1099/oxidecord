@@ -1,7 +1,11 @@
 //! Guilds as the server rail shows them.
 
+use serde::Deserialize;
 use twilight_model::guild::Permissions;
-use twilight_model::id::{Id, marker::GuildMarker};
+use twilight_model::id::{
+    Id,
+    marker::{GuildMarker, RoleMarker},
+};
 
 use super::cdn;
 
@@ -28,5 +32,32 @@ pub(in crate::discord) fn convert_guild(guild: twilight_model::user::CurrentUser
             .map(|hash| cdn::guild_icon_url(guild.id, &hash.to_string())),
         permissions: guild.permissions,
         owner: guild.owner,
+    }
+}
+
+/// A guild role, as far as a role mention needs it.
+#[derive(Clone)]
+pub struct Role {
+    pub id: Id<RoleMarker>,
+    pub name: String,
+    /// Packed `0xRRGGBB`; `None` for a role without a colour.
+    pub color: Option<u32>,
+}
+
+/// A role as the gateway sends it, read here rather than through twilight's
+/// model since only three fields matter.
+#[derive(Deserialize)]
+pub(in crate::discord) struct RawRole {
+    id: Id<RoleMarker>,
+    name: String,
+    #[serde(default)]
+    color: u32,
+}
+
+pub(in crate::discord) fn convert_role(role: RawRole) -> Role {
+    Role {
+        id: role.id,
+        name: role.name,
+        color: (role.color != 0).then_some(role.color),
     }
 }

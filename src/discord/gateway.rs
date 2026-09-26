@@ -12,14 +12,14 @@ use serde_json::value::RawValue;
 use twilight_gateway::{Intents, Message as ShardMessage, MessageSender, Shard, ShardId};
 use twilight_model::id::{
     Id,
-    marker::{ChannelMarker, GuildMarker, UserMarker},
+    marker::{ChannelMarker, GuildMarker, RoleMarker, UserMarker},
 };
 
 use crate::platform::runtime;
 
 use super::model::{
-    Message, RawVoiceServer, RawVoiceState, VoiceServerInfo, VoiceUserState, convert_message,
-    convert_voice_server, convert_voice_state,
+    Message, RawRole, RawVoiceServer, RawVoiceState, Role, VoiceServerInfo, VoiceUserState,
+    convert_message, convert_role, convert_voice_server, convert_voice_state,
 };
 
 /// A message received live over the gateway, tagged with the channel it
@@ -45,6 +45,21 @@ pub enum GatewayEvent {
     VoiceState(VoiceUserState),
     /// The voice server assigned to a call the user is joining.
     VoiceServer(VoiceServerInfo),
+    /// Every role in a guild, from `READY` or `GUILD_CREATE`. Replaces what
+    /// was known before.
+    GuildRoles {
+        guild_id: Id<GuildMarker>,
+        roles: Vec<Role>,
+    },
+    /// A role was created or changed.
+    RoleUpdate {
+        guild_id: Id<GuildMarker>,
+        role: Role,
+    },
+    RoleDelete {
+        guild_id: Id<GuildMarker>,
+        role_id: Id<RoleMarker>,
+    },
 }
 
 /// Sends commands up the gateway from outside the receive loop.
@@ -99,6 +114,30 @@ struct Envelope<'a> {
 #[derive(Deserialize)]
 struct ReadyPayload {
     user: ReadyUser,
+    /// A user session's guilds arrive whole in `READY`; a bot's only as ids,
+    /// with the rest following in `GUILD_CREATE`.
+    #[serde(default)]
+    guilds: Vec<GuildRolesPayload>,
+}
+
+#[derive(Deserialize)]
+struct GuildRolesPayload {
+    id: Id<GuildMarker>,
+    #[serde(default)]
+    roles: Vec<RawRole>,
+}
+
+/// `GUILD_ROLE_CREATE` and `GUILD_ROLE_UPDATE`.
+#[derive(Deserialize)]
+struct RoleUpdatePayload {
+    guild_id: Id<GuildMarker>,
+    role: RawRole,
+}
+
+#[derive(Deserialize)]
+struct RoleDeletePayload {
+    guild_id: Id<GuildMarker>,
+    role_id: Id<RoleMarker>,
 }
 
 #[derive(Deserialize)]
@@ -106,13 +145,16 @@ struct ReadyUser {
     id: Id<UserMarker>,
 }
 
-/// `GUILD_CREATE`, of which only the voice states are read here: they say who
-/// is already sitting in each of the guild's voice channels.
+/// `GUILD_CREATE`, of which only the voice states and roles are read here:
+/// who is already sitting in each of the guild's voice channels, and what a
+/// role mention should be called.
 #[derive(Deserialize)]
 struct GuildCreatePayload {
     id: Id<GuildMarker>,
     #[serde(default)]
     voice_states: Vec<RawVoiceState>,
+    #[serde(default)]
+    roles: Vec<RawRole>,
 }
 
 /// Opens a gateway websocket connection and invokes `on_event` for every
@@ -167,16 +209,19 @@ pub fn connect_gateway(
     sender
 }
 
-/// Turns one dispatch into the events the app acts on. `GUILD_CREATE` is the
-/// only one that fans out into several.
+/// Turns one dispatch into the events the app acts on. `READY` and
+/// `GUILD_CREATE` fan out into several.
 fn dispatch(name: &str, data: &RawValue) -> Vec<GatewayEvent> {
     let data = data.get();
     match name {
         "READY" => serde_json::from_str::<ReadyPayload>(data)
             .map(|ready| {
-                vec![GatewayEvent::Ready {
+                let roles = ready.guilds.into_iter().filter_map(guild_roles);
+                std::iter::once(GatewayEvent::Ready {
                     user_id: ready.user.id,
-                }]
+                })
+                .chain(roles)
+                .collect()
             })
             .unwrap_or_default(),
         "MESSAGE_CREATE" => serde_json::from_str::<twilight_model::channel::Message>(data)
@@ -206,15 +251,47 @@ fn dispatch(name: &str, data: &RawValue) -> Vec<GatewayEvent> {
             .unwrap_or_default(),
         "GUILD_CREATE" => serde_json::from_str::<GuildCreatePayload>(data)
             .map(|guild| {
+                let roles = guild_roles(GuildRolesPayload {
+                    id: guild.id,
+                    roles: guild.roles,
+                });
                 guild
                     .voice_states
                     .into_iter()
                     .map(|state| {
                         GatewayEvent::VoiceState(convert_voice_state(state, Some(guild.id)))
                     })
+                    .chain(roles)
                     .collect()
+            })
+            .unwrap_or_default(),
+        "GUILD_ROLE_CREATE" | "GUILD_ROLE_UPDATE" => {
+            serde_json::from_str::<RoleUpdatePayload>(data)
+                .map(|update| {
+                    vec![GatewayEvent::RoleUpdate {
+                        guild_id: update.guild_id,
+                        role: convert_role(update.role),
+                    }]
+                })
+                .unwrap_or_default()
+        }
+        "GUILD_ROLE_DELETE" => serde_json::from_str::<RoleDeletePayload>(data)
+            .map(|delete| {
+                vec![GatewayEvent::RoleDelete {
+                    guild_id: delete.guild_id,
+                    role_id: delete.role_id,
+                }]
             })
             .unwrap_or_default(),
         _ => Vec::new(),
     }
+}
+
+/// A guild's roles as an event, or nothing for a guild that arrived without
+/// them (an unavailable one in `READY`).
+fn guild_roles(guild: GuildRolesPayload) -> Option<GatewayEvent> {
+    (!guild.roles.is_empty()).then(|| GatewayEvent::GuildRoles {
+        guild_id: guild.id,
+        roles: guild.roles.into_iter().map(convert_role).collect(),
+    })
 }

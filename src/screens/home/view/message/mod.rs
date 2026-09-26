@@ -16,7 +16,7 @@ use crate::screens::home::HomeScreen;
 use crate::screens::home::state::MediaKey;
 use crate::screens::home::view::avatar;
 
-use super::text::render_message_text;
+use super::markdown::MarkdownOptions;
 use super::{GROUP_GAP, MESSAGE_PADDING_X};
 
 /// How far a continuation message and a reply quote are indented, so both line
@@ -70,12 +70,15 @@ impl HomeScreen {
                 this.child(self.render_edit_box(editing, cx))
             })
             .when(editing.is_none() && !message.content.is_empty(), |this| {
-                this.child(render_message_text(
-                    ("message-content", message.id.get()),
-                    &message.content,
-                    theme.link,
-                    message.edited.then_some(theme.muted_foreground),
-                ))
+                this.child(
+                    self.render_markdown(
+                        &message.markdown,
+                        MarkdownOptions::new(format!("message-{}", message.id), &message.mentions)
+                            .edited(message.edited)
+                            .jumbo(),
+                        cx,
+                    ),
+                )
             })
             .when(
                 editing.is_none()
@@ -119,7 +122,12 @@ impl HomeScreen {
                 )
             })
             .when(has_embeds, |this| {
-                this.child(self.render_embeds(message.id.get(), &message.embeds, cx))
+                this.child(self.render_embeds(
+                    message.id.get(),
+                    &message.embeds,
+                    &message.mentions,
+                    cx,
+                ))
             })
             .when(!message.reactions.is_empty(), |this| {
                 this.child(self.render_reactions(message, cx))
@@ -239,7 +247,7 @@ impl HomeScreen {
                 this.child(
                     div()
                         .pl(px(CONTENT_INDENT))
-                        .child(self.render_reply_preview(&reference, cx)),
+                        .child(self.render_reply_preview(message.id.get(), &reference, cx)),
                 )
             })
             .child(header_row)

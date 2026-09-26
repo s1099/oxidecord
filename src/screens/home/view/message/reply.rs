@@ -6,12 +6,14 @@ use gpui_component::{ActiveTheme as _, Icon, IconName, IconNamed as _, h_flex};
 use crate::discord;
 use crate::screens::home::HomeScreen;
 use crate::screens::home::view::avatar;
+use crate::screens::home::view::markdown::MarkdownOptions;
 
 impl HomeScreen {
     /// The "↱ <author> <preview>" line, aligned with the message's content
     /// column.
     pub(super) fn render_reply_preview(
         &self,
+        message_id: u64,
         reference: &discord::MessageReference,
         cx: &Context<Self>,
     ) -> impl IntoElement {
@@ -51,11 +53,17 @@ impl HomeScreen {
                     .italic()
                     .child("Click to see attachment")
             } else {
-                div()
-                    .flex_1()
-                    .min_w_0()
-                    .truncate()
-                    .child(reference.content.clone())
+                // Formatted like the message itself, but squeezed onto one
+                // line and not clickable: the whole line will be what jumps
+                // to the original.
+                div().flex_1().min_w_0().truncate().child(
+                    self.render_inline_markdown(
+                        &reference.preview,
+                        MarkdownOptions::new(format!("reply-{message_id}"), &reference.mentions)
+                            .interactive(false),
+                        cx,
+                    ),
+                )
             })
     }
 }

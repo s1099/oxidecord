@@ -1,5 +1,7 @@
 //! Messages and everything hanging off one: attachments, replies, reactions.
 
+use std::sync::Arc;
+
 use twilight_model::id::{
     Id,
     marker::{EmojiMarker, MessageMarker, UserMarker},
@@ -7,6 +9,7 @@ use twilight_model::id::{
 
 use super::cdn;
 use super::embed::{Embed, convert_embed};
+use super::markdown::{self, Inline, Markdown};
 use super::time::format_timestamp;
 use super::user::small_avatar_url;
 
@@ -17,6 +20,11 @@ pub struct Message {
     pub author_name: String,
     pub author_avatar_url: Option<String>,
     pub content: String,
+    /// `content`, parsed. Shared, since a message is cloned more often than
+    /// its text changes.
+    pub markdown: Arc<Markdown>,
+    /// The users the content mentions, which is how `<@id>` gets a name.
+    pub mentions: Vec<MentionedUser>,
     pub timestamp: String,
     /// Whether the message has been edited since it was sent, which the view
     /// marks with "(edited)" after the content.
@@ -43,6 +51,8 @@ impl Message {
     /// of those change with an edit anyway.
     pub fn apply_edit(&mut self, edited: Message) {
         self.content = edited.content;
+        self.markdown = edited.markdown;
+        self.mentions = edited.mentions;
         self.edited = edited.edited;
         // Attachments can be removed in an edit, and links added or removed
         // change the embeds.
@@ -50,6 +60,22 @@ impl Message {
         self.videos = edited.videos;
         self.embeds = edited.embeds;
     }
+
+    /// Replaces the text, as an edit made locally does before the server
+    /// confirms it.
+    pub fn set_content(&mut self, content: String) {
+        self.markdown = Arc::new(Markdown::parse(&content));
+        self.content = content;
+    }
+}
+
+/// A user mentioned in a message, named the way the message's guild knows
+/// them.
+#[derive(Clone)]
+pub struct MentionedUser {
+    pub id: Id<UserMarker>,
+    pub name: String,
+    pub avatar_url: Option<String>,
 }
 
 /// One emoji's reaction tally on a message.
@@ -92,6 +118,10 @@ pub struct MessageReference {
     /// A single-line preview of the referenced message's content. Empty when
     /// the original had no text (e.g. an attachment-only message).
     pub content: String,
+    /// The original's content parsed for the preview line, inline formatting
+    /// only.
+    pub preview: Vec<Inline>,
+    pub mentions: Vec<MentionedUser>,
 }
 
 #[derive(Clone)]
@@ -139,6 +169,8 @@ pub(in crate::discord) fn convert_message(message: twilight_model::channel::Mess
         author_id: message.author.id,
         author_name,
         author_avatar_url,
+        markdown: Arc::new(Markdown::parse(&message.content)),
+        mentions: convert_mentions(message.mentions),
         content: message.content,
         timestamp: format_timestamp(message.timestamp),
         edited: message.edited_timestamp.is_some(),
@@ -187,6 +219,27 @@ pub(in crate::discord) fn convert_message(message: twilight_model::channel::Mess
     }
 }
 
+/// The mentioned users, by guild nickname where the message carries one.
+/// twilight's mention model drops the global display name, so the username is
+/// the fallback.
+fn convert_mentions(
+    mentions: Vec<twilight_model::channel::message::Mention>,
+) -> Vec<MentionedUser> {
+    mentions
+        .into_iter()
+        .map(|mention| MentionedUser {
+            id: mention.id,
+            avatar_url: mention
+                .avatar
+                .map(|hash| cdn::small_avatar_url(mention.id.get(), &hash.to_string())),
+            name: mention
+                .member
+                .and_then(|member| member.nick)
+                .unwrap_or(mention.name),
+        })
+        .collect()
+}
+
 fn convert_emoji(emoji: twilight_model::channel::message::EmojiReactionType) -> ReactionEmoji {
     use twilight_model::channel::message::EmojiReactionType;
     match emoji {
@@ -211,6 +264,8 @@ fn convert_reference(referenced: twilight_model::channel::Message) -> MessageRef
             .unwrap_or_else(|| referenced.author.name.clone()),
         author_avatar_url: small_avatar_url(&referenced.author),
         content: single_line_preview(&referenced.content),
+        preview: markdown::parse_preview(&referenced.content),
+        mentions: convert_mentions(referenced.mentions),
     }
 }
 

@@ -2,11 +2,11 @@
 
 mod composer;
 mod content;
+mod markdown;
 mod message;
 mod profile;
 mod rail;
 mod sidebar;
-mod text;
 mod user_panel;
 mod voice;
 

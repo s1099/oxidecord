@@ -77,3 +77,92 @@ fn civil_from_days(days: i64) -> (i64, u32, u32) {
     let year = year_of_era + era * 400 + i64::from(month <= 2);
     (year, month, day)
 }
+
+const MONTH_NAMES: [&str; 12] = [
+    "January",
+    "February",
+    "March",
+    "April",
+    "May",
+    "June",
+    "July",
+    "August",
+    "September",
+    "October",
+    "November",
+    "December",
+];
+
+const WEEKDAYS: [&str; 7] = [
+    "Sunday",
+    "Monday",
+    "Tuesday",
+    "Wednesday",
+    "Thursday",
+    "Friday",
+    "Saturday",
+];
+
+/// Splits Unix seconds into a civil date and the seconds into that day (UTC).
+fn split_unix(unix: i64) -> ((i64, u32, u32), i64) {
+    let days = unix.div_euclid(86_400);
+    (civil_from_days(days), unix.rem_euclid(86_400))
+}
+
+/// `4:20 PM`, or `4:20:30 PM` with seconds (UTC).
+pub(super) fn format_unix_time(unix: i64, seconds: bool) -> String {
+    let (_, secs) = split_unix(unix);
+    let (hour, minute, second) = (secs / 3600, secs / 60 % 60, secs % 60);
+    let (hour12, meridiem) = match hour {
+        0 => (12, "AM"),
+        1..=11 => (hour, "AM"),
+        12 => (12, "PM"),
+        _ => (hour - 12, "PM"),
+    };
+    if seconds {
+        format!("{hour12}:{minute:02}:{second:02} {meridiem}")
+    } else {
+        format!("{hour12}:{minute:02} {meridiem}")
+    }
+}
+
+/// `09/26/2026` (UTC).
+pub(super) fn format_unix_short_date(unix: i64) -> String {
+    let ((year, month, day), _) = split_unix(unix);
+    format!("{month:02}/{day:02}/{year}")
+}
+
+/// `September 26, 2026`, or `Saturday, September 26, 2026` with the weekday
+/// (UTC).
+pub(super) fn format_unix_date(unix: i64, weekday: bool) -> String {
+    let ((year, month, day), _) = split_unix(unix);
+    let date = format!("{} {day}, {year}", MONTH_NAMES[(month - 1) as usize]);
+    if weekday {
+        // 1970-01-01 was a Thursday.
+        let index = (unix.div_euclid(86_400) + 4).rem_euclid(7) as usize;
+        format!("{}, {date}", WEEKDAYS[index])
+    } else {
+        date
+    }
+}
+
+/// `in 2 hours`, `3 days ago`: the largest whole unit between `unix` and
+/// `now`, both Unix seconds.
+pub(super) fn format_relative(unix: i64, now: i64) -> String {
+    let delta = unix - now;
+    let seconds = delta.unsigned_abs();
+    let (amount, unit) = match seconds {
+        0..60 => (seconds, "second"),
+        60..3_600 => (seconds / 60, "minute"),
+        3_600..86_400 => (seconds / 3_600, "hour"),
+        86_400..2_592_000 => (seconds / 86_400, "day"),
+        2_592_000..31_536_000 => (seconds / 2_592_000, "month"),
+        _ => (seconds / 31_536_000, "year"),
+    };
+    let plural = if amount == 1 { "" } else { "s" };
+    if delta >= 0 {
+        format!("in {amount} {unit}{plural}")
+    } else {
+        format!("{amount} {unit}{plural} ago")
+    }
+}

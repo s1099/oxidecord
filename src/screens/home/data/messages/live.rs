@@ -76,6 +76,24 @@ impl HomeScreen {
             }
             discord::GatewayEvent::VoiceState(state) => self.handle_voice_state(state, cx),
             discord::GatewayEvent::VoiceServer(server) => self.handle_voice_server(server, cx),
+            discord::GatewayEvent::GuildRoles { guild_id, roles } => {
+                let roles = roles.into_iter().map(|role| (role.id, role)).collect();
+                self.guild_roles.insert(guild_id, roles);
+                cx.notify();
+            }
+            discord::GatewayEvent::RoleUpdate { guild_id, role } => {
+                self.guild_roles
+                    .entry(guild_id)
+                    .or_default()
+                    .insert(role.id, role);
+                cx.notify();
+            }
+            discord::GatewayEvent::RoleDelete { guild_id, role_id } => {
+                if let Some(roles) = self.guild_roles.get_mut(&guild_id) {
+                    roles.remove(&role_id);
+                }
+                cx.notify();
+            }
         }
     }
 

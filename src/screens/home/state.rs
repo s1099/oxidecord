@@ -13,7 +13,7 @@ use gpui_component::input::InputState;
 use gpui_component::slider::SliderState;
 use twilight_model::id::{
     Id,
-    marker::{ChannelMarker, GuildMarker, MessageMarker, UserMarker},
+    marker::{ChannelMarker, GuildMarker, MessageMarker, RoleMarker, UserMarker},
 };
 
 use crate::discord::{self, DirectMessage, Guild};
@@ -243,6 +243,13 @@ pub struct HomeScreen {
     /// Profiles already fetched this session, so reopening a card is instant
     /// and repeated clicks don't refetch.
     pub(super) profile_cache: HashMap<Id<UserMarker>, discord::UserProfile>,
+    /// Every guild's roles, from the gateway, so a role mention can be named
+    /// and coloured.
+    pub(super) guild_roles: HashMap<Id<GuildMarker>, HashMap<Id<RoleMarker>, discord::Role>>,
+    /// Spoilers clicked open in the open conversation, by the key the view
+    /// gives each one. Cleared with the conversation, as Discord hides them
+    /// again once you leave.
+    pub(super) revealed_spoilers: HashSet<SharedString>,
     pub(super) message_input: Entity<InputState>,
     pub(super) messages_list: ListState,
     /// The video attachment currently playing, if any.
@@ -330,6 +337,8 @@ impl HomeScreen {
             focus_handle: cx.focus_handle(),
             profile_popup: None,
             profile_cache: HashMap::new(),
+            guild_roles: HashMap::new(),
+            revealed_spoilers: HashSet::new(),
             video: None,
             message_input,
             messages_scroll: SmoothScroll::list(messages_list.clone()),
