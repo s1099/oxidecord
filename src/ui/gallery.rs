@@ -12,7 +12,6 @@ use gpui_component::{
     alert::Alert,
     avatar::{Avatar, AvatarGroup},
     badge::Badge,
-    button::{Button, ButtonGroup, ButtonVariants as _},
     checkbox::Checkbox,
     divider::Divider,
     h_flex,
@@ -31,7 +30,8 @@ use gpui_component::{
     v_flex,
 };
 
-use crate::ui::elevation::media_shadow;
+use crate::ui::button::Button;
+use crate::ui::depth::{self, Finish, Level, Lit as _, media_shadow, radius};
 
 /// Every size a [`Sizable`](gpui_component::Sizable) widget comes in, smallest first.
 const SIZES: [(&str, Size); 4] = [
@@ -54,7 +54,7 @@ pub fn page() -> SettingPage {
         .groups([
             section("Colors", colors),
             section("Typography", typography),
-            section("Shape and elevation", shape),
+            section("Shape and depth", shape),
             section("Buttons", buttons),
             section("Form controls", controls),
             section("Feedback", feedback),
@@ -270,27 +270,58 @@ fn shape(_: &mut Window, cx: &mut App) -> Div {
             .border_1()
             .border_color(theme.border)
     };
-    let raised = || div().bg(theme.popover).rounded(theme.radius);
 
     let radii = row()
         .gap_6()
-        .child(tile("none", filled(), cx))
-        .child(tile("radius", filled().rounded(theme.radius), cx))
-        .child(tile("radius_lg", filled().rounded(theme.radius_lg), cx))
+        .child(tile("ITEM", filled().rounded(radius::ITEM), cx))
+        .child(tile("CONTROL", filled().rounded(radius::CONTROL), cx))
+        .child(tile("CARD", filled().rounded(radius::CARD), cx))
         .child(tile("full", filled().rounded_full(), cx));
 
-    // Padded so the widest shadow isn't cut off by the section's edge.
-    let shadows = row()
+    // Each level on the fill it's meant for. Padded so the overlay's long
+    // shadow isn't cut off by the section's edge.
+    let size = px(64.);
+    let lit = |bg: Hsla, level: Level, finish: Finish| {
+        div().bg(bg).lit(level, finish, size, radius::CONTROL, cx)
+    };
+    let levels = row()
         .gap_6()
-        .p_2()
-        .child(tile("shadow_sm", raised().shadow_sm(), cx))
-        .child(tile("shadow_md", raised().shadow_md(), cx))
-        .child(tile("shadow_lg", raised().shadow_lg(), cx))
-        .child(tile("media_shadow", raised().shadow(media_shadow()), cx));
+        .p_4()
+        .child(tile(
+            "Raised",
+            lit(theme.secondary, Level::Raised, Finish::Subtle),
+            cx,
+        ))
+        .child(tile(
+            "RaisedStrong",
+            lit(theme.primary, Level::RaisedStrong, Finish::Subtle),
+            cx,
+        ))
+        .child(tile(
+            "Pressed",
+            lit(theme.secondary, Level::Pressed, Finish::Matte),
+            cx,
+        ))
+        .child(tile("Surface", depth::card(radius::CARD, cx), cx))
+        .child(tile(
+            "Overlay",
+            lit(theme.popover, Level::Overlay, Finish::Subtle)
+                .border_1()
+                .border_color(depth::ring(cx)),
+            cx,
+        ))
+        .child(tile(
+            "media_shadow",
+            div()
+                .bg(theme.popover)
+                .rounded(radius::ITEM)
+                .shadow(media_shadow()),
+            cx,
+        ));
 
     stack()
         .child(specimen("Corner radius", radii, cx))
-        .child(specimen("Elevation", shadows, cx))
+        .child(specimen("Depth", levels, cx))
 }
 
 /// A square sample of a shape or shadow, named underneath.
@@ -308,9 +339,32 @@ fn tile(name: &'static str, shape: Div, cx: &App) -> Div {
 }
 
 fn buttons(_: &mut Window, cx: &mut App) -> Div {
+    let labelled = row()
+        .child(Button::new("variant-primary").label("Primary").primary())
+        .child(Button::new("variant-secondary").label("Secondary"))
+        .child(Button::new("variant-outline").label("Outline").outline())
+        .child(Button::new("variant-danger").label("Danger").danger())
+        .child(Button::new("variant-ghost").label("Ghost").ghost())
+        .child(Button::new("variant-link").label("Link").link());
+
+    let icons = row()
+        .child(icon_button("icon-primary").primary())
+        .child(icon_button("icon-secondary"))
+        .child(icon_button("icon-outline").outline())
+        .child(icon_button("icon-danger").danger())
+        .child(icon_button("icon-ghost").ghost());
+
     let sizes = row().children(SIZES.map(|(name, size)| {
         Button::new(SharedString::from(format!("size-{name}")))
+            .icon(IconName::Plus)
             .label(name)
+            .outline()
+            .with_size(size)
+    }));
+
+    let icon_sizes = row().children(SIZES.map(|(name, size)| {
+        icon_button(SharedString::from(format!("icon-size-{name}")))
+            .outline()
             .with_size(size)
     }));
 
@@ -318,68 +372,43 @@ fn buttons(_: &mut Window, cx: &mut App) -> Div {
         .child(
             Button::new("state-disabled")
                 .label("Disabled")
+                .primary()
                 .disabled(true),
         )
-        .child(Button::new("state-loading").label("Loading").loading(true))
+        .child(
+            Button::new("state-loading")
+                .label("Loading")
+                .outline()
+                .loading(true),
+        )
         .child(
             Button::new("state-selected")
                 .label("Selected")
+                .outline()
                 .selected(true),
         )
         .child(
-            Button::new("state-icon")
-                .icon(IconName::Plus)
-                .label("With icon"),
-        )
-        .child(
-            Button::new("state-icon-only")
-                .icon(IconName::Settings)
-                .tooltip("Icon only, with tooltip"),
-        )
-        .child(
-            Button::new("state-caret")
-                .label("Dropdown")
-                .dropdown_caret(true),
-        )
-        .child(Button::new("state-compact").label("Compact").compact())
-        .child(
-            Button::new("state-ghost-icon")
-                .icon(IconName::Ellipsis)
+            Button::new("state-ghost-selected")
+                .icon(Icon::default().path("icons/mic-off.svg"))
                 .ghost()
-                .small(),
+                .selected(true)
+                .tooltip("Ghost, selected"),
         );
 
-    let group = ButtonGroup::new("group")
-        .outline()
-        .child(Button::new("group-day").label("Day").selected(true))
-        .child(Button::new("group-week").label("Week"))
-        .child(Button::new("group-month").label("Month"));
-
     stack()
-        .child(specimen("Variants", variant_buttons("solid", false), cx))
-        .child(specimen("Outline", variant_buttons("outline", true), cx))
+        .child(specimen("Variants", labelled, cx))
+        .child(specimen("Icon only, with tooltip", icons, cx))
         .child(specimen("Sizes", sizes, cx))
-        .child(specimen("States", states, cx))
-        .child(specimen("Group", group, cx))
+        .child(specimen("Icon sizes", icon_sizes, cx))
+        .child(specimen(
+            "States (hold one down to see it pressed)",
+            states,
+            cx,
+        ))
 }
 
-fn variant_buttons(prefix: &'static str, outline: bool) -> Div {
-    let button = |name: &str| {
-        Button::new(SharedString::from(format!("{prefix}-{name}")))
-            .label(SharedString::from(name.to_string()))
-            .when(outline, |this| this.outline())
-    };
-
-    row()
-        .child(button("Default"))
-        .child(button("Primary").primary())
-        .child(button("Danger").danger())
-        .child(button("Warning").warning())
-        .child(button("Success").success())
-        .child(button("Info").info())
-        .child(button("Ghost").ghost())
-        .child(button("Link").link())
-        .child(button("Text").text())
+fn icon_button(id: impl Into<ElementId>) -> Button {
+    Button::new(id).icon(IconName::Settings).tooltip("Tooltip")
 }
 
 fn controls(window: &mut Window, cx: &mut App) -> Div {

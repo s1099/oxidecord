@@ -1,11 +1,10 @@
 //! The "Replying to <author>" strip atop the composer while a reply is pending.
 
 use gpui::*;
-use gpui_component::{
-    ActiveTheme as _, IconName, Sizable as _, button::Button, button::ButtonVariants as _, h_flex,
-};
+use gpui_component::{ActiveTheme as _, IconName, Sizable as _, h_flex};
 
 use crate::screens::home::{HomeScreen, ReplyTarget};
+use crate::ui::button::Button;
 
 impl HomeScreen {
     pub(super) fn render_reply_banner(

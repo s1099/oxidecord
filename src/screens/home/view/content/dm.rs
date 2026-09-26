@@ -2,14 +2,12 @@
 
 use gpui::prelude::FluentBuilder as _;
 use gpui::*;
-use gpui_component::{
-    ActiveTheme as _, Disableable as _, Icon, Sizable as _, button::Button,
-    button::ButtonVariants as _, v_flex,
-};
+use gpui_component::{ActiveTheme as _, Disableable as _, Icon, Sizable as _, v_flex};
 
 use crate::discord::DirectMessage;
 use crate::screens::home::HomeScreen;
 use crate::screens::home::view::avatar;
+use crate::ui::button::Button;
 
 use super::{header, header_content, pane};
 

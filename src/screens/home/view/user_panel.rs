@@ -3,12 +3,12 @@
 
 use gpui::*;
 use gpui_component::{
-    ActiveTheme as _, Icon, IconName, Selectable as _, Sizable as _, button::Button,
-    button::ButtonVariants as _, h_flex, v_flex,
+    ActiveTheme as _, Icon, IconName, Selectable as _, Sizable as _, h_flex, v_flex,
 };
 
 use crate::screens::home::HomeScreen;
 use crate::screens::home::view::avatar;
+use crate::ui::button::Button;
 use crate::ui::settings;
 
 impl HomeScreen {
@@ -33,9 +33,6 @@ impl HomeScreen {
             .px_2()
             .gap_2()
             .items_center()
-            .border_t_1()
-            .border_color(theme.sidebar_border)
-            .bg(theme.sidebar_accent.opacity(0.3))
             .child(avatar)
             .child(
                 v_flex()

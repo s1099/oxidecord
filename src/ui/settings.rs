@@ -12,7 +12,6 @@ use gpui::prelude::FluentBuilder as _;
 use gpui::*;
 use gpui_component::{
     ActiveTheme as _, Disableable as _, Sizable as _, ThemeConfig, WindowExt as _,
-    button::{Button, ButtonVariants as _},
     group_box::GroupBoxVariant,
     h_flex,
     input::{InputEvent, InputState},
@@ -20,7 +19,8 @@ use gpui_component::{
 };
 
 use crate::platform::updater::{self, Status};
-use crate::ui::{gallery, theme};
+use crate::ui::button::Button;
+use crate::ui::{depth, gallery, theme};
 
 /// Size the popup aims for. Both are capped to the window with [`WINDOW_MARGIN`]
 /// to spare, since the dialog is positioned from a fixed size and would
@@ -62,6 +62,7 @@ pub fn open(window: &mut Window, cx: &mut App) {
             // the dialog is only the frame around it: no padding, no title, and
             // clipped so the sidebar doesn't square off the rounded corners.
             .p_0()
+            .border_color(depth::ring(cx))
             .w(width)
             .h(height)
             .overflow_hidden()

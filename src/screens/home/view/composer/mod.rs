@@ -7,11 +7,12 @@ mod reply_banner;
 use gpui::prelude::FluentBuilder as _;
 use gpui::*;
 use gpui_component::{
-    ActiveTheme as _, IconName, Sizable as _, Size, StyleSized as _, button::Button,
-    button::ButtonVariants as _, h_flex, input::Input, v_flex,
+    ActiveTheme as _, IconName, Sizable as _, Size, StyleSized as _, h_flex, input::Input, v_flex,
 };
 
 use crate::screens::home::HomeScreen;
+use crate::ui::button::Button;
+use crate::ui::depth::radius;
 
 impl HomeScreen {
     /// `can_send` is false on channels the user lacks `SEND_MESSAGES` on, where
@@ -32,27 +33,17 @@ impl HomeScreen {
                     // conversation doesn't resize when switching between a
                     // channel the user can post in and one they can't. The
                     // `input_*` helpers are what `Input` sizes itself with.
-                    h_flex()
-                        .w_full()
-                        .rounded(px(8.))
-                        .bg(theme.secondary)
-                        .border_1()
-                        .border_color(theme.border)
-                        .overflow_hidden()
-                        .pl_1()
-                        .child(
-                            h_flex()
-                                .flex_1()
-                                .min_w_0()
-                                .truncate()
-                                .items_center()
-                                .input_size(Size::Medium)
-                                .input_text_size(Size::Medium)
-                                .text_color(theme.muted_foreground)
-                                .child(
-                                    "You do not have permission to send messages in this channel.",
-                                ),
-                        ),
+                    surface(h_flex(), cx).pl_1().child(
+                        h_flex()
+                            .flex_1()
+                            .min_w_0()
+                            .truncate()
+                            .items_center()
+                            .input_size(Size::Medium)
+                            .input_text_size(Size::Medium)
+                            .text_color(theme.muted_foreground)
+                            .child("You do not have permission to send messages in this channel."),
+                    ),
                 )
                 .into_any_element();
         }
@@ -71,13 +62,7 @@ impl HomeScreen {
                 // banner, attachment tray, and input read as one control. The
                 // input's own border and bright focus ring are switched off in
                 // favour of this.
-                v_flex()
-                    .w_full()
-                    .rounded(px(8.))
-                    .bg(theme.secondary)
-                    .border_1()
-                    .border_color(theme.border)
-                    .overflow_hidden()
+                surface(v_flex(), cx)
                     .when_some(self.replying_to.clone(), |this, target| {
                         this.child(self.render_reply_banner(&target, cx))
                     })
@@ -111,4 +96,21 @@ impl HomeScreen {
             )
             .into_any_element()
     }
+}
+
+/// The composer's surface. Flat, unlike the buttons around it: a shadow made
+/// the input read as a box sitting on the page rather than a field. Dark themes
+/// wash it with the input colour rather than leaving it the page's.
+fn surface(base: Div, cx: &App) -> Div {
+    let theme = cx.theme();
+    base.w_full()
+        .bg(if theme.mode.is_dark() {
+            theme.input.opacity(0.3)
+        } else {
+            theme.background
+        })
+        .border_1()
+        .border_color(theme.input)
+        .rounded(radius::CONTROL)
+        .overflow_hidden()
 }

@@ -5,15 +5,15 @@ mod webview;
 use gpui::prelude::FluentBuilder as _;
 use gpui::*;
 use gpui_component::{
-    ActiveTheme as _,
-    button::{Button, ButtonVariants as _},
-    h_flex,
+    ActiveTheme as _, h_flex,
     input::{Input, InputState},
     tab::{Tab, TabBar},
     v_flex,
 };
 
 use crate::screens::app::AppScreen;
+use crate::ui::button::Button;
+use crate::ui::depth::{self, radius};
 use crate::ui::window_controls::WindowControls;
 
 use webview::LoginWebview;
@@ -87,7 +87,6 @@ impl LoginScreen {
             Button::new("btn-discord-login")
                 .label("Continue with Discord")
                 .primary()
-                .rounded(px(8.))
                 .on_click(move |_event, window, cx| {
                     // The button renders in the main window, so this handle
                     // points at the window we want to switch to Home once the
@@ -131,27 +130,22 @@ impl LoginScreen {
                     )
                     .child(Input::new(&self.token_input).mask_toggle().cleanable(true)),
             )
-            .child(
-                Button::new("btn-token-login")
-                    .label("Log In")
-                    .primary()
-                    .rounded(px(8.)),
-            )
+            .child(Button::new("btn-token-login").label("Log In").primary())
     }
 }
 
 impl Render for LoginScreen {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let card_bg = cx.theme().secondary;
-        let page_bg = cx.theme().background;
+        // The page is the sidebar colour, so the card lifts off it the way the
+        // conversation panel does on the home screen.
+        let page_bg = cx.theme().sidebar;
 
-        let card = v_flex()
+        let card = depth::card(radius::CARD, cx)
+            .flex()
+            .flex_col()
             .w(px(400.))
             .p(px(32.))
             .gap(px(24.))
-            .rounded(px(8.))
-            .bg(card_bg)
-            .shadow_lg()
             .child(self.render_logo(cx))
             .child(v_flex().items_center().child(self.render_method_tabs(cx)))
             .child(match self.method {
@@ -180,7 +174,7 @@ impl Render for LoginScreen {
                                 this.window_control_area(WindowControlArea::Drag)
                             }),
                     )
-                    .child(WindowControls),
+                    .child(WindowControls::default()),
             )
             .child(
                 div()

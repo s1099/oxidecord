@@ -16,24 +16,24 @@ fn shell(
     cx: &App,
 ) -> impl IntoElement {
     let theme = cx.theme();
-    let border = theme.sidebar_border;
 
+    // No borders: the sidebar is the window itself, and the conversation panel
+    // beside it carries the edge.
     v_flex()
         .w(px(240.))
         .h_full()
         .flex_shrink_0()
         .bg(theme.sidebar)
         .text_color(theme.sidebar_foreground)
-        .border_r_1()
-        .border_color(border)
         .child(
             h_flex()
-                .h(px(48.))
+                // Level with the conversation header, which sits inside the
+                // inset panel.
+                .h(px(56.))
+                .pt_2()
                 .flex_shrink_0()
                 .px_4()
                 .items_center()
-                .border_b_1()
-                .border_color(border)
                 .child(
                     div()
                         .truncate()

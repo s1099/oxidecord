@@ -7,6 +7,7 @@ use gpui_component::{ActiveTheme as _, Icon, divider::Divider, v_flex};
 use crate::discord::Channel;
 use crate::screens::home::HomeScreen;
 use crate::screens::home::channels::channel_icon_path;
+use crate::ui::theme;
 
 use super::{header, header_content, message_list, pane};
 
@@ -62,7 +63,7 @@ impl HomeScreen {
                                 .flex_1()
                                 .truncate()
                                 .text_sm()
-                                .text_color(theme.muted_foreground)
+                                .text_color(theme::secondary_text(cx))
                                 .child(topic),
                         )
                     },

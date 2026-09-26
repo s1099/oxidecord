@@ -12,11 +12,20 @@
 use std::rc::Rc;
 
 use gpui::*;
-use gpui_component::{Theme, ThemeConfig, ThemeRegistry, ThemeSet};
+use gpui_component::{ActiveTheme as _, Theme, ThemeConfig, ThemeRegistry, ThemeSet};
 
 use crate::platform::prefs;
 
 include!(concat!(env!("OUT_DIR"), "/preset_themes.rs"));
+
+/// The preset family used until one is picked, from `themes/zinc.json`.
+const DEFAULT_PRESET: &str = "Zinc";
+
+/// Corners for presets that don't set their own. gpui-component's defaults are
+/// tighter than the rest of the UI (see [`crate::ui::depth::radius`]), and its
+/// widgets — inputs, menus, dialogs — should match the app's own.
+const RADIUS: Pixels = px(8.);
+const RADIUS_LG: Pixels = px(14.);
 
 /// Every theme the settings page can switch to, in the order it lists them.
 pub struct Themes {
@@ -61,14 +70,30 @@ pub fn init(cx: &mut App) {
 
     cx.set_global(Themes { presets });
 
-    // Without a stored choice the theme stays whatever the system appearance
-    // picked during `gpui_component::init`.
-    if let Some(name) = prefs::load().theme {
-        apply(&name, None, cx);
-    }
+    // Without a stored choice, Zinc — the palette the rest of the UI is designed
+    // around — in whichever mode the system appearance picked during
+    // `gpui_component::init`.
+    let name = prefs::load().theme.unwrap_or_else(|| {
+        let mode = if Theme::global(cx).mode.is_dark() {
+            "Dark"
+        } else {
+            "Light"
+        };
+        format!("{DEFAULT_PRESET} {mode}")
+    });
+    apply(&name, None, cx);
 }
 
 /// The presets, in display order.
+/// Secondary text that's still meant to be read — channel names, a channel's
+/// topic. Presets make `muted_foreground` dim enough for hints and timestamps,
+/// which is too dim for these, so it's pulled part of the way toward the
+/// foreground, stopping short of the messages themselves.
+pub fn secondary_text(cx: &App) -> Hsla {
+    let theme = cx.theme();
+    theme.muted_foreground.blend(theme.foreground.opacity(0.35))
+}
+
 pub fn presets(cx: &App) -> &[Rc<ThemeConfig>] {
     &cx.global::<Themes>().presets
 }
@@ -93,7 +118,14 @@ fn apply(name: &str, window: Option<&mut Window>, cx: &mut App) {
     };
 
     // `apply_config` also sets the mode, so a dark preset takes the app dark.
-    Theme::global_mut(cx).apply_config(&config);
+    let theme = Theme::global_mut(cx);
+    theme.apply_config(&config);
+    if config.radius.is_none() {
+        theme.radius = RADIUS;
+    }
+    if config.radius_lg.is_none() {
+        theme.radius_lg = RADIUS_LG;
+    }
 
     // Colours are read straight out of the global during render, so every open
     // window has to be repainted, not just the one the click came from.

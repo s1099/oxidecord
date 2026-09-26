@@ -10,10 +10,12 @@ mod text;
 mod user_panel;
 mod voice;
 
+use gpui::prelude::FluentBuilder as _;
 use gpui::*;
 use gpui_component::{ActiveTheme as _, Sizable as _, avatar::Avatar, h_flex};
 
 use super::{HomeScreen, View};
+use crate::ui::depth;
 
 /// Horizontal padding, in pixels, on either side of the message list.
 const MESSAGE_PADDING_X: f32 = 16.;
@@ -50,7 +52,9 @@ impl Render for HomeScreen {
             .size_full()
             // Anchors the profile popout's full-screen dismiss layer.
             .relative()
-            .bg(cx.theme().background)
+            // The rail and sidebar sit straight on the window; the conversation
+            // is a panel lifted off it (see `inset`).
+            .bg(cx.theme().sidebar)
             .on_action(cx.listener(Self::on_paste_attachment))
             .on_modifiers_changed(cx.listener(|this, event: &ModifiersChangedEvent, _, cx| {
                 if this.shift_held != event.modifiers.shift {
@@ -65,9 +69,47 @@ impl Render for HomeScreen {
             .child(div().track_focus(&self.focus_handle))
             .child(self.render_server_rail(cx))
             .children(sidebar)
-            .child(self.render_content(cx))
+            .child(inset(self.render_content(cx), cx))
             .children(self.render_profile_popup(cx))
     }
+}
+
+/// Gap between the conversation panel and the window's edges.
+const INSET: f32 = 8.;
+
+/// The conversation pane as a panel inset from the window: rounded, ringed,
+/// and resting on the sidebar colour, the way the toolkit's inset layout reads.
+fn inset(content: AnyElement, cx: &App) -> impl IntoElement {
+    div()
+        .relative()
+        .flex_1()
+        .min_w_0()
+        .h_full()
+        .py(px(INSET))
+        .pr(px(INSET))
+        .child(
+            depth::card(depth::radius::CARD, cx)
+                .size_full()
+                .flex()
+                .flex_col()
+                .overflow_hidden()
+                .child(content),
+        )
+        // The strip above the panel is window edge, so it drags the window the
+        // way the header inside the panel does. A sibling of the panel rather
+        // than its parent, so it can't swallow the window controls' clicks.
+        .when(cfg!(target_os = "windows"), |this| {
+            this.child(
+                div()
+                    .id("inset-drag")
+                    .absolute()
+                    .top_0()
+                    .left_0()
+                    .right_0()
+                    .h(px(INSET))
+                    .window_control_area(WindowControlArea::Drag),
+            )
+        })
 }
 
 /// An avatar with its picture when there is one, and the name's initials

@@ -12,6 +12,8 @@ use gpui_component::{
     dialog::DialogButtonProps, h_flex, v_flex,
 };
 
+use crate::ui::depth;
+
 const BACKDROP_CONTENT_OPACITY: f32 = 0.55;
 
 /// How dark the scrim over the faded content is.
@@ -77,6 +79,7 @@ pub fn show_error(
             // An error is a notification, not a decision, so let a click
             // outside dismiss it as well — `alert()` turns that off.
             .overlay_closable(true)
+            .border_color(depth::ring(cx))
             .w(px(440.))
             .button_props(
                 DialogButtonProps::default()

@@ -2,13 +2,11 @@
 //! Discord's attachment tray.
 
 use gpui::*;
-use gpui_component::{
-    ActiveTheme as _, Icon, IconName, Sizable as _, button::Button, button::ButtonVariants as _,
-    h_flex, v_flex,
-};
+use gpui_component::{ActiveTheme as _, Icon, IconName, Sizable as _, h_flex, v_flex};
 
 use crate::screens::home::HomeScreen;
 use crate::screens::home::data::attachments::{PendingAttachment, format_size};
+use crate::ui::button::Button;
 
 impl HomeScreen {
     pub(super) fn render_attachment_previews(&self, cx: &Context<Self>) -> impl IntoElement {
@@ -28,8 +26,11 @@ impl HomeScreen {
                         div().absolute().top(px(4.)).right(px(4.)).child(
                             Button::new(("remove-attachment", id))
                                 .icon(IconName::Close)
-                                .danger()
+                                // Outline rather than danger: the translucent
+                                // danger fill would vanish against the image.
+                                .outline()
                                 .xsmall()
+                                .text_color(cx.theme().danger)
                                 .tooltip("Remove attachment")
                                 .on_click(cx.listener(move |this, _, _window, cx| {
                                     this.remove_attachment(id, cx);

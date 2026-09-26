@@ -5,6 +5,10 @@ use gpui_component::{ActiveTheme as _, h_flex};
 
 use crate::discord;
 use crate::screens::home::HomeScreen;
+use crate::ui::depth::{Finish, Level, Lit as _, radius};
+
+/// Height of a reaction chip.
+const CHIP_HEIGHT: f32 = 24.;
 
 impl HomeScreen {
     /// Clicking a pill adds or removes the current user's reaction; the ones
@@ -34,22 +38,38 @@ impl HomeScreen {
                         message_id.get()
                     )))
                     .gap_1()
-                    .h(px(22.))
+                    .h(px(CHIP_HEIGHT))
                     .px(px(6.))
-                    .rounded(px(4.))
                     .border_1()
                     .border_color(if reaction.me {
-                        theme.primary
+                        theme.primary.opacity(0.6)
                     } else {
-                        gpui::transparent_black()
+                        theme.border
                     })
                     .bg(if reaction.me {
-                        theme.primary.opacity(0.2)
+                        theme.primary.opacity(0.15)
                     } else {
-                        theme.accent
+                        theme.background
                     })
+                    // Chips are clickable, so they sit up on the page like any
+                    // other control.
+                    .lit(
+                        Level::Raised,
+                        Finish::Subtle,
+                        px(CHIP_HEIGHT),
+                        radius::ITEM - px(1.),
+                        cx,
+                    )
+                    .rounded(radius::ITEM)
                     .cursor_pointer()
-                    .hover(|this| this.border_color(theme.primary.opacity(0.6)))
+                    .hover(|this| {
+                        this.bg(if reaction.me {
+                            theme.primary.opacity(0.25)
+                        } else {
+                            theme.muted
+                        })
+                    })
+                    .active(|this| this.shadow(Vec::new()))
                     .child(match emoji.image_url() {
                         Some(url) => img(url)
                             .image_cache(&self.image_cache)

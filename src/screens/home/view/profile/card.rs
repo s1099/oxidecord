@@ -7,6 +7,7 @@ use gpui_component::{ActiveTheme as _, divider::Divider, h_flex, skeleton::Skele
 use crate::discord::UserProfile;
 use crate::screens::home::view::avatar;
 use crate::screens::home::{HomeScreen, ProfilePopup};
+use crate::ui::depth::{self, Level, radius};
 
 /// Card width. Discord's small popout is 300px wide.
 const CARD_WIDTH: f32 = 300.;
@@ -57,23 +58,33 @@ impl HomeScreen {
             .or_else(|| popup.avatar_url.clone());
         let avatar = avatar(popup.name.clone(), avatar_url, px(AVATAR_SIZE));
 
+        // gpui clips to rectangles, so the banner rounds its own top corners
+        // to stay inside the card's.
+        let banner_radius = radius::CARD - px(1.);
+
         div()
             .relative()
             .w(px(CARD_WIDTH))
             .bg(theme.popover)
             .border_1()
-            .border_color(theme.border)
-            .rounded(px(8.))
-            .shadow_lg()
+            .border_color(depth::ring(cx))
+            .rounded(radius::CARD)
+            .shadow(depth::shadow(Level::Overlay, cx))
             .overflow_hidden()
             .text_color(theme.popover_foreground)
             .child(
                 div()
                     .w_full()
                     .h(px(banner_height))
+                    .rounded_t(banner_radius)
                     .bg(banner_color)
                     .when_some(banner_url, |this, url| {
-                        this.child(img(url).size_full().object_fit(ObjectFit::Cover))
+                        this.child(
+                            img(url)
+                                .size_full()
+                                .rounded_t(banner_radius)
+                                .object_fit(ObjectFit::Cover),
+                        )
                     }),
             )
             .child(
@@ -173,7 +184,7 @@ fn render_details(profile: &UserProfile, cx: &App) -> AnyElement {
     v_flex()
         .p(px(12.))
         .gap(px(12.))
-        .rounded(px(8.))
+        .rounded(radius::CONTROL)
         .bg(cx.theme().background)
         .when_some(profile.bio.clone(), |this, bio| {
             this.child(section(

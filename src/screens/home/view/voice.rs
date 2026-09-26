@@ -4,10 +4,7 @@
 use gpui::prelude::FluentBuilder as _;
 use gpui::*;
 use gpui_component::{
-    ActiveTheme as _, Disableable as _, Icon, IconName, Selectable as _, Sizable as _,
-    button::Button,
-    button::ButtonVariants as _,
-    h_flex,
+    ActiveTheme as _, Disableable as _, Icon, IconName, Selectable as _, Sizable as _, h_flex,
     menu::{ContextMenuExt as _, PopupMenuItem},
     v_flex,
 };
@@ -15,6 +12,8 @@ use gpui_component::{
 use crate::screens::home::HomeScreen;
 use crate::screens::home::view::avatar;
 use crate::screens::home::voice::{VoiceCall, VoiceParticipant, VoiceStatus};
+use crate::ui::button::Button;
+use crate::ui::depth::{self, radius};
 use crate::voice;
 
 /// Height of the call band shown above a DM conversation. A voice channel's
@@ -54,79 +53,81 @@ impl HomeScreen {
             theme.muted_foreground
         };
 
+        // A card of its own above the account panel, so a live call stands out
+        // from the sidebar it sits in.
         Some(
-            v_flex()
-                .w_full()
-                .px_2()
-                .py_2()
-                .gap_2()
-                .border_t_1()
-                .border_color(theme.sidebar_border)
-                .bg(theme.sidebar_accent.opacity(0.3))
-                .child(
-                    h_flex()
-                        .gap_2()
-                        .items_center()
-                        .child(
-                            Icon::default()
-                                .path("icons/signal.svg")
-                                .size_4()
-                                .text_color(status_color),
-                        )
-                        .child(
-                            v_flex()
-                                .flex_1()
-                                .min_w_0()
-                                .child(
-                                    div()
-                                        .truncate()
-                                        .text_xs()
-                                        .font_weight(FontWeight::SEMIBOLD)
-                                        .text_color(status_color)
-                                        .child(match &call.error {
-                                            Some(error) => SharedString::from(error.clone()),
-                                            None => SharedString::from(call.status.label()),
-                                        }),
-                                )
-                                .child(
-                                    div()
-                                        .truncate()
-                                        .text_xs()
-                                        .text_color(theme.muted_foreground)
-                                        .child(call_location(call)),
-                                ),
-                        )
-                        .child(
-                            Button::new("voice-disconnect")
-                                .icon(Icon::default().path("icons/phone-off.svg"))
-                                .ghost()
-                                .small()
-                                .tooltip("Disconnect")
-                                .on_click(cx.listener(|this, _, _, cx| this.leave_voice(cx))),
-                        ),
-                )
-                .child(
-                    h_flex()
-                        .gap_1()
-                        .child(
-                            Button::new("voice-panel-camera")
-                                .icon(Icon::default().path("icons/video-off.svg"))
-                                .ghost()
-                                .small()
-                                .flex_1()
-                                .disabled(true)
-                                .tooltip(VIDEO_UNAVAILABLE),
-                        )
-                        .child(
-                            Button::new("voice-panel-share")
-                                .icon(Icon::default().path("icons/screen-share.svg"))
-                                .ghost()
-                                .small()
-                                .flex_1()
-                                .disabled(true)
-                                .tooltip(VIDEO_UNAVAILABLE),
-                        ),
-                ),
+            div().px_2().child(
+                depth::card(radius::CONTROL, cx)
+                    .w_full()
+                    .flex()
+                    .flex_col()
+                    .p_2()
+                    .gap_2()
+                    .child(
+                        h_flex()
+                            .gap_2()
+                            .items_center()
+                            .child(
+                                Icon::default()
+                                    .path("icons/signal.svg")
+                                    .size_4()
+                                    .text_color(status_color),
+                            )
+                            .child(
+                                v_flex()
+                                    .flex_1()
+                                    .min_w_0()
+                                    .child(
+                                        div()
+                                            .truncate()
+                                            .text_xs()
+                                            .font_weight(FontWeight::SEMIBOLD)
+                                            .text_color(status_color)
+                                            .child(match &call.error {
+                                                Some(error) => SharedString::from(error.clone()),
+                                                None => SharedString::from(call.status.label()),
+                                            }),
+                                    )
+                                    .child(
+                                        div()
+                                            .truncate()
+                                            .text_xs()
+                                            .text_color(theme.muted_foreground)
+                                            .child(call_location(call)),
+                                    ),
+                            )
+                            .child(
+                                Button::new("voice-disconnect")
+                                    .icon(Icon::default().path("icons/phone-off.svg"))
+                                    .ghost()
+                                    .small()
+                                    .tooltip("Disconnect")
+                                    .on_click(cx.listener(|this, _, _, cx| this.leave_voice(cx))),
+                            ),
+                    )
+                    .child(
+                        h_flex()
+                            .gap_1()
+                            .child(
+                                Button::new("voice-panel-camera")
+                                    .icon(Icon::default().path("icons/video-off.svg"))
+                                    .ghost()
+                                    .small()
+                                    .flex_1()
+                                    .disabled(true)
+                                    .tooltip(VIDEO_UNAVAILABLE),
+                            )
+                            .child(
+                                Button::new("voice-panel-share")
+                                    .icon(Icon::default().path("icons/screen-share.svg"))
+                                    .ghost()
+                                    .small()
+                                    .flex_1()
+                                    .disabled(true)
+                                    .tooltip(VIDEO_UNAVAILABLE),
+                            ),
+                    ),
+            ),
         )
     }
 
@@ -141,7 +142,12 @@ impl HomeScreen {
             return self.render_join_prompt(cx).into_any_element();
         };
 
-        self.stage(call, cx).flex_1().into_any_element()
+        // Fills the pane down to the panel's rounded corners, which gpui
+        // won't clip to.
+        self.stage(call, cx)
+            .flex_1()
+            .rounded_b(radius::CARD - px(1.))
+            .into_any_element()
     }
 
     /// The call band above a DM conversation, shown only while that DM's call
@@ -209,14 +215,14 @@ impl HomeScreen {
             px(TILE_AVATAR),
         );
 
-        v_flex()
+        depth::card(radius::CARD, cx)
+            .flex()
+            .flex_col()
             .w(px(180.))
             .h(px(150.))
             .gap_2()
             .items_center()
             .justify_center()
-            .rounded(px(8.))
-            .bg(theme.background.opacity(0.6))
             .child(
                 // The speaking ring goes on a wrapper rather than the avatar,
                 // so appearing and disappearing doesn't nudge the layout.
@@ -327,7 +333,7 @@ impl HomeScreen {
                 Button::new("call-hangup")
                     .icon(Icon::default().path("icons/phone-off.svg"))
                     .danger()
-                    .rounded(px(8.))
+                    .large()
                     .tooltip("Disconnect")
                     .on_click(cx.listener(|this, _, _, cx| this.leave_voice(cx))),
             )
@@ -352,6 +358,7 @@ impl HomeScreen {
             .items_center()
             .justify_center()
             .bg(theme.muted.opacity(0.4))
+            .rounded_b(radius::CARD - px(1.))
             .when(participants.is_empty(), |this| {
                 this.child(
                     Icon::default()
@@ -384,7 +391,6 @@ impl HomeScreen {
                     .icon(Icon::default().path("icons/phone.svg"))
                     .label("Join Voice")
                     .primary()
-                    .rounded(px(8.))
                     .on_click(cx.listener(move |this, _, _, cx| {
                         if let Some(id) = channel_id {
                             this.join_voice_channel(id, cx);
@@ -453,12 +459,12 @@ fn device_item(
     }
 }
 
-/// One square toggle on the control bar, lit while its thing is on.
+/// One square toggle on the control bar, pushed in while its thing is on.
 fn control(id: &'static str, icon: &'static str, tooltip: &'static str, active: bool) -> Button {
     Button::new(id)
         .icon(Icon::default().path(icon))
-        .ghost()
-        .rounded(px(8.))
+        .outline()
+        .large()
         .selected(active)
         .tooltip(tooltip)
 }

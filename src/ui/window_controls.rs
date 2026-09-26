@@ -15,29 +15,44 @@ use gpui_component::{ActiveTheme as _, Icon, IconName, Sizable as _, h_flex};
 const CONTROL_WIDTH: f32 = 46.;
 
 /// The three caption buttons, in the platform's order.
-#[derive(IntoElement)]
-pub struct WindowControls;
+#[derive(IntoElement, Default)]
+pub struct WindowControls {
+    corner: Pixels,
+}
+
+impl WindowControls {
+    /// Rounds the close button's outer corner, for controls sitting in the
+    /// corner of a rounded panel — gpui clips to rectangles, so the hover fill
+    /// would otherwise square the panel's corner off.
+    pub fn corner(mut self, radius: Pixels) -> Self {
+        self.corner = radius;
+        self
+    }
+}
 
 impl RenderOnce for WindowControls {
-    fn render(self, window: &mut Window, _cx: &mut App) -> impl IntoElement {
+    fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         h_flex()
             .id("window-controls")
             .h_full()
             .flex_shrink_0()
             .items_center()
-            .child(Control::Minimize)
+            .child(Control::Minimize.element(cx))
             // The middle button swaps with the window's state, the way every
             // other window on the desktop does.
-            .child(if window.is_maximized() {
-                Control::Restore
-            } else {
-                Control::Maximize
-            })
-            .child(Control::Close)
+            .child(
+                if window.is_maximized() {
+                    Control::Restore
+                } else {
+                    Control::Maximize
+                }
+                .element(cx),
+            )
+            .child(Control::Close.element(cx).rounded_tr(self.corner))
     }
 }
 
-#[derive(IntoElement, Clone, Copy)]
+#[derive(Clone, Copy)]
 enum Control {
     Minimize,
     Maximize,
@@ -78,8 +93,8 @@ impl Control {
     }
 }
 
-impl RenderOnce for Control {
-    fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
+impl Control {
+    fn element(self, cx: &App) -> Stateful<Div> {
         let theme = cx.theme();
         // Closing is the destructive one, and gets the red hover every desktop
         // uses for it; the other two stay in the neutral palette.

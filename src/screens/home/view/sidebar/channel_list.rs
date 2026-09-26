@@ -10,6 +10,8 @@ use crate::discord::Channel;
 use crate::screens::home::HomeScreen;
 use crate::screens::home::channels::{ChannelGroup, channel_icon_path};
 use crate::screens::home::view::avatar;
+use crate::ui::depth::{Finish, Level, Lit as _, radius};
+use crate::ui::theme;
 
 impl HomeScreen {
     pub(super) fn render_channel_row(
@@ -45,16 +47,23 @@ impl HomeScreen {
             .py(px(5.))
             .gap_2()
             .items_center()
-            .rounded(px(6.))
+            .rounded(radius::ITEM)
             .cursor_pointer()
             .text_sm()
             .text_color(if is_selected {
                 theme.sidebar_accent_foreground
             } else {
-                theme.muted_foreground
+                theme::secondary_text(cx)
             })
-            .when(is_selected, |this| this.bg(theme.sidebar_accent))
-            .hover(|this| this.bg(theme.sidebar_accent.opacity(0.5)))
+            .hover(|this| {
+                this.bg(theme.sidebar_accent)
+                    .text_color(theme.sidebar_accent_foreground)
+            })
+            .when(is_selected, |this| {
+                this.bg(theme.sidebar_accent)
+                    .font_weight(FontWeight::MEDIUM)
+                    .lit(Level::Raised, Finish::Subtle, px(30.), radius::ITEM, cx)
+            })
             .child(
                 Icon::default()
                     .path(channel_icon_path(channel.kind))
@@ -94,7 +103,7 @@ impl HomeScreen {
                     .py(px(3.))
                     .gap_2()
                     .items_center()
-                    .rounded(px(6.))
+                    .rounded(radius::ITEM)
                     .text_sm()
                     .text_color(if participant.speaking {
                         theme.sidebar_accent_foreground

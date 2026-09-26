@@ -16,7 +16,7 @@ use gpui_component::{ActiveTheme as _, h_flex, v_flex};
 use crate::discord;
 use crate::screens::home::HomeScreen;
 use crate::screens::home::state::MediaKey;
-use crate::ui::elevation::media_shadow;
+use crate::ui::depth::media_shadow;
 
 use super::super::text::render_message_text;
 use super::{MEDIA_MAX_HEIGHT, MEDIA_MAX_WIDTH, fit_within};

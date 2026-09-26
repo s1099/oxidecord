@@ -7,6 +7,8 @@ use gpui_component::{ActiveTheme as _, h_flex, skeleton::Skeleton, v_flex};
 use crate::discord::DirectMessage;
 use crate::screens::home::HomeScreen;
 use crate::screens::home::view::avatar;
+use crate::ui::depth::{Finish, Level, Lit as _, radius};
+use crate::ui::theme;
 
 use super::shell;
 
@@ -30,16 +32,23 @@ impl HomeScreen {
             .py(px(6.))
             .gap_3()
             .items_center()
-            .rounded(px(6.))
+            .rounded(radius::ITEM)
             .cursor_pointer()
             .text_sm()
             .text_color(if is_selected {
                 theme.sidebar_accent_foreground
             } else {
-                theme.muted_foreground
+                theme::secondary_text(cx)
             })
-            .when(is_selected, |this| this.bg(theme.sidebar_accent))
-            .hover(|this| this.bg(theme.sidebar_accent.opacity(0.5)))
+            .hover(|this| {
+                this.bg(theme.sidebar_accent)
+                    .text_color(theme.sidebar_accent_foreground)
+            })
+            .when(is_selected, |this| {
+                this.bg(theme.sidebar_accent)
+                    .font_weight(FontWeight::MEDIUM)
+                    .lit(Level::Raised, Finish::Subtle, px(44.), radius::ITEM, cx)
+            })
             .child(avatar)
             .child(div().flex_1().truncate().child(dm.name.clone()))
             .on_click(cx.listener(move |this, _, window, cx| {

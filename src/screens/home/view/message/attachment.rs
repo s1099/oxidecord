@@ -5,14 +5,14 @@ use std::time::Duration;
 use gpui::prelude::FluentBuilder as _;
 use gpui::*;
 use gpui_component::{
-    ActiveTheme as _, Icon, Sizable as _, button::Button, button::ButtonVariants as _, h_flex,
-    slider::Slider, spinner::Spinner, v_flex,
+    ActiveTheme as _, Icon, Sizable as _, h_flex, slider::Slider, spinner::Spinner, v_flex,
 };
 
 use crate::discord;
 use crate::screens::home::HomeScreen;
 use crate::screens::home::state::{MediaKey, PlaybackState, VideoPlayback};
-use crate::ui::elevation::media_shadow;
+use crate::ui::button::Button;
+use crate::ui::depth::media_shadow;
 
 use super::super::super::data::attachments::format_size;
 use super::{MEDIA_MAX_HEIGHT, MEDIA_MAX_WIDTH, fit_within};

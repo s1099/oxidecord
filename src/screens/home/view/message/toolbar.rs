@@ -3,10 +3,7 @@
 use gpui::prelude::FluentBuilder as _;
 use gpui::*;
 use gpui_component::{
-    ActiveTheme as _, Icon, IconName, Sizable as _,
-    button::Button,
-    button::ButtonVariants as _,
-    h_flex,
+    ActiveTheme as _, Icon, IconName, Sizable as _, h_flex,
     menu::{DropdownMenu as _, PopupMenuItem},
 };
 
@@ -14,6 +11,8 @@ use twilight_model::id::{Id, marker::MessageMarker};
 
 use crate::discord;
 use crate::screens::home::{HomeScreen, ReplyTarget};
+use crate::ui::button::Button;
+use crate::ui::depth::{self, Finish, Level, Lit as _, radius};
 
 impl HomeScreen {
     /// Sits at the top-right of the message, shown only while `group_name` —
@@ -45,9 +44,15 @@ impl HomeScreen {
                     .p(px(2.))
                     .bg(theme.popover)
                     .border_1()
-                    .border_color(theme.border)
-                    .rounded(px(8.))
-                    .shadow_md()
+                    .border_color(depth::ring(cx))
+                    .lit(
+                        Level::Overlay,
+                        Finish::Subtle,
+                        px(34.),
+                        radius::CONTROL - px(1.),
+                        cx,
+                    )
+                    .rounded(radius::CONTROL)
                     .when(expanded, |this| {
                         this.child(
                             Button::new(("message-copy-link", message_id.get()))

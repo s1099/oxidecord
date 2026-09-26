@@ -6,14 +6,19 @@ use std::sync::{Arc, LazyLock};
 use gpui::prelude::FluentBuilder as _;
 use gpui::*;
 use gpui_component::{
-    ActiveTheme as _, Icon, IconName, avatar::Avatar, divider::Divider, h_flex, tooltip::Tooltip,
-    v_flex,
+    ActiveTheme as _, Icon, IconName, avatar::Avatar, divider::Divider, h_flex, v_flex,
 };
 
 use crate::assets::icons::DISCORD_ICON;
 use crate::discord::Guild;
 use crate::screens::home::folders::{RailEntry, RailFolder};
 use crate::screens::home::{HomeScreen, View};
+use crate::ui::depth::{Finish, Level, Lit as _};
+use crate::ui::tooltip;
+
+/// Corner radius of the pill behind the selected icon: the icon's own 16px
+/// plus the pill's 4px of padding, so the two curves run parallel.
+const PILL_RADIUS: f32 = 20.;
 
 /// Built once: `Image::from_bytes` hashes the whole buffer, and the rail
 /// renders on every frame of a scroll glide or a playing video.
@@ -29,9 +34,7 @@ impl HomeScreen {
         let in_dms = self.view == View::DirectMessages;
         let theme = cx.theme();
         let rail_bg = theme.sidebar;
-        let rail_border = theme.sidebar_border;
         let logo_bg = rgb(0x313338);
-        let selected_bg = theme.sidebar_accent;
 
         // The whole rail — the DMs icon, its separator, and the guild list —
         // scrolls as one column, so the icon isn't pinned above the list.
@@ -44,20 +47,13 @@ impl HomeScreen {
             .py_3()
             .gap_2()
             .bg(rail_bg)
-            .border_r_1()
-            .border_color(rail_border)
             .overflow_y_scroll()
             .track_scroll(self.rail_scroll.handle())
             .on_scroll_wheel(
                 cx.listener(|this, event, window, _| this.rail_scroll.absorb(event, window)),
             )
             .child(
-                div()
-                    .id("home-dms")
-                    .p(px(4.))
-                    .rounded(px(20.))
-                    .cursor_pointer()
-                    .when(in_dms, |this| this.bg(selected_bg))
+                selection_pill(div().id("home-dms"), in_dms, cx)
                     .child(
                         div()
                             .size(px(48.))
@@ -68,7 +64,7 @@ impl HomeScreen {
                             .bg(logo_bg)
                             .child(img(DISCORD_LOGO.clone()).size(px(28.))),
                     )
-                    .tooltip(|window, cx| Tooltip::new("Direct Messages").build(window, cx))
+                    .tooltip(tooltip::text("Direct Messages"))
                     .on_click(cx.listener(|this, _, window, cx| {
                         this.open_direct_messages(window, cx);
                     })),
@@ -84,19 +80,10 @@ impl HomeScreen {
         let guild_id = guild.id;
         let guild_name = SharedString::from(guild.name.clone());
         let is_selected = self.view == View::Guild && self.selected_guild == Some(guild_id);
-        let selected_bg = cx.theme().sidebar_accent;
 
-        div()
-            .id(("guild", guild_id.get()))
-            .cursor_pointer()
-            .p(px(4.))
-            .rounded(px(20.))
-            .when(is_selected, |this| this.bg(selected_bg))
+        selection_pill(div().id(("guild", guild_id.get())), is_selected, cx)
             .child(guild_avatar(guild, px(48.)))
-            .tooltip({
-                let guild_name = guild_name.clone();
-                move |window, cx| Tooltip::new(guild_name.clone()).build(window, cx)
-            })
+            .tooltip(tooltip::text(guild_name))
             .on_click(cx.listener(move |this, _, window, cx| {
                 this.select_guild(guild_id, window, cx);
             }))
@@ -129,7 +116,9 @@ impl HomeScreen {
             // Expanded, the tint runs behind the column so its guilds read as
             // being inside the folder rather than loose in the rail.
             .when(expanded, |this| {
-                this.p(px(4.)).rounded(px(20.)).bg(accent.opacity(0.12))
+                this.p(px(4.))
+                    .rounded(px(PILL_RADIUS))
+                    .bg(accent.opacity(0.12))
             })
             .child(
                 div()
@@ -150,7 +139,7 @@ impl HomeScreen {
                             this.child(folder_preview(&folder.guilds))
                         }
                     })
-                    .tooltip(move |window, cx| Tooltip::new(label.clone()).build(window, cx))
+                    .tooltip(tooltip::text(label))
                     .on_click(cx.listener(move |this, _, _, cx| {
                         if !this.expanded_folders.remove(&folder_id) {
                             this.expanded_folders.insert(folder_id);
@@ -167,6 +156,25 @@ impl HomeScreen {
                 )
             })
     }
+}
+
+/// The padded frame around a rail icon, which lifts off the rail as a raised
+/// pill while its guild (or the DMs) is the one open.
+fn selection_pill(frame: Stateful<Div>, selected: bool, cx: &App) -> Stateful<Div> {
+    let theme = cx.theme();
+    frame
+        .p(px(4.))
+        .rounded(px(PILL_RADIUS))
+        .cursor_pointer()
+        .when(selected, |this| {
+            this.bg(theme.sidebar_accent).lit(
+                Level::Raised,
+                Finish::Subtle,
+                px(56.),
+                px(PILL_RADIUS),
+                cx,
+            )
+        })
 }
 
 /// The first few of a collapsed folder's guilds, tiled inside its square.

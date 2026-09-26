@@ -10,6 +10,7 @@ use gpui::*;
 use gpui_component::{ActiveTheme as _, h_flex, v_flex};
 
 use crate::screens::home::{HomeScreen, View};
+use crate::ui::depth::radius;
 use crate::ui::window_controls::WindowControls;
 
 /// Height of the conversation header, in pixels.
@@ -61,7 +62,7 @@ pub(super) fn header(content: impl IntoElement, cx: &App) -> impl IntoElement {
         .border_b_1()
         .border_color(cx.theme().border)
         .child(content)
-        .child(WindowControls)
+        .child(WindowControls::default().corner(radius::CARD - px(1.)))
 }
 
 /// The left half of [`header`], holding whatever names the conversation. Empty
