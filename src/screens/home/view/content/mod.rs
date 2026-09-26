@@ -62,7 +62,13 @@ pub(super) fn header(content: impl IntoElement, cx: &App) -> impl IntoElement {
         .border_b_1()
         .border_color(cx.theme().border)
         .child(content)
-        .child(WindowControls::default().corner(radius::CARD - px(1.)))
+        .child(
+            WindowControls::default()
+                .corner(radius::CARD - px(1.))
+                // Out through the panel's 1px ring and the inset around it, to
+                // the window's own corner.
+                .reach(px(super::INSET + 1.)),
+        )
 }
 
 /// The left half of [`header`], holding whatever names the conversation. Empty

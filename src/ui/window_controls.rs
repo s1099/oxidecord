@@ -18,6 +18,7 @@ const CONTROL_WIDTH: f32 = 46.;
 #[derive(IntoElement, Default)]
 pub struct WindowControls {
     corner: Pixels,
+    reach: Pixels,
 }
 
 impl WindowControls {
@@ -28,10 +29,39 @@ impl WindowControls {
         self.corner = radius;
         self
     }
+
+    /// Stretches the close button's target `distance` past its top and right
+    /// edges, for controls inset from the window's corner. Flinging the pointer
+    /// into the corner should land on close, the way it does on every other
+    /// window, rather than on the gutter around the panel.
+    pub fn reach(mut self, distance: Pixels) -> Self {
+        self.reach = distance;
+        self
+    }
 }
 
 impl RenderOnce for WindowControls {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+        // Which of the two reach strips (above, beside) the pointer is over,
+        // kept apart because moving between them reports one entering and the
+        // other leaving in no particular order.
+        let reach_hovered = window.use_keyed_state("window-close-reach", cx, |_, _| [false; 2]);
+        let highlight = reach_hovered.read(cx).contains(&true);
+
+        let mut close =
+            Control::Close
+                .element(cx)
+                .rounded_tr(self.corner)
+                .when(highlight, |this| {
+                    let theme = cx.theme();
+                    this.bg(theme.danger).text_color(theme.danger_foreground)
+                });
+        if self.reach > px(0.) {
+            close = close
+                .relative()
+                .child(close_reach(self.reach, reach_hovered));
+        }
+
         h_flex()
             .id("window-controls")
             .h_full()
@@ -48,8 +78,53 @@ impl RenderOnce for WindowControls {
                 }
                 .element(cx),
             )
-            .child(Control::Close.element(cx).rounded_tr(self.corner))
+            .child(close)
     }
+}
+
+/// Invisible strips above and to the right of the close button that Windows
+/// treats as part of it (see [`WindowControls::reach`]).
+///
+/// Deferred, because the button sits in a panel that clips to its bounds and
+/// would clip these away with it. They also block the mouse: control areas
+/// resolve in paint order, and without that the window's drag strip along the
+/// top edge, painted first, would claim the corner.
+fn close_reach(distance: Pixels, hovered: Entity<[bool; 2]>) -> impl IntoElement {
+    let strip = |index: usize| {
+        let hovered = hovered.clone();
+        div()
+            .id(("window-close-reach", index))
+            .absolute()
+            .occlude()
+            .on_hover(move |is_hovered, _window, cx| {
+                hovered.update(cx, |hovered, cx| {
+                    hovered[index] = *is_hovered;
+                    cx.notify();
+                })
+            })
+            .when(cfg!(target_os = "windows"), |this| {
+                this.window_control_area(WindowControlArea::Close)
+            })
+            .when(!cfg!(target_os = "windows"), |this| {
+                this.on_click(|_event, window, _cx| window.remove_window())
+            })
+    };
+
+    deferred(
+        div()
+            .absolute()
+            .inset_0()
+            // Above, running on to the corner.
+            .child(
+                strip(0)
+                    .top(-distance)
+                    .left_0()
+                    .right(-distance)
+                    .h(distance),
+            )
+            // Beside, down to the button's bottom edge.
+            .child(strip(1).top_0().bottom_0().right(-distance).w(distance)),
+    )
 }
 
 #[derive(Clone, Copy)]
