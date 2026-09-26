@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use twilight_model::id::{
     Id,
-    marker::{EmojiMarker, MessageMarker, UserMarker},
+    marker::{EmojiMarker, MessageMarker, RoleMarker, UserMarker},
 };
 
 use super::cdn;
@@ -25,6 +25,12 @@ pub struct Message {
     pub markdown: Arc<Markdown>,
     /// The users the content mentions, which is how `<@id>` gets a name.
     pub mentions: Vec<MentionedUser>,
+    /// Whether the message pings everyone who can see it: an `@everyone` or
+    /// `@here` its author had permission to use. Discord only sets it when the
+    /// ping actually went out, so it's what decides the highlight, not the text.
+    pub mention_everyone: bool,
+    /// The roles the message pings.
+    pub mention_roles: Vec<Id<RoleMarker>>,
     pub timestamp: String,
     /// Whether the message has been edited since it was sent, which the view
     /// marks with "(edited)" after the content.
@@ -53,6 +59,8 @@ impl Message {
         self.content = edited.content;
         self.markdown = edited.markdown;
         self.mentions = edited.mentions;
+        self.mention_everyone = edited.mention_everyone;
+        self.mention_roles = edited.mention_roles;
         self.edited = edited.edited;
         // Attachments can be removed in an edit, and links added or removed
         // change the embeds.
@@ -131,6 +139,24 @@ pub struct ImageAttachment {
     /// inline preview while preserving aspect ratio.
     pub width: Option<u32>,
     pub height: Option<u32>,
+    /// Set when the attachment is marked as a spoiler.
+    pub spoiler: Option<SpoilerCover>,
+}
+
+/// What an attachment marked as a spoiler shows until it's clicked open.
+#[derive(Clone)]
+pub struct SpoilerCover {
+    /// The picture asked of the media proxy at a few pixels across. Drawn at
+    /// full size it smears into a blur, which gpui has no filter for — its
+    /// sampler filters linearly, so the upscale does the blurring.
+    pub url: String,
+}
+
+impl SpoilerCover {
+    /// The longest side of the picture a cover is fetched at, in pixels. Only
+    /// the broad colours should survive being blown back up to preview size —
+    /// at 16 a face or a line of text was still readable through the smear.
+    pub const SIZE: u32 = 6;
 }
 
 /// A video attachment, played inline by [`crate::platform::video`].
@@ -151,6 +177,9 @@ pub struct VideoAttachment {
     pub width: Option<u32>,
     pub height: Option<u32>,
     pub size: u64,
+    /// Set when the attachment is marked as a spoiler. The cover is a blurred
+    /// poster frame.
+    pub spoiler: Option<SpoilerCover>,
 }
 
 pub(in crate::discord) fn convert_message(message: twilight_model::channel::Message) -> Message {
@@ -171,6 +200,8 @@ pub(in crate::discord) fn convert_message(message: twilight_model::channel::Mess
         author_avatar_url,
         markdown: Arc::new(Markdown::parse(&message.content)),
         mentions: convert_mentions(message.mentions),
+        mention_everyone: message.mention_everyone,
+        mention_roles: message.mention_roles,
         content: message.content,
         timestamp: format_timestamp(message.timestamp),
         edited: message.edited_timestamp.is_some(),
@@ -188,6 +219,15 @@ pub(in crate::discord) fn convert_message(message: twilight_model::channel::Mess
                 ),
                 width: attachment.width.map(|w| w as u32),
                 height: attachment.height.map(|h| h as u32),
+                spoiler: is_spoiler(attachment).then(|| SpoilerCover {
+                    url: cdn::scaled_url(
+                        &attachment.proxy_url,
+                        attachment.width,
+                        attachment.height,
+                        SpoilerCover::SIZE,
+                        SpoilerCover::SIZE,
+                    ),
+                }),
             })
             .collect(),
         videos: message
@@ -196,7 +236,10 @@ pub(in crate::discord) fn convert_message(message: twilight_model::channel::Mess
             .filter(|attachment| is_video(attachment))
             .map(|attachment| VideoAttachment {
                 url: attachment.proxy_url.clone(),
-                poster_url: poster_url(attachment),
+                poster_url: poster_url(attachment, PREVIEW_MAX_WIDTH, PREVIEW_MAX_HEIGHT),
+                spoiler: is_spoiler(attachment).then(|| SpoilerCover {
+                    url: poster_url(attachment, SpoilerCover::SIZE, SpoilerCover::SIZE),
+                }),
                 filename: attachment.filename.clone(),
                 width: attachment.width.map(|w| w as u32),
                 height: attachment.height.map(|h| h as u32),
@@ -289,6 +332,16 @@ fn single_line_preview(content: &str) -> String {
 const PREVIEW_MAX_WIDTH: u32 = 480;
 const PREVIEW_MAX_HEIGHT: u32 = 390;
 
+/// Whether the uploader marked an attachment as a spoiler. There's no flag for
+/// it in the API: the client prefixes the filename, and every client reads it
+/// back the same way.
+fn is_spoiler(attachment: &twilight_model::channel::Attachment) -> bool {
+    attachment.filename.starts_with(SPOILER_PREFIX)
+}
+
+/// The filename prefix that marks an attachment as a spoiler.
+pub const SPOILER_PREFIX: &str = "SPOILER_";
+
 /// Whether an attachment is an image we can render inline. Prefers Discord's
 /// reported media type and falls back to the filename extension.
 fn is_image(attachment: &twilight_model::channel::Attachment) -> bool {
@@ -317,17 +370,17 @@ fn is_video(attachment: &twilight_model::channel::Attachment) -> bool {
         .any(|ext| name.ends_with(ext))
 }
 
-/// Asks the media proxy for a still frame of a video, at the size the poster
-/// card renders it. Discord serves one for the common codecs and 404s for the
-/// rest, which the card is built to survive.
-fn poster_url(attachment: &twilight_model::channel::Attachment) -> String {
+/// Asks the media proxy for a still frame of a video, fitted in the given box.
+/// Discord serves one for the common codecs and 404s for the rest, which the
+/// card is built to survive.
+fn poster_url(attachment: &twilight_model::channel::Attachment, width: u32, height: u32) -> String {
     let separator = if attachment.proxy_url.contains('?') {
         '&'
     } else {
         '?'
     };
     format!(
-        "{}{separator}format=jpeg&width={PREVIEW_MAX_WIDTH}&height={PREVIEW_MAX_HEIGHT}",
+        "{}{separator}format=jpeg&width={width}&height={height}",
         attachment.proxy_url
     )
 }

@@ -75,6 +75,7 @@ impl HomeScreen {
                 id,
                 filename,
                 data: AttachmentData::Image(Arc::new(image)),
+                spoiler: false,
             });
         }
 
@@ -125,6 +126,7 @@ impl HomeScreen {
                                 id,
                                 filename: file.filename,
                                 data: file.data,
+                                spoiler: false,
                             });
                         }
                         Err(reason) => rejected.push(reason),
@@ -142,6 +144,21 @@ impl HomeScreen {
     fn reserve_attachment_id(&mut self) -> u64 {
         self.next_attachment_id += 1;
         self.next_attachment_id
+    }
+
+    pub(in crate::screens::home) fn toggle_attachment_spoiler(
+        &mut self,
+        id: u64,
+        cx: &mut Context<Self>,
+    ) {
+        if let Some(attachment) = self
+            .pending_attachments
+            .iter_mut()
+            .find(|attachment| attachment.id == id)
+        {
+            attachment.spoiler = !attachment.spoiler;
+            cx.notify();
+        }
     }
 
     pub(in crate::screens::home) fn remove_attachment(&mut self, id: u64, cx: &mut Context<Self>) {

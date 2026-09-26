@@ -4,6 +4,8 @@ use std::sync::Arc;
 
 use gpui::*;
 
+use crate::discord;
+
 /// A file staged for sending, picked from disk or pasted from the clipboard
 pub(crate) struct PendingAttachment {
     /// Unique within the composer; keys the card element and targets removal.
@@ -13,6 +15,8 @@ pub(crate) struct PendingAttachment {
     pub filename: String,
     /// The file's contents, rendered as a preview and uploaded on send.
     pub data: AttachmentData,
+    /// Whether it goes out marked as a spoiler, hidden until clicked.
+    pub spoiler: bool,
 }
 
 /// The contents of a staged attachment. An image keeps the decoded [`Image`], so
@@ -40,6 +44,16 @@ impl AttachmentData {
 }
 
 impl PendingAttachment {
+    /// The name it's uploaded under. Discord has no spoiler flag on an
+    /// attachment, only the filename prefix every client recognises.
+    pub fn upload_filename(&self) -> String {
+        if self.spoiler && !self.filename.starts_with(discord::SPOILER_PREFIX) {
+            format!("{}{}", discord::SPOILER_PREFIX, self.filename)
+        } else {
+            self.filename.clone()
+        }
+    }
+
     /// Drops the decoded thumbnail gpui kept for this attachment's preview.
     ///
     /// `img` decodes an `Arc<Image>` into the global asset cache, which has no

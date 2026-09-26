@@ -60,6 +60,14 @@ pub enum GatewayEvent {
         guild_id: Id<GuildMarker>,
         role_id: Id<RoleMarker>,
     },
+    /// A guild member's roles, from `READY`, `GUILD_CREATE`, or
+    /// `GUILD_MEMBER_UPDATE`. Not only the signed-in user's — a user session
+    /// is sent other members too — so the receiver picks out its own.
+    MemberRoles {
+        guild_id: Id<GuildMarker>,
+        user_id: Id<UserMarker>,
+        roles: Vec<Id<RoleMarker>>,
+    },
 }
 
 /// Sends commands up the gateway from outside the receive loop.
@@ -118,6 +126,11 @@ struct ReadyPayload {
     /// with the rest following in `GUILD_CREATE`.
     #[serde(default)]
     guilds: Vec<GuildRolesPayload>,
+    /// The signed-in user's member in each guild, in the same order as
+    /// `guilds`, when the session asked for deduplicated payloads. Otherwise
+    /// they arrive in each guild's own `members`.
+    #[serde(default)]
+    merged_members: Vec<Vec<RawMember>>,
 }
 
 #[derive(Deserialize)]
@@ -125,6 +138,34 @@ struct GuildRolesPayload {
     id: Id<GuildMarker>,
     #[serde(default)]
     roles: Vec<RawRole>,
+    #[serde(default)]
+    members: Vec<RawMember>,
+}
+
+/// A guild member, of which only the roles are read. Where the user's id is
+/// depends on the payload: a nested user in most, a bare `user_id` in
+/// `merged_members`.
+#[derive(Deserialize)]
+struct RawMember {
+    #[serde(default)]
+    user: Option<MemberUser>,
+    #[serde(default)]
+    user_id: Option<Id<UserMarker>>,
+    #[serde(default)]
+    roles: Vec<Id<RoleMarker>>,
+}
+
+#[derive(Deserialize)]
+struct MemberUser {
+    id: Id<UserMarker>,
+}
+
+/// `GUILD_MEMBER_UPDATE`.
+#[derive(Deserialize)]
+struct MemberUpdatePayload {
+    guild_id: Id<GuildMarker>,
+    #[serde(flatten)]
+    member: RawMember,
 }
 
 /// `GUILD_ROLE_CREATE` and `GUILD_ROLE_UPDATE`.
@@ -145,9 +186,9 @@ struct ReadyUser {
     id: Id<UserMarker>,
 }
 
-/// `GUILD_CREATE`, of which only the voice states and roles are read here:
-/// who is already sitting in each of the guild's voice channels, and what a
-/// role mention should be called.
+/// `GUILD_CREATE`, of which only the voice states, roles and members are read
+/// here: who is already sitting in each of the guild's voice channels, what a
+/// role mention should be called, and which roles the user holds.
 #[derive(Deserialize)]
 struct GuildCreatePayload {
     id: Id<GuildMarker>,
@@ -155,6 +196,8 @@ struct GuildCreatePayload {
     voice_states: Vec<RawVoiceState>,
     #[serde(default)]
     roles: Vec<RawRole>,
+    #[serde(default)]
+    members: Vec<RawMember>,
 }
 
 /// Opens a gateway websocket connection and invokes `on_event` for every
@@ -216,12 +259,16 @@ fn dispatch(name: &str, data: &RawValue) -> Vec<GatewayEvent> {
     match name {
         "READY" => serde_json::from_str::<ReadyPayload>(data)
             .map(|ready| {
-                let roles = ready.guilds.into_iter().filter_map(guild_roles);
-                std::iter::once(GatewayEvent::Ready {
+                let mut events = vec![GatewayEvent::Ready {
                     user_id: ready.user.id,
-                })
-                .chain(roles)
-                .collect()
+                }];
+                let mut merged = ready.merged_members.into_iter();
+                for guild in ready.guilds {
+                    let members = merged.next().unwrap_or_default();
+                    events.extend(member_roles(guild.id, members));
+                    events.extend(guild_roles(guild));
+                }
+                events
             })
             .unwrap_or_default(),
         "MESSAGE_CREATE" => serde_json::from_str::<twilight_model::channel::Message>(data)
@@ -254,6 +301,7 @@ fn dispatch(name: &str, data: &RawValue) -> Vec<GatewayEvent> {
                 let roles = guild_roles(GuildRolesPayload {
                     id: guild.id,
                     roles: guild.roles,
+                    members: guild.members,
                 });
                 guild
                     .voice_states
@@ -283,15 +331,36 @@ fn dispatch(name: &str, data: &RawValue) -> Vec<GatewayEvent> {
                 }]
             })
             .unwrap_or_default(),
+        "GUILD_MEMBER_UPDATE" => serde_json::from_str::<MemberUpdatePayload>(data)
+            .map(|update| member_roles(update.guild_id, vec![update.member]).collect())
+            .unwrap_or_default(),
         _ => Vec::new(),
     }
 }
 
-/// A guild's roles as an event, or nothing for a guild that arrived without
-/// them (an unavailable one in `READY`).
-fn guild_roles(guild: GuildRolesPayload) -> Option<GatewayEvent> {
-    (!guild.roles.is_empty()).then(|| GatewayEvent::GuildRoles {
+/// Each member's roles as an event, skipping any that arrived without a user.
+fn member_roles(
+    guild_id: Id<GuildMarker>,
+    members: Vec<RawMember>,
+) -> impl Iterator<Item = GatewayEvent> {
+    members.into_iter().filter_map(move |member| {
+        let user_id = member.user.map(|user| user.id).or(member.user_id)?;
+        Some(GatewayEvent::MemberRoles {
+            guild_id,
+            user_id,
+            roles: member.roles,
+        })
+    })
+}
+
+/// A guild's roles and its members' as events. An unavailable guild in
+/// `READY` arrives with neither, and yields nothing.
+fn guild_roles(guild: GuildRolesPayload) -> impl Iterator<Item = GatewayEvent> {
+    let roles = (!guild.roles.is_empty()).then(|| GatewayEvent::GuildRoles {
         guild_id: guild.id,
         roles: guild.roles.into_iter().map(convert_role).collect(),
-    })
+    });
+    roles
+        .into_iter()
+        .chain(member_roles(guild.id, guild.members))
 }

@@ -100,6 +100,16 @@ impl MediaKey {
         )))
     }
 
+    /// The key a spoiler cover over this attachment is revealed by, in
+    /// `revealed_spoilers`. `role` tells an image from a video, since each is
+    /// indexed separately.
+    pub fn spoiler_key(self, role: &str) -> SharedString {
+        SharedString::from(format!(
+            "attachment-{role}-spoiler-{}-{}",
+            self.message_id, self.index
+        ))
+    }
+
     /// A hover group shared by the whole item.
     pub fn group(self) -> SharedString {
         SharedString::from(format!("media-{}-{}", self.message_id, self.index))
@@ -246,6 +256,9 @@ pub struct HomeScreen {
     /// Every guild's roles, from the gateway, so a role mention can be named
     /// and coloured.
     pub(super) guild_roles: HashMap<Id<GuildMarker>, HashMap<Id<RoleMarker>, discord::Role>>,
+    /// The roles the signed-in user holds in each guild, which decide whether
+    /// a role mention pings them.
+    pub(super) self_roles: HashMap<Id<GuildMarker>, Vec<Id<RoleMarker>>>,
     /// Spoilers clicked open in the open conversation, by the key the view
     /// gives each one. Cleared with the conversation, as Discord hides them
     /// again once you leave.
@@ -338,6 +351,7 @@ impl HomeScreen {
             profile_popup: None,
             profile_cache: HashMap::new(),
             guild_roles: HashMap::new(),
+            self_roles: HashMap::new(),
             revealed_spoilers: HashSet::new(),
             video: None,
             message_input,

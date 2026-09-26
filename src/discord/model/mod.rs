@@ -21,7 +21,7 @@ pub use guild::{Guild, Role};
 pub use markdown::{Block, Inline, List, Markdown, Mention};
 pub use message::{
     ImageAttachment, MentionedUser, Message, MessageReference, Reaction, ReactionEmoji,
-    VideoAttachment,
+    SPOILER_PREFIX, SpoilerCover, VideoAttachment,
 };
 pub use settings::GuildFolders;
 pub use user::{CurrentUser, UserProfile};

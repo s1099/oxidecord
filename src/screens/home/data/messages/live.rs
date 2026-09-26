@@ -94,6 +94,16 @@ impl HomeScreen {
                 }
                 cx.notify();
             }
+            discord::GatewayEvent::MemberRoles {
+                guild_id,
+                user_id,
+                roles,
+            } => {
+                if Some(user_id) == self.self_user_id {
+                    self.self_roles.insert(guild_id, roles);
+                    cx.notify();
+                }
+            }
         }
     }
 

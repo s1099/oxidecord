@@ -12,9 +12,9 @@ use gpui::*;
 use gpui_component::{ActiveTheme as _, h_flex, v_flex};
 
 use crate::discord;
-use crate::screens::home::HomeScreen;
 use crate::screens::home::state::MediaKey;
 use crate::screens::home::view::avatar;
+use crate::screens::home::{HomeScreen, View};
 
 use super::markdown::MarkdownOptions;
 use super::{GROUP_GAP, MESSAGE_PADDING_X};
@@ -27,6 +27,9 @@ const CONTENT_INDENT: f32 = 52.;
 /// uses similar bounds; the aspect ratio is preserved within them.
 const MEDIA_MAX_WIDTH: f32 = 400.;
 const MEDIA_MAX_HEIGHT: f32 = 300.;
+
+/// The bar down the left edge of a message that mentions the user.
+const MENTION_BAR_WIDTH: f32 = 2.;
 
 /// Scales reported dimensions down into a box, keeping their shape. `None`
 /// when Discord didn't report them, in which case the element is capped rather
@@ -59,6 +62,7 @@ impl HomeScreen {
             .as_ref()
             .filter(|editing| editing.message_id == message.id);
 
+        let mentioned = self.mentions_me(message);
         let has_images = !message.images.is_empty();
         let has_videos = !message.videos.is_empty();
         let has_embeds = !message.embeds.is_empty();
@@ -97,12 +101,18 @@ impl HomeScreen {
             )
             .when(has_images, |this| {
                 this.child(
-                    v_flex().gap_1().children(
-                        message
-                            .images
-                            .iter()
-                            .map(|image| attachment::render_image(image, &self.image_cache)),
-                    ),
+                    v_flex()
+                        .gap_1()
+                        .children(message.images.iter().enumerate().map(|(index, image)| {
+                            self.render_image(
+                                image,
+                                MediaKey {
+                                    message_id: message.id.get(),
+                                    index,
+                                },
+                                cx,
+                            )
+                        })),
                 )
             })
             .when(has_videos, |this| {
@@ -143,19 +153,63 @@ impl HomeScreen {
         // Hovering anywhere over the row highlights its whole width and reveals
         // the floating action toolbar, like Discord.
         let group_name = SharedString::from(format!("message-{}", message.id.get()));
+        let mention_tint = theme.warning;
         div()
             .id(("message", message.id.get()))
             .group(group_name.clone())
             .relative()
             .w_full()
             .min_w_0()
-            .hover(|this| this.bg(theme.accent.opacity(0.4)))
+            .map(|this| {
+                if mentioned {
+                    // A mention keeps its tint under the pointer, only deeper,
+                    // so hovering doesn't hide which messages were for you.
+                    this.bg(mention_tint.opacity(0.1))
+                        .hover(|this| this.bg(mention_tint.opacity(0.16)))
+                        .child(
+                            div()
+                                .absolute()
+                                .top_0()
+                                .bottom_0()
+                                .left_0()
+                                .w(px(MENTION_BAR_WIDTH))
+                                .bg(mention_tint),
+                        )
+                } else {
+                    this.hover(|this| this.bg(theme.accent.opacity(0.4)))
+                }
+            })
             // A message open for editing stays lit while the pointer is
             // elsewhere, so it's clear which one the box belongs to.
             .when(editing.is_some(), |this| this.bg(theme.accent.opacity(0.4)))
             .child(inner)
             .child(self.render_message_toolbar(message, &group_name, cx))
             .into_any_element()
+    }
+
+    /// Whether a message pings the signed-in user, which Discord marks by
+    /// tinting its row: a mention of them by name (a reply that pings counts,
+    /// since it lists the replied-to author among the mentions), of one of
+    /// their roles, or an `@everyone` or `@here` that went out.
+    fn mentions_me(&self, message: &discord::Message) -> bool {
+        let Some(self_id) = self.self_user_id else {
+            return false;
+        };
+        if message.mention_everyone || message.mentions.iter().any(|user| user.id == self_id) {
+            return true;
+        }
+        // Role mentions only exist in guilds, and the open guild is the
+        // message's own.
+        let roles = self
+            .selected_guild
+            .filter(|_| self.view == View::Guild)
+            .and_then(|guild_id| self.self_roles.get(&guild_id));
+        roles.is_some_and(|roles| {
+            message
+                .mention_roles
+                .iter()
+                .any(|role| roles.contains(role))
+        })
     }
 
     /// The first message of an author group: the avatar, name, and timestamp

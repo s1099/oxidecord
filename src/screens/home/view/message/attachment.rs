@@ -22,30 +22,124 @@ use super::{MEDIA_MAX_HEIGHT, MEDIA_MAX_WIDTH, fit_within};
 /// be, so the card rarely resizes once the first frame arrives.
 const FALLBACK_VIDEO_SIZE: (f32, f32) = (MEDIA_MAX_WIDTH, MEDIA_MAX_WIDTH * 9. / 16.);
 
-pub(super) fn render_image(
-    image: &discord::ImageAttachment,
-    cache: &Entity<RetainAllImageCache>,
-) -> impl IntoElement {
-    // The cache has to be named on the element itself. An ancestor
-    // `image_cache(..)` only pushes onto the cache stack during layout and
-    // paint, and `list` renders its items during *prepaint* — so images inside
-    // the message list would otherwise miss the stack entirely and fall back to
-    // gpui's global asset cache, which never evicts.
-    let mut element = img(image.url.clone())
-        .image_cache(cache)
-        .rounded(px(8.))
-        .shadow(media_shadow())
-        .max_w(px(MEDIA_MAX_WIDTH));
-    // With intrinsic dimensions we can lay out the exact scaled box, so the
-    // message doesn't reflow once the image finishes loading.
-    match fit_within(image.width, image.height, MEDIA_MAX_WIDTH, MEDIA_MAX_HEIGHT) {
-        Some((width, height)) => element = element.w(px(width)).h(px(height)),
-        None => element = element.max_h(px(MEDIA_MAX_HEIGHT)),
-    }
-    element
-}
+/// What a spoiler image with no reported dimensions is covered at. Its real
+/// shape is unknown until it's revealed, so the cover is just a card.
+const FALLBACK_COVER_SIZE: (f32, f32) = (MEDIA_MAX_WIDTH, MEDIA_MAX_WIDTH * 9. / 16.);
 
 impl HomeScreen {
+    /// One image attachment, or the cover over it while it's an unrevealed
+    /// spoiler.
+    pub(super) fn render_image(
+        &self,
+        image: &discord::ImageAttachment,
+        key: MediaKey,
+        cx: &Context<Self>,
+    ) -> AnyElement {
+        let size = fit_within(image.width, image.height, MEDIA_MAX_WIDTH, MEDIA_MAX_HEIGHT);
+
+        if let Some(cover) = self.unrevealed_spoiler(image.spoiler.as_ref(), key, "image") {
+            let (width, height) = size.unwrap_or(FALLBACK_COVER_SIZE);
+            return self.render_spoiler_cover(cover, key, "image", width, height, cx);
+        }
+
+        // The cache has to be named on the element itself. An ancestor
+        // `image_cache(..)` only pushes onto the cache stack during layout and
+        // paint, and `list` renders its items during *prepaint* — so images
+        // inside the message list would otherwise miss the stack entirely and
+        // fall back to gpui's global asset cache, which never evicts.
+        let element = img(image.url.clone())
+            .image_cache(&self.image_cache)
+            .rounded(px(8.))
+            .shadow(media_shadow())
+            .max_w(px(MEDIA_MAX_WIDTH));
+        // With intrinsic dimensions we can lay out the exact scaled box, so the
+        // message doesn't reflow once the image finishes loading.
+        match size {
+            Some((width, height)) => element.w(px(width)).h(px(height)),
+            None => element.max_h(px(MEDIA_MAX_HEIGHT)),
+        }
+        .into_any_element()
+    }
+
+    /// The cover an attachment marked as a spoiler shows, if it hasn't been
+    /// clicked open yet.
+    fn unrevealed_spoiler<'a>(
+        &self,
+        spoiler: Option<&'a discord::SpoilerCover>,
+        key: MediaKey,
+        role: &str,
+    ) -> Option<&'a discord::SpoilerCover> {
+        spoiler.filter(|_| !self.revealed_spoilers.contains(&key.spoiler_key(role)))
+    }
+
+    /// A blurred stand-in for a spoiler attachment, `width` by `height`, which
+    /// reveals it when clicked. The attachment itself isn't fetched until then.
+    fn render_spoiler_cover(
+        &self,
+        cover: &discord::SpoilerCover,
+        key: MediaKey,
+        role: &str,
+        width: f32,
+        height: f32,
+        cx: &Context<Self>,
+    ) -> AnyElement {
+        let theme = cx.theme();
+        // The reveal key doubles as the hover group, being unique per cover.
+        let reveal = key.spoiler_key(role);
+
+        // The picture is a few pixels across, stretched into a blur. gpui packs
+        // its atlas without padding, so the outer half of each edge pixel would
+        // be sampled against a neighbouring sprite; drawing the picture half a
+        // pixel larger all round pushes that fringe outside the clip. The
+        // picture's size is estimated the way the proxy was asked for it.
+        let scale = discord::SpoilerCover::SIZE as f32 / width.max(height);
+        let texel_width = width / (width * scale).round().max(1.);
+        let texel_height = height / (height * scale).round().max(1.);
+        let bleed = texel_width.max(texel_height) / 2.;
+
+        div()
+            .id(key.element_id(&format!("{role}-spoiler")))
+            .group(reveal.clone())
+            .relative()
+            .w(px(width))
+            .h(px(height))
+            .rounded(px(8.))
+            .shadow(media_shadow())
+            .overflow_hidden()
+            .bg(theme.muted)
+            .cursor_pointer()
+            .child(
+                img(cover.url.clone())
+                    .image_cache(&self.image_cache)
+                    .absolute()
+                    .top(px(-bleed))
+                    .left(px(-bleed))
+                    .w(px(width + 2. * bleed))
+                    .h(px(height + 2. * bleed))
+                    .object_fit(ObjectFit::Cover),
+            )
+            // A scrim rather than a theme colour, like the video controls: the
+            // label has to read against whatever colours the blur comes out.
+            .child(div().absolute().inset_0().bg(black().opacity(0.45)))
+            .child(centered(
+                div()
+                    .px_3()
+                    .py_1()
+                    .rounded_full()
+                    .bg(black().opacity(0.6))
+                    .group_hover(reveal.clone(), |this| this.bg(black().opacity(0.85)))
+                    .text_xs()
+                    .font_weight(FontWeight::BOLD)
+                    .text_color(white())
+                    .child("SPOILER"),
+            ))
+            .on_click(cx.listener(move |this, _, _window, cx| {
+                this.revealed_spoilers.insert(reveal.clone());
+                cx.notify();
+            }))
+            .into_any_element()
+    }
+
     /// One video attachment: a poster card that becomes the player in place
     /// when it's the clip being played.
     ///
@@ -77,6 +171,20 @@ impl HomeScreen {
                     fit_preview(f64::from(size.width.0), f64::from(size.height.0))
                 },
             );
+        let caption = div()
+            .text_xs()
+            .text_color(theme.muted_foreground)
+            .child(format!("{} · {}", video.filename, format_size(video.size)));
+
+        // A spoiler covers the whole card, play button and all, so the clip
+        // can't be started without first being revealed.
+        if let Some(cover) = self.unrevealed_spoiler(video.spoiler.as_ref(), key, "video") {
+            return v_flex()
+                .gap(px(2.))
+                .child(self.render_spoiler_cover(cover, key, "video", width, height, cx))
+                .child(caption)
+                .into_any_element();
+        }
 
         let surface = div()
             .id(key.element_id("video"))
@@ -151,12 +259,7 @@ impl HomeScreen {
         v_flex()
             .gap(px(2.))
             .child(surface)
-            .child(
-                div()
-                    .text_xs()
-                    .text_color(theme.muted_foreground)
-                    .child(format!("{} · {}", video.filename, format_size(video.size))),
-            )
+            .child(caption)
             .into_any_element()
     }
 

@@ -35,7 +35,10 @@ impl HomeScreen {
             .drain(..)
             .map(|attachment| {
                 attachment.release_preview(cx);
-                (attachment.filename, attachment.data.bytes().to_vec())
+                (
+                    attachment.upload_filename(),
+                    attachment.data.bytes().to_vec(),
+                )
             })
             .collect();
 
