@@ -6,6 +6,8 @@
 //! arrived can [`crate::voice`] open the connection, so a join is held in
 //! [`PendingVoice`] until then.
 
+use std::collections::HashMap;
+
 use gpui::*;
 use twilight_model::id::{
     Id,
@@ -199,19 +201,7 @@ impl HomeScreen {
         let is_self = Some(user_id) == self.self_user_id;
         let channel_id = state.channel_id;
 
-        // Gateway dispatches don't always repeat the member, so a state that
-        // arrives without one keeps the name and avatar already known.
-        let known = self.voice_states.get(&user_id);
-        let state = discord::VoiceUserState {
-            name: state
-                .name
-                .or_else(|| known.and_then(|state| state.name.clone())),
-            avatar_url: state
-                .avatar_url
-                .or_else(|| known.and_then(|state| state.avatar_url.clone())),
-            ..state
-        };
-
+        let state = with_known_profile(state, self.voice_states.get(&user_id));
         if channel_id.is_some() {
             self.voice_states.insert(user_id, state.clone());
         } else {
@@ -247,6 +237,36 @@ impl HomeScreen {
             }
         }
 
+        cx.notify();
+    }
+
+    /// Replaces everyone known to be in voice in `guild_id`, or everywhere
+    /// when it's `None`, with a fresh list. Anyone missing from it has left.
+    ///
+    /// Only the participant lists are touched. The open call follows the
+    /// `VOICE_STATE_UPDATE`s that answer its own join, which a snapshot taken
+    /// before that join could only contradict.
+    pub(in crate::screens::home) fn replace_voice_states(
+        &mut self,
+        guild_id: Option<Id<GuildMarker>>,
+        states: Vec<discord::VoiceUserState>,
+        cx: &mut Context<Self>,
+    ) {
+        let mut previous: HashMap<_, _> = match guild_id {
+            None => std::mem::take(&mut self.voice_states),
+            Some(guild_id) => self
+                .voice_states
+                .extract_if(|_, state| state.guild_id == Some(guild_id))
+                .collect(),
+        };
+        for state in states {
+            if state.channel_id.is_none() {
+                continue;
+            }
+            let known = previous.remove(&state.user_id);
+            let state = with_known_profile(state, known.as_ref());
+            self.voice_states.insert(state.user_id, state);
+        }
         cx.notify();
     }
 
@@ -389,19 +409,27 @@ impl HomeScreen {
             .filter(|state| state.channel_id == Some(channel_id))
             .map(|state| {
                 let is_self = Some(state.user_id) == self.self_user_id;
-                // The user's own name and avatar are already loaded, and a DM
-                // call's voice states carry no member to read them from.
+                // The state's own name is the guild's nickname for them, so it
+                // comes first, the user's own included. A DM call's states, and
+                // guild states whose member wasn't sent, carry none: the user's
+                // own is already loaded, and anyone whose profile was opened is
+                // cached.
                 let current = self.current_user.as_ref().filter(|_| is_self);
+                let profile = self.profile_cache.get(&state.user_id);
 
                 VoiceParticipant {
                     user_id: state.user_id,
-                    name: current
-                        .map(|user| user.name.clone())
-                        .or_else(|| state.name.clone())
+                    name: state
+                        .name
+                        .clone()
+                        .or_else(|| current.map(|user| user.name.clone()))
+                        .or_else(|| profile.map(|profile| profile.name.clone()))
                         .unwrap_or_else(|| "Unknown".into()),
-                    avatar_url: current
-                        .and_then(|user| user.avatar_url.clone())
-                        .or_else(|| state.avatar_url.clone()),
+                    avatar_url: state
+                        .avatar_url
+                        .clone()
+                        .or_else(|| current.and_then(|user| user.avatar_url.clone()))
+                        .or_else(|| profile.and_then(|profile| profile.avatar_url.clone())),
                     muted: state.self_mute || state.mute,
                     deafened: state.self_deaf || state.deaf,
                     speaking: self.voice_speaking.contains(&state.user_id),
@@ -412,5 +440,22 @@ impl HomeScreen {
 
         participants.sort_by_cached_key(|p| (!p.is_self, p.name.to_lowercase()));
         participants
+    }
+}
+
+/// Gateway dispatches don't always repeat the member, so a state that arrives
+/// without one keeps the name and avatar already known for that user.
+fn with_known_profile(
+    state: discord::VoiceUserState,
+    known: Option<&discord::VoiceUserState>,
+) -> discord::VoiceUserState {
+    discord::VoiceUserState {
+        name: state
+            .name
+            .or_else(|| known.and_then(|known| known.name.clone())),
+        avatar_url: state
+            .avatar_url
+            .or_else(|| known.and_then(|known| known.avatar_url.clone())),
+        ..state
     }
 }

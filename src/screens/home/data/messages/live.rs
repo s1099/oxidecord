@@ -67,14 +67,21 @@ impl HomeScreen {
 
     fn handle_gateway_event(&mut self, event: discord::GatewayEvent, cx: &mut Context<Self>) {
         match event {
-            discord::GatewayEvent::Ready { user_id } => {
+            discord::GatewayEvent::Ready {
+                user_id,
+                voice_states,
+            } => {
                 self.self_user_id = Some(user_id);
+                self.replace_voice_states(None, voice_states, cx);
             }
             discord::GatewayEvent::Message(incoming) => self.handle_incoming_message(incoming, cx),
             discord::GatewayEvent::MessageUpdate(incoming) => {
                 self.handle_message_update(incoming, cx)
             }
             discord::GatewayEvent::VoiceState(state) => self.handle_voice_state(state, cx),
+            discord::GatewayEvent::GuildVoiceStates { guild_id, states } => {
+                self.replace_voice_states(Some(guild_id), states, cx)
+            }
             discord::GatewayEvent::VoiceServer(server) => self.handle_voice_server(server, cx),
             discord::GatewayEvent::GuildRoles { guild_id, roles } => {
                 let roles = roles.into_iter().map(|role| (role.id, role)).collect();

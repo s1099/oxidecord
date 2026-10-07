@@ -28,8 +28,11 @@ pub use user::{CurrentUser, UserProfile};
 pub use voice::{VoiceServerInfo, VoiceUserState};
 
 pub(super) use channel::{convert_channel, convert_dms};
-pub(super) use guild::{RawRole, convert_guild, convert_role};
+pub(super) use guild::{RawMember, RawRole, convert_guild, convert_role};
 pub(super) use message::convert_message;
 pub(super) use settings::{RawSettingsProto, parse_guild_folders};
 pub(super) use user::{RawProfile, convert_current_user, convert_user_profile};
-pub(super) use voice::{RawVoiceServer, RawVoiceState, convert_voice_server, convert_voice_state};
+pub(super) use voice::{
+    RawVoiceServer, RawVoiceState, convert_guild_voice_states, convert_voice_server,
+    convert_voice_state,
+};
