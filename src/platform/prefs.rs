@@ -5,7 +5,7 @@
 //! a default instead of failing: an unreadable or malformed file reads as "no
 //! preferences set", and a failed write is dropped.
 
-use std::{fs, path::PathBuf};
+use std::{collections::BTreeMap, fs, path::PathBuf};
 
 use serde::{Deserialize, Serialize};
 
@@ -22,6 +22,10 @@ pub struct Prefs {
     /// the system calls the default.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub input_device: Option<String>,
+    /// Channel categories the user has collapsed, keyed by guild id. Raw ids
+    /// keep this module free of Discord types.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub collapsed_categories: BTreeMap<u64, Vec<u64>>,
 }
 
 /// Reads the preferences file, or returns the defaults if it isn't there yet.

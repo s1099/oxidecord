@@ -30,6 +30,11 @@ older than the installed Visual Studio, build through Ninja: `CMAKE_GENERATOR=Ni
   placeholder gaps once the text has wrapped.
 - `src/platform/` — runtime, http client, prefs, updater, and `video/` (inline video
   playback, decoded by the OS).
+- `platform/prefs.rs` — user preferences persisted to `prefs.json` in the config dir (theme,
+  input device, collapsed channel categories per guild). Reads/writes never fail — a bad file
+  reads as defaults. Use `prefs::update` to change one field without clobbering the rest; it
+  does disk I/O, so call it on discrete events (a pick, a switch), not every frame or toggle.
+  Collapsed categories load when a guild is opened and save on channel/guild switches.
 - `src/ui/` — theming, settings, dialogs, shared widgets.
 - `src/voice/` — songbird/cpal audio engine.
 - `themes/` — JSON presets baked into the binary by `build.rs`.

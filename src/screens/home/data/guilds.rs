@@ -7,6 +7,7 @@ use twilight_model::id::{
 };
 
 use crate::discord::{self, Channel};
+use crate::platform::prefs;
 use crate::screens::home::channels::build_channel_groups;
 use crate::screens::home::folders::build_rail_entries;
 use crate::screens::home::{HomeScreen, SessionExpired, View};
@@ -96,6 +97,7 @@ impl HomeScreen {
         if self.view == View::Guild && same_guild {
             return;
         }
+        self.save_collapsed_categories();
         self.view = View::Guild;
         // Returning from the DM view to the guild that's already loaded: switch
         // back to its channels without refetching them, reopening a channel
@@ -110,7 +112,7 @@ impl HomeScreen {
         self.selected_guild = Some(guild_id);
         self.channel_groups.clear();
         self.selected_channel = None;
-        self.collapsed_categories.clear();
+        self.load_collapsed_categories();
         self.channels_error = None;
         self.channels_loading = true;
         cx.notify();
@@ -146,6 +148,47 @@ impl HomeScreen {
             });
         })
         .detach();
+    }
+
+    /// Restores the selected guild's collapsed categories from the prefs file.
+    fn load_collapsed_categories(&mut self) {
+        let Some(guild_id) = self.selected_guild else {
+            return;
+        };
+        self.collapsed_categories = prefs::load()
+            .collapsed_categories
+            .remove(&guild_id.get())
+            .unwrap_or_default()
+            .into_iter()
+            .filter_map(Id::new_checked)
+            .collect();
+    }
+
+    /// Writes the selected guild's collapsed categories to the prefs file.
+    /// Called on channel and guild switches rather than on every toggle, so
+    /// clicking through categories doesn't rewrite the file each time.
+    pub(in crate::screens::home) fn save_collapsed_categories(&self) {
+        let Some(guild_id) = self.selected_guild else {
+            return;
+        };
+        let mut collapsed: Vec<u64> = self
+            .collapsed_categories
+            .iter()
+            .map(|id| id.get())
+            .collect();
+        collapsed.sort_unstable();
+
+        let mut prefs = prefs::load();
+        let stored = prefs.collapsed_categories.get(&guild_id.get());
+        if stored.map_or(collapsed.is_empty(), |stored| *stored == collapsed) {
+            return;
+        }
+        if collapsed.is_empty() {
+            prefs.collapsed_categories.remove(&guild_id.get());
+        } else {
+            prefs.collapsed_categories.insert(guild_id.get(), collapsed);
+        }
+        prefs::save(&prefs);
     }
 
     pub(in crate::screens::home) fn selected_channel_info(&self) -> Option<&Channel> {
