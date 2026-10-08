@@ -113,32 +113,37 @@ impl HomeScreen {
         v_flex()
             .items_center()
             .gap_2()
-            // Expanded, the tint runs behind the column so its guilds read as
-            // being inside the folder rather than loose in the rail.
+            // No padding: the icons' own pill frames inset the tint.
             .when(expanded, |this| {
-                this.p(px(4.))
-                    .rounded(px(PILL_RADIUS))
-                    .bg(accent.opacity(0.12))
+                this.rounded(px(PILL_RADIUS)).bg(accent.opacity(0.12))
             })
             .child(
                 div()
                     .id(("guild-folder", folder_id as u64))
+                    .p(px(4.))
                     .cursor_pointer()
-                    .size(px(48.))
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .rounded(px(16.))
-                    .bg(accent.opacity(0.24))
-                    // Collapsed, the folder stands in for the guild inside it.
-                    .when(holds_selected && !expanded, |this| this.bg(selected_bg))
-                    .map(|this| {
-                        if expanded {
-                            this.child(Icon::new(IconName::Folder).text_color(accent).size(px(24.)))
-                        } else {
-                            this.child(folder_preview(&folder.guilds))
-                        }
-                    })
+                    .child(
+                        div()
+                            .size(px(48.))
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .rounded(px(16.))
+                            .bg(accent.opacity(0.24))
+                            // Collapsed, the folder stands in for the guild inside it.
+                            .when(holds_selected && !expanded, |this| this.bg(selected_bg))
+                            .map(|this| {
+                                if expanded {
+                                    this.child(
+                                        Icon::new(IconName::Folder)
+                                            .text_color(accent)
+                                            .size(px(24.)),
+                                    )
+                                } else {
+                                    this.child(folder_preview(&folder.guilds))
+                                }
+                            }),
+                    )
                     .tooltip(tooltip::text(label))
                     .on_click(cx.listener(move |this, _, _, cx| {
                         if !this.expanded_folders.remove(&folder_id) {

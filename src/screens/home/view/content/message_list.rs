@@ -73,7 +73,10 @@ impl HomeScreen {
             .flex_1()
             .min_h_0()
             .w_full()
-            .py_2()
+            .pt_2()
+            // Breathing room between the newest message and the composer, taken
+            // from the list's viewport so the composer keeps its height.
+            .pb_6()
             .on_scroll_wheel(
                 cx.listener(|this, event, window, _| this.messages_scroll.absorb(event, window)),
             );
