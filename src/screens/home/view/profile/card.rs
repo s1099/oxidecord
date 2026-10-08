@@ -23,12 +23,13 @@ const AVATAR_SIZE: f32 = 80.;
 /// makes it read as sitting in front of the banner.
 const AVATAR_RING: f32 = 6.;
 
-/// How far the avatar's left edge sits from the card's.
-const AVATAR_INSET: f32 = 16.;
+/// How far the avatar's left edge sits from the card's, which the content
+/// below it lines up with too.
+const AVATAR_INSET: f32 = 12.;
 
-/// Longest the "About Me" text gets before it's clipped, so a wall-of-text bio
-/// can't stretch the card down the whole window.
-const MAX_BIO_HEIGHT: f32 = 120.;
+/// Lines of "About Me" shown before it's cut off with an ellipsis, so a
+/// wall-of-text bio can't stretch the card down the whole window.
+const MAX_BIO_LINES: usize = 3;
 
 impl HomeScreen {
     pub(super) fn render_profile_card(
@@ -182,17 +183,18 @@ fn render_identity(popup: &ProfilePopup, cx: &App) -> impl IntoElement {
 /// The inner box holding the "About Me" and "Member Since" sections.
 fn render_details(profile: &UserProfile, cx: &App) -> AnyElement {
     v_flex()
-        .p(px(12.))
-        .gap(px(12.))
+        .px(px(10.))
+        .py(px(10.))
+        .gap(px(10.))
         .rounded(radius::CONTROL)
         .bg(cx.theme().background)
         .when_some(profile.bio.clone(), |this, bio| {
             this.child(section(
                 "ABOUT ME",
                 div()
-                    .max_h(px(MAX_BIO_HEIGHT))
-                    .overflow_hidden()
-                    .child(bio)
+                    .line_clamp(MAX_BIO_LINES)
+                    .text_ellipsis()
+                    .child(clamp_lines(&bio, MAX_BIO_LINES))
                     .into_any_element(),
                 cx,
             ))
@@ -204,6 +206,25 @@ fn render_details(profile: &UserProfile, cx: &App) -> AnyElement {
             cx,
         ))
         .into_any_element()
+}
+
+/// Keeps the first `max` lines of `text`, ending the last with an ellipsis if
+/// any were dropped.
+///
+/// gpui's own clamp only places its ellipsis by estimating how much fits in
+/// `max` full-width lines, so it never fires for a bio whose explicit line
+/// breaks run out of lines first; this covers that case and leaves wrapping
+/// overflow to the clamp.
+fn clamp_lines(text: &str, max: usize) -> String {
+    let mut lines = text.lines();
+    let mut kept = lines.by_ref().take(max).collect::<Vec<_>>().join(
+        "
+",
+    );
+    if lines.next().is_some() {
+        kept.push('…');
+    }
+    kept
 }
 
 /// A labelled block inside the card's inner box — an uppercase header over its

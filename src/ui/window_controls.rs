@@ -30,10 +30,9 @@ impl WindowControls {
         self
     }
 
-    /// Stretches the close button's target `distance` past its top and right
-    /// edges, for controls inset from the window's corner. Flinging the pointer
-    /// into the corner should land on close, the way it does on every other
-    /// window, rather than on the gutter around the panel.
+    /// Stretches every control's target `distance` past its top edge, and
+    /// close's past its right edge too, so flinging the pointer to the window's
+    /// edge lands on a button rather than the gutter around the panel.
     pub fn reach(mut self, distance: Pixels) -> Self {
         self.reach = distance;
         self
@@ -42,58 +41,51 @@ impl WindowControls {
 
 impl RenderOnce for WindowControls {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
-        // Which of the two reach strips (above, beside) the pointer is over,
-        // kept apart because moving between them reports one entering and the
-        // other leaving in no particular order.
-        let reach_hovered = window.use_keyed_state("window-close-reach", cx, |_, _| [false; 2]);
-        let highlight = reach_hovered.read(cx).contains(&true);
+        let control = |control: Control, window: &mut Window, cx: &mut App| {
+            // Per strip, since moving between them reports enter and leave in
+            // no particular order.
+            let reach_hovered = window.use_keyed_state(control.reach_id(), cx, |_, _| [false; 2]);
+            let highlight = reach_hovered.read(cx).contains(&true);
+            let (hover_bg, hover_fg, _) = control.colors(cx);
 
-        let mut close =
-            Control::Close
+            let element = control
                 .element(cx)
-                .rounded_tr(self.corner)
-                .when(highlight, |this| {
-                    let theme = cx.theme();
-                    this.bg(theme.danger).text_color(theme.danger_foreground)
-                });
-        if self.reach > px(0.) {
-            close = close
-                .relative()
-                .child(close_reach(self.reach, reach_hovered));
-        }
+                .when(highlight, |this| this.bg(hover_bg).text_color(hover_fg));
+            if self.reach > px(0.) {
+                element
+                    .relative()
+                    .child(reach(control, self.reach, reach_hovered))
+            } else {
+                element
+            }
+        };
+
+        let middle = if window.is_maximized() {
+            Control::Restore
+        } else {
+            Control::Maximize
+        };
 
         h_flex()
             .id("window-controls")
             .h_full()
             .flex_shrink_0()
             .items_center()
-            .child(Control::Minimize.element(cx))
-            // The middle button swaps with the window's state, the way every
-            // other window on the desktop does.
-            .child(
-                if window.is_maximized() {
-                    Control::Restore
-                } else {
-                    Control::Maximize
-                }
-                .element(cx),
-            )
-            .child(close)
+            .child(control(Control::Minimize, window, cx))
+            .child(control(middle, window, cx))
+            .child(control(Control::Close, window, cx).rounded_tr(self.corner))
     }
 }
 
-/// Invisible strips above and to the right of the close button that Windows
-/// treats as part of it (see [`WindowControls::reach`]).
+/// Invisible strips extending a control (see [`WindowControls::reach`]).
 ///
-/// Deferred, because the button sits in a panel that clips to its bounds and
-/// would clip these away with it. They also block the mouse: control areas
-/// resolve in paint order, and without that the window's drag strip along the
-/// top edge, painted first, would claim the corner.
-fn close_reach(distance: Pixels, hovered: Entity<[bool; 2]>) -> impl IntoElement {
+/// Deferred so the panel's clipping doesn't cut them off, and occluding so the
+/// window's drag strip, painted first, doesn't claim them.
+fn reach(control: Control, distance: Pixels, hovered: Entity<[bool; 2]>) -> impl IntoElement {
     let strip = |index: usize| {
         let hovered = hovered.clone();
         div()
-            .id(("window-close-reach", index))
+            .id((control.reach_id(), index))
             .absolute()
             .occlude()
             .on_hover(move |is_hovered, _window, cx| {
@@ -103,10 +95,10 @@ fn close_reach(distance: Pixels, hovered: Entity<[bool; 2]>) -> impl IntoElement
                 })
             })
             .when(cfg!(target_os = "windows"), |this| {
-                this.window_control_area(WindowControlArea::Close)
+                this.window_control_area(control.area())
             })
             .when(!cfg!(target_os = "windows"), |this| {
-                this.on_click(|_event, window, _cx| window.remove_window())
+                this.on_click(move |_event, window, _cx| control.act(window))
             })
     };
 
@@ -114,16 +106,20 @@ fn close_reach(distance: Pixels, hovered: Entity<[bool; 2]>) -> impl IntoElement
         div()
             .absolute()
             .inset_0()
-            // Above, running on to the corner.
             .child(
                 strip(0)
                     .top(-distance)
                     .left_0()
-                    .right(-distance)
+                    .right(if control.is_close() {
+                        -distance
+                    } else {
+                        px(0.)
+                    })
                     .h(distance),
             )
-            // Beside, down to the button's bottom edge.
-            .child(strip(1).top_0().bottom_0().right(-distance).w(distance)),
+            .when(control.is_close(), |this| {
+                this.child(strip(1).top_0().bottom_0().right(-distance).w(distance))
+            }),
     )
 }
 
@@ -142,6 +138,15 @@ impl Control {
             Self::Maximize => "window-maximize",
             Self::Restore => "window-restore",
             Self::Close => "window-close",
+        }
+    }
+
+    fn reach_id(self) -> &'static str {
+        match self {
+            Self::Minimize => "window-minimize-reach",
+            Self::Maximize => "window-maximize-reach",
+            Self::Restore => "window-restore-reach",
+            Self::Close => "window-close-reach",
         }
     }
 
@@ -166,14 +171,11 @@ impl Control {
     fn is_close(self) -> bool {
         matches!(self, Self::Close)
     }
-}
 
-impl Control {
-    fn element(self, cx: &App) -> Stateful<Div> {
+    /// Hover background and foreground, and pressed background.
+    fn colors(self, cx: &App) -> (Hsla, Hsla, Hsla) {
         let theme = cx.theme();
-        // Closing is the destructive one, and gets the red hover every desktop
-        // uses for it; the other two stay in the neutral palette.
-        let (hover_bg, hover_fg, active_bg) = if self.is_close() {
+        if self.is_close() {
             (theme.danger, theme.danger_foreground, theme.danger_active)
         } else {
             (
@@ -181,7 +183,21 @@ impl Control {
                 theme.secondary_foreground,
                 theme.secondary_active,
             )
-        };
+        }
+    }
+
+    fn act(self, window: &mut Window) {
+        match self {
+            Self::Minimize => window.minimize_window(),
+            Self::Maximize | Self::Restore => window.zoom_window(),
+            Self::Close => window.remove_window(),
+        }
+    }
+}
+
+impl Control {
+    fn element(self, cx: &App) -> Stateful<Div> {
+        let (hover_bg, hover_fg, active_bg) = self.colors(cx);
 
         div()
             .id(self.id())
@@ -191,7 +207,7 @@ impl Control {
             .h_full()
             .items_center()
             .justify_center()
-            .text_color(theme.muted_foreground)
+            .text_color(cx.theme().muted_foreground)
             .hover(|style| style.bg(hover_bg).text_color(hover_fg))
             .active(|style| style.bg(active_bg).text_color(hover_fg))
             // Windows does the clicking itself: hit-testing hands these bounds
@@ -200,11 +216,7 @@ impl Control {
                 this.window_control_area(self.area())
             })
             .when(!cfg!(target_os = "windows"), |this| {
-                this.on_click(move |_event, window, _cx| match self {
-                    Self::Minimize => window.minimize_window(),
-                    Self::Maximize | Self::Restore => window.zoom_window(),
-                    Self::Close => window.remove_window(),
-                })
+                this.on_click(move |_event, window, _cx| self.act(window))
             })
             .child(Icon::new(self.icon()).small())
     }
