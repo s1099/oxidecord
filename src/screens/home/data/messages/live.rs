@@ -78,6 +78,15 @@ impl HomeScreen {
             discord::GatewayEvent::MessageUpdate(incoming) => {
                 self.handle_message_update(incoming, cx)
             }
+            discord::GatewayEvent::MessageDelete {
+                channel_id,
+                message_ids,
+            } => self.handle_message_delete(channel_id, &message_ids, cx),
+            discord::GatewayEvent::Reaction {
+                channel_id,
+                message_id,
+                change,
+            } => self.handle_reaction(channel_id, message_id, change, cx),
             discord::GatewayEvent::VoiceState(state) => self.handle_voice_state(state, cx),
             discord::GatewayEvent::GuildVoiceStates { guild_id, states } => {
                 self.replace_voice_states(Some(guild_id), states, cx)

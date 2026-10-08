@@ -13,15 +13,16 @@ use serde_json::value::RawValue;
 use twilight_gateway::{Intents, Message as ShardMessage, MessageSender, Shard, ShardId};
 use twilight_model::id::{
     Id,
-    marker::{ChannelMarker, GuildMarker, RoleMarker, UserMarker},
+    marker::{ChannelMarker, GuildMarker, MessageMarker, RoleMarker, UserMarker},
 };
 
 use crate::platform::runtime;
 
 use super::model::{
-    GuildEmoji, Message, RawEmoji, RawMember, RawRole, RawVoiceServer, RawVoiceState, Role,
-    VoiceServerInfo, VoiceUserState, convert_guild_emoji, convert_guild_voice_states,
-    convert_message, convert_role, convert_voice_server, convert_voice_state,
+    GuildEmoji, Message, RawEmoji, RawMember, RawRole, RawVoiceServer, RawVoiceState,
+    ReactionEmoji, Role, VoiceServerInfo, VoiceUserState, convert_guild_emoji,
+    convert_guild_voice_states, convert_message, convert_reaction_emoji, convert_role,
+    convert_voice_server, convert_voice_state,
 };
 
 /// A message received live over the gateway, tagged with the channel it
@@ -44,6 +45,17 @@ pub enum GatewayEvent {
     Message(IncomingMessage),
     /// A message was edited. Carries the whole message as it now stands.
     MessageUpdate(IncomingMessage),
+    /// One message was deleted, or several at once by a moderator.
+    MessageDelete {
+        channel_id: Id<ChannelMarker>,
+        message_ids: Vec<Id<MessageMarker>>,
+    },
+    /// A message's reactions changed.
+    Reaction {
+        channel_id: Id<ChannelMarker>,
+        message_id: Id<MessageMarker>,
+        change: ReactionChange,
+    },
     /// Someone joined, left, or changed their state in a voice channel.
     VoiceState(VoiceUserState),
     /// Everyone in voice in one guild, replacing what was known of it: from
@@ -83,6 +95,24 @@ pub enum GatewayEvent {
         user_id: Id<UserMarker>,
         roles: Vec<Id<RoleMarker>>,
     },
+}
+
+/// How a message's reactions changed.
+pub enum ReactionChange {
+    /// Someone reacted. Includes the signed-in user, whose own reactions also
+    /// come back as dispatches.
+    Add {
+        user_id: Id<UserMarker>,
+        emoji: ReactionEmoji,
+    },
+    Remove {
+        user_id: Id<UserMarker>,
+        emoji: ReactionEmoji,
+    },
+    /// Every reaction with one emoji was cleared by a moderator.
+    RemoveEmoji(ReactionEmoji),
+    /// Every reaction on the message was cleared by a moderator.
+    RemoveAll,
 }
 
 /// Sends commands up the gateway from outside the receive loop.
@@ -202,6 +232,33 @@ struct RoleUpdatePayload {
 struct RoleDeletePayload {
     guild_id: Id<GuildMarker>,
     role_id: Id<RoleMarker>,
+}
+
+/// `MESSAGE_DELETE`.
+#[derive(Deserialize)]
+struct MessageDeletePayload {
+    id: Id<MessageMarker>,
+    channel_id: Id<ChannelMarker>,
+}
+
+/// `MESSAGE_DELETE_BULK`.
+#[derive(Deserialize)]
+struct MessageDeleteBulkPayload {
+    ids: Vec<Id<MessageMarker>>,
+    channel_id: Id<ChannelMarker>,
+}
+
+/// `MESSAGE_REACTION_ADD`, `MESSAGE_REACTION_REMOVE`, and the two clears,
+/// which share a shape: the clears just leave out who reacted, and clearing
+/// all of a message's reactions leaves out the emoji too.
+#[derive(Deserialize)]
+struct ReactionPayload {
+    channel_id: Id<ChannelMarker>,
+    message_id: Id<MessageMarker>,
+    #[serde(default)]
+    user_id: Option<Id<UserMarker>>,
+    #[serde(default)]
+    emoji: Option<twilight_model::channel::message::EmojiReactionType>,
 }
 
 #[derive(Deserialize)]
@@ -331,6 +388,48 @@ fn dispatch(name: &str, data: &RawValue) -> Vec<GatewayEvent> {
                     channel_id: message.channel_id,
                     message: convert_message(message),
                 })]
+            })
+            .unwrap_or_default(),
+        "MESSAGE_DELETE" => serde_json::from_str::<MessageDeletePayload>(data)
+            .map(|delete| {
+                vec![GatewayEvent::MessageDelete {
+                    channel_id: delete.channel_id,
+                    message_ids: vec![delete.id],
+                }]
+            })
+            .unwrap_or_default(),
+        "MESSAGE_DELETE_BULK" => serde_json::from_str::<MessageDeleteBulkPayload>(data)
+            .map(|delete| {
+                vec![GatewayEvent::MessageDelete {
+                    channel_id: delete.channel_id,
+                    message_ids: delete.ids,
+                }]
+            })
+            .unwrap_or_default(),
+        "MESSAGE_REACTION_ADD"
+        | "MESSAGE_REACTION_REMOVE"
+        | "MESSAGE_REACTION_REMOVE_EMOJI"
+        | "MESSAGE_REACTION_REMOVE_ALL" => serde_json::from_str::<ReactionPayload>(data)
+            .ok()
+            .and_then(|payload| {
+                let emoji = payload.emoji.map(convert_reaction_emoji);
+                let change = match name {
+                    "MESSAGE_REACTION_ADD" => ReactionChange::Add {
+                        user_id: payload.user_id?,
+                        emoji: emoji?,
+                    },
+                    "MESSAGE_REACTION_REMOVE" => ReactionChange::Remove {
+                        user_id: payload.user_id?,
+                        emoji: emoji?,
+                    },
+                    "MESSAGE_REACTION_REMOVE_EMOJI" => ReactionChange::RemoveEmoji(emoji?),
+                    _ => ReactionChange::RemoveAll,
+                };
+                Some(vec![GatewayEvent::Reaction {
+                    channel_id: payload.channel_id,
+                    message_id: payload.message_id,
+                    change,
+                }])
             })
             .unwrap_or_default(),
         "VOICE_STATE_UPDATE" => serde_json::from_str::<RawVoiceState>(data)
@@ -611,5 +710,76 @@ mod tests {
         assert_eq!(state.guild_id, Some(Id::new(10)));
         assert_eq!(state.name.as_deref(), Some("user2"));
         assert!(state.avatar_url.is_some());
+    }
+
+    #[test]
+    fn message_deletes_arrive_singly_and_in_bulk() {
+        let events = dispatch_json("MESSAGE_DELETE", r#"{"id": "5", "channel_id": "100"}"#);
+        assert!(matches!(
+            events.as_slice(),
+            [GatewayEvent::MessageDelete { channel_id, message_ids }]
+                if *channel_id == Id::new(100) && message_ids == &[Id::new(5)]
+        ));
+
+        let events = dispatch_json(
+            "MESSAGE_DELETE_BULK",
+            r#"{"ids": ["5", "6"], "channel_id": "100", "guild_id": "10"}"#,
+        );
+        assert!(matches!(
+            events.as_slice(),
+            [GatewayEvent::MessageDelete { message_ids, .. }] if message_ids.len() == 2
+        ));
+    }
+
+    #[test]
+    fn reactions_read_unicode_and_custom_emoji() {
+        let events = dispatch_json(
+            "MESSAGE_REACTION_ADD",
+            r#"{
+                "user_id": "2", "channel_id": "100", "message_id": "5",
+                "emoji": {"id": null, "name": "👍"}, "burst": false, "type": 0
+            }"#,
+        );
+        assert!(matches!(
+            events.as_slice(),
+            [GatewayEvent::Reaction {
+                change: ReactionChange::Add { user_id, emoji: ReactionEmoji::Unicode(name) },
+                ..
+            }] if *user_id == Id::new(2) && name == "👍"
+        ));
+
+        let events = dispatch_json(
+            "MESSAGE_REACTION_REMOVE_EMOJI",
+            r#"{
+                "channel_id": "100", "message_id": "5",
+                "emoji": {"id": "7", "name": "wave", "animated": true}
+            }"#,
+        );
+        assert!(matches!(
+            events.as_slice(),
+            [GatewayEvent::Reaction {
+                change: ReactionChange::RemoveEmoji(ReactionEmoji::Custom { animated: true, .. }),
+                ..
+            }]
+        ));
+
+        let events = dispatch_json(
+            "MESSAGE_REACTION_REMOVE_ALL",
+            r#"{"channel_id": "100", "message_id": "5"}"#,
+        );
+        assert!(matches!(
+            events.as_slice(),
+            [GatewayEvent::Reaction {
+                change: ReactionChange::RemoveAll,
+                ..
+            }]
+        ));
+
+        // An add without its reactor is malformed, not a clear.
+        let events = dispatch_json(
+            "MESSAGE_REACTION_ADD",
+            r#"{"channel_id": "100", "message_id": "5", "emoji": {"id": null, "name": "👍"}}"#,
+        );
+        assert!(events.is_empty());
     }
 }

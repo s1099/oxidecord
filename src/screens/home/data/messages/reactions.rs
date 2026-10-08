@@ -1,8 +1,11 @@
 //! Reacting to a message, applied locally first and rolled back if the request
-//! fails.
+//! fails, and taking reactions made anywhere else.
 
 use gpui::*;
-use twilight_model::id::{Id, marker::MessageMarker};
+use twilight_model::id::{
+    Id,
+    marker::{ChannelMarker, MessageMarker},
+};
 
 use crate::discord;
 use crate::screens::home::HomeScreen;
@@ -64,17 +67,62 @@ impl HomeScreen {
             .iter_mut()
             .find(|message| message.id == message_id)
         {
-            apply_own_reaction(&mut message.reactions, emoji, add);
+            tally_reaction(&mut message.reactions, emoji, add, true);
         }
+    }
+
+    /// Takes a change to the reactions on a message in the open conversation,
+    /// made by anyone — the current user's own come back this way too.
+    pub(in crate::screens::home) fn handle_reaction(
+        &mut self,
+        channel_id: Id<ChannelMarker>,
+        message_id: Id<MessageMarker>,
+        change: discord::ReactionChange,
+        cx: &mut Context<Self>,
+    ) {
+        if self.selected_channel != Some(channel_id) || self.messages_loading {
+            return;
+        }
+        let Some(ix) = self
+            .messages
+            .iter()
+            .position(|message| message.id == message_id)
+        else {
+            return;
+        };
+        let reactions = &mut self.messages[ix].reactions;
+        match change {
+            discord::ReactionChange::Add { user_id, emoji } => {
+                let own = Some(user_id) == self.self_user_id;
+                tally_reaction(reactions, &emoji, true, own);
+            }
+            discord::ReactionChange::Remove { user_id, emoji } => {
+                let own = Some(user_id) == self.self_user_id;
+                tally_reaction(reactions, &emoji, false, own);
+            }
+            discord::ReactionChange::RemoveEmoji(emoji) => {
+                reactions.retain(|reaction| reaction.emoji != emoji)
+            }
+            discord::ReactionChange::RemoveAll => reactions.clear(),
+        }
+        // The pills can gain or lose a row, and the list only remeasures rows
+        // it draws, so an off-screen message would keep its old height.
+        self.messages_list.splice(ix..ix + 1, 1);
+        cx.notify();
     }
 }
 
-/// Adds or removes the current user from a message's reaction tally. A tally
-/// that drops to zero is dropped entirely, like Discord.
-fn apply_own_reaction(
+/// Adds or removes one reactor from a message's reaction tally. A tally that
+/// drops to zero is dropped entirely, like Discord.
+///
+/// The current user's (`own`) reactions are applied optimistically and then
+/// echoed back by the gateway, so one that already matches is skipped rather
+/// than counted twice.
+fn tally_reaction(
     reactions: &mut Vec<discord::Reaction>,
     emoji: &discord::ReactionEmoji,
     add: bool,
+    own: bool,
 ) {
     let Some(ix) = reactions
         .iter()
@@ -84,14 +132,19 @@ fn apply_own_reaction(
             reactions.push(discord::Reaction {
                 emoji: emoji.clone(),
                 count: 1,
-                me: true,
+                me: own,
             });
         }
         return;
     };
 
     let reaction = &mut reactions[ix];
-    reaction.me = add;
+    if own {
+        if reaction.me == add {
+            return;
+        }
+        reaction.me = add;
+    }
     if add {
         reaction.count += 1;
     } else {
@@ -99,5 +152,36 @@ fn apply_own_reaction(
         if reaction.count == 0 {
             reactions.remove(ix);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::tally_reaction;
+    use crate::discord;
+
+    fn thumbs() -> discord::ReactionEmoji {
+        discord::ReactionEmoji::Unicode("👍".into())
+    }
+
+    #[test]
+    fn own_reaction_echo_is_not_counted_twice() {
+        let mut reactions = Vec::new();
+        // Applied optimistically, then echoed back by the gateway.
+        tally_reaction(&mut reactions, &thumbs(), true, true);
+        tally_reaction(&mut reactions, &thumbs(), true, true);
+        assert_eq!(reactions[0].count, 1);
+        assert!(reactions[0].me);
+
+        tally_reaction(&mut reactions, &thumbs(), true, false);
+        assert_eq!(reactions[0].count, 2);
+
+        tally_reaction(&mut reactions, &thumbs(), false, true);
+        tally_reaction(&mut reactions, &thumbs(), false, true);
+        assert_eq!(reactions[0].count, 1);
+        assert!(!reactions[0].me);
+
+        tally_reaction(&mut reactions, &thumbs(), false, false);
+        assert!(reactions.is_empty());
     }
 }

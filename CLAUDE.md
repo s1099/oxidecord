@@ -76,6 +76,8 @@ sends the UI back to the poster card and its "open externally" action.
 - Home screen state is `pub(super)`; keep it that way.
 - Commits: conventional lowercase (`feat:`, `fix:`, `chore:`).
 - Run `cargo fmt` and `cargo clippy` before committing.
+- `MISSING_FEATURES.md` tracks what the app doesn't do yet. When a feature listed there is
+  implemented, delete its row; when one is only partly done, update its status and notes.
 
 ## UI work
 

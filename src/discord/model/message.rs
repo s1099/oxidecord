@@ -267,7 +267,7 @@ pub(in crate::discord) fn convert_message(message: twilight_model::channel::Mess
             .reactions
             .into_iter()
             .map(|reaction| Reaction {
-                emoji: convert_emoji(reaction.emoji),
+                emoji: convert_reaction_emoji(reaction.emoji),
                 count: reaction.count,
                 me: reaction.me,
             })
@@ -296,7 +296,9 @@ fn convert_mentions(
         .collect()
 }
 
-fn convert_emoji(emoji: twilight_model::channel::message::EmojiReactionType) -> ReactionEmoji {
+pub(in crate::discord) fn convert_reaction_emoji(
+    emoji: twilight_model::channel::message::EmojiReactionType,
+) -> ReactionEmoji {
     use twilight_model::channel::message::EmojiReactionType;
     match emoji {
         EmojiReactionType::Unicode { name } => ReactionEmoji::Unicode(name),

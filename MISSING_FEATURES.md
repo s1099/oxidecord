@@ -24,8 +24,6 @@
 | Attachment alt text and descriptions | Missing | |
 | Image lightbox and full-size viewer | Missing | |
 | System messages (joins, pins, boosts, calls, thread created, and so on) | Missing | |
-| Live message deletion (`MESSAGE_DELETE`, `MESSAGE_DELETE_BULK`) | Missing | Gateway ignores them; deleted messages stay until reload |
-| Live reaction updates (`MESSAGE_REACTION_ADD/REMOVE`) | Missing | Other users' reactions don't appear until reload |
 | Pinning and unpinning messages, and the pinned-messages panel | Missing | |
 | Message search (with filters: from, in, has, before, after) | Missing | |
 | Jump to a message (from a reply, a link, or search) | Missing | Clicking a reply quote doesn't scroll to the original |

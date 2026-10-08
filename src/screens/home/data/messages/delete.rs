@@ -1,10 +1,14 @@
-//! Deleting a message, and copying a link to one.
+//! Deleting a message, taking deletions made anywhere else, and copying a link
+//! to one.
 //!
-//! There is no `MESSAGE_DELETE` handling on the gateway side yet, so the row is
-//! dropped locally as soon as the request is sent and put back if it fails.
+//! A deletion made here drops the row as soon as the request is sent and puts
+//! it back if it fails; the gateway's echo then finds nothing left to remove.
 
 use gpui::*;
-use twilight_model::id::{Id, marker::MessageMarker};
+use twilight_model::id::{
+    Id,
+    marker::{ChannelMarker, MessageMarker},
+};
 
 use crate::discord;
 use crate::screens::home::{HomeScreen, View};
@@ -66,6 +70,53 @@ impl HomeScreen {
             });
         })
         .detach();
+    }
+
+    /// Takes messages deleted from the open conversation, here or anywhere
+    /// else.
+    pub(in crate::screens::home) fn handle_message_delete(
+        &mut self,
+        channel_id: Id<ChannelMarker>,
+        message_ids: &[Id<MessageMarker>],
+        cx: &mut Context<Self>,
+    ) {
+        // Mid-load, the history about to land replaces the list anyway.
+        if self.selected_channel != Some(channel_id) || self.messages_loading {
+            return;
+        }
+        let mut changed = false;
+        for &message_id in message_ids {
+            let Some(ix) = self
+                .messages
+                .iter()
+                .position(|message| message.id == message_id)
+            else {
+                continue;
+            };
+            self.messages.remove(ix);
+            self.messages_list.splice(ix..ix + 1, 0);
+            changed = true;
+        }
+        if !changed {
+            return;
+        }
+
+        // An edit or a reply aimed at a message that's gone could only fail.
+        if self
+            .editing
+            .as_ref()
+            .is_some_and(|editing| message_ids.contains(&editing.message_id))
+        {
+            self.editing = None;
+        }
+        if self
+            .replying_to
+            .as_ref()
+            .is_some_and(|reply| message_ids.contains(&reply.message_id))
+        {
+            self.replying_to = None;
+        }
+        cx.notify();
     }
 
     /// Puts a `discord.com` link to the message on the clipboard, the same URL
