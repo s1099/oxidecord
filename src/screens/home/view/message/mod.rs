@@ -87,7 +87,7 @@ impl HomeScreen {
                     self.render_markdown(
                         &message.markdown,
                         MarkdownOptions::new(format!("message-{}", message.id), &message.mentions)
-                            .edited(message.edited)
+                            .edited(message.edited_label())
                             .jumbo(),
                         cx,
                     ),
@@ -295,7 +295,7 @@ impl HomeScreen {
                                 div()
                                     .text_xs()
                                     .text_color(theme.muted_foreground)
-                                    .child(message.timestamp.clone()),
+                                    .child(message.timestamp_label()),
                             ),
                     )
                     .child(div().w_full().min_w_0().text_sm().child(content)),

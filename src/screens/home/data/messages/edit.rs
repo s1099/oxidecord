@@ -2,6 +2,8 @@
 //! locally first and rolled back if the request fails), and taking edits made
 //! elsewhere as they arrive over the gateway.
 
+use std::time::{SystemTime, UNIX_EPOCH};
+
 use gpui::*;
 use gpui_component::WindowExt as _;
 use gpui_component::button::ButtonVariant;
@@ -127,7 +129,10 @@ impl HomeScreen {
         // edit being lost.
         let previous = (message.content.clone(), message.edited);
         message.set_content(content.clone());
-        message.edited = true;
+        message.edited = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .ok()
+            .map(|elapsed| elapsed.as_secs() as i64);
         self.editing = None;
         self.send_error = None;
         self.message_input.focus_handle(cx).focus(window);

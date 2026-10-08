@@ -185,11 +185,7 @@ impl Timestamp {
 
     /// The long form, shown in the timestamp's tooltip.
     pub fn full(&self) -> String {
-        format!(
-            "{} {}",
-            time::format_unix_date(self.unix, true),
-            time::format_unix_time(self.unix, false)
-        )
+        time::format_unix_full(self.unix)
     }
 }
 

@@ -7,7 +7,6 @@
 | Syntax highlighting in code blocks | Missing | Code blocks and inline code render as plain monospace; the language tag is parsed but unused |
 | Local time zone for timestamps | Missing | `<t:…>` markup, like every other time in the app, is shown in UTC |
 | Global display names in mentions | Partial | twilight's `Mention` model drops `global_name`, so a mention shows the nickname or username |
-| Emoji picker | Missing | No way to insert emoji in the composer |
 | Adding a new reaction to a message | Partial | Existing reactions can be toggled; there's no picker to add another |
 | Viewing who reacted | Missing | |
 | Super reactions (burst) | Missing | |

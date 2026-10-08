@@ -13,7 +13,7 @@ use twilight_model::id::{
 use crate::discord::{self, Inline, Mention};
 
 use super::Renderer;
-use super::rich_text::{EMOJI_PLACEHOLDER, RichText, Segment};
+use super::rich_text::{EMOJI_PLACEHOLDER, Marker, RichText, Segment};
 
 /// What clicking a range does.
 #[derive(Clone)]
@@ -91,6 +91,7 @@ pub(super) struct Flattener<'a, 'b> {
     actions: Vec<(Range<usize>, Action)>,
     tooltips: Vec<(Range<usize>, SharedString)>,
     emoji: Vec<(Range<usize>, SharedString)>,
+    marker: Option<Marker>,
 }
 
 impl<'a, 'b> Flattener<'a, 'b> {
@@ -102,6 +103,7 @@ impl<'a, 'b> Flattener<'a, 'b> {
             actions: Vec::new(),
             tooltips: Vec::new(),
             emoji: Vec::new(),
+            marker: None,
         }
     }
 
@@ -110,15 +112,21 @@ impl<'a, 'b> Flattener<'a, 'b> {
         self
     }
 
-    /// Appends text outside the markup, such as the "(edited)" marker.
-    pub fn trailing(&mut self, text: &str, color: Hsla) -> &mut Self {
-        self.push(
-            text,
-            Style {
-                color: Some(color),
-                ..Style::default()
-            },
-        );
+    /// Ends the text with a small label outside the markup, such as the
+    /// "(edited)" marker, with `tooltip` on hover.
+    pub fn marker(
+        &mut self,
+        label: &'static str,
+        size: Pixels,
+        color: Hsla,
+        tooltip: SharedString,
+    ) -> &mut Self {
+        self.marker = Some(Marker {
+            label: label.into(),
+            size,
+            color,
+            tooltip: Some(tooltip),
+        });
         self
     }
 
@@ -132,6 +140,12 @@ impl<'a, 'b> Flattener<'a, 'b> {
             &renderer.screen.image_cache,
         )
         .emoji(self.emoji);
+        if let Some(mut marker) = self.marker {
+            if !renderer.options.interactive {
+                marker.tooltip = None;
+            }
+            text = text.marker(marker);
+        }
         if renderer.options.interactive {
             let (ranges, actions): (Vec<_>, Vec<_>) = self.actions.into_iter().unzip();
             let on_action = renderer.on_action.clone();

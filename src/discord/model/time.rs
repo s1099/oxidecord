@@ -1,20 +1,36 @@
-//! Date formatting for the two timestamps the UI shows, without pulling in a
-//! date library.
+//! Date formatting for the timestamps the UI shows. A message's own times are
+//! local, as Discord shows them, which takes chrono for the time zone; the
+//! rest is UTC and done by hand.
 
+use chrono::{DateTime, Local};
 use twilight_model::util::Timestamp;
 
 /// Milliseconds between the Unix epoch and Discord's (2015-01-01), the offset
 /// the timestamp inside a snowflake is measured from.
 const DISCORD_EPOCH_MS: u64 = 1_420_070_400_000;
 
-/// Formats a Discord timestamp as `YYYY-MM-DD HH:MM` (UTC). Its ISO 8601 form
-/// is `2021-08-10T11:16:37.020000+00:00`.
-pub(super) fn format_timestamp(timestamp: Timestamp) -> String {
-    let iso = timestamp.iso_8601().to_string();
-    match (iso.get(..10), iso.get(11..16)) {
-        (Some(date), Some(time)) => format!("{date} {time}"),
-        _ => iso,
+/// A message's send time the way Discord's header shows it, in local time:
+/// `11:02 AM` for one sent today, `9/26/26, 11:02 AM` for anything older.
+pub(super) fn format_message_time(unix: i64) -> String {
+    let Some(sent) = local(unix) else {
+        return String::new();
+    };
+    if sent.date_naive() == Local::now().date_naive() {
+        sent.format("%-I:%M %p").to_string()
+    } else {
+        sent.format("%-m/%-d/%y, %-I:%M %p").to_string()
     }
+}
+
+/// `Saturday, September 26, 2026 4:20 PM`, in local time.
+pub(super) fn format_local_full(unix: i64) -> String {
+    local(unix).map_or_else(String::new, |time| {
+        time.format("%A, %B %-d, %Y %-I:%M %p").to_string()
+    })
+}
+
+fn local(unix: i64) -> Option<DateTime<Local>> {
+    DateTime::from_timestamp(unix, 0).map(|utc| utc.with_timezone(&Local))
 }
 
 const MONTHS: [&str; 12] = [
@@ -144,6 +160,15 @@ pub(super) fn format_unix_date(unix: i64, weekday: bool) -> String {
     } else {
         date
     }
+}
+
+/// `Saturday, September 26, 2026 4:20 PM` (UTC).
+pub(super) fn format_unix_full(unix: i64) -> String {
+    format!(
+        "{} {}",
+        format_unix_date(unix, true),
+        format_unix_time(unix, false)
+    )
 }
 
 /// `in 2 hours`, `3 days ago`: the largest whole unit between `unix` and

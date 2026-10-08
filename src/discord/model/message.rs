@@ -10,7 +10,7 @@ use twilight_model::id::{
 use super::cdn;
 use super::embed::{Embed, convert_embed};
 use super::markdown::{self, Inline, Markdown};
-use super::time::format_timestamp;
+use super::time::{format_local_full, format_message_time};
 use super::user::small_avatar_url;
 
 #[derive(Clone)]
@@ -31,10 +31,11 @@ pub struct Message {
     pub mention_everyone: bool,
     /// The roles the message pings.
     pub mention_roles: Vec<Id<RoleMarker>>,
-    pub timestamp: String,
-    /// Whether the message has been edited since it was sent, which the view
+    /// When the message was sent, in Unix seconds.
+    pub timestamp: i64,
+    /// When the message was last edited, in Unix seconds, which the view
     /// marks with "(edited)" after the content.
-    pub edited: bool,
+    pub edited: Option<i64>,
     pub images: Vec<ImageAttachment>,
     /// Video attachments, played inline by the platform decoder.
     pub videos: Vec<VideoAttachment>,
@@ -67,6 +68,18 @@ impl Message {
         self.images = edited.images;
         self.videos = edited.videos;
         self.embeds = edited.embeds;
+    }
+
+    /// When the message was sent, as its header shows it: just the time for
+    /// today, the short date and time before that.
+    pub fn timestamp_label(&self) -> String {
+        format_message_time(self.timestamp)
+    }
+
+    /// When the message was last edited, in the long form the "(edited)"
+    /// marker's tooltip shows.
+    pub fn edited_label(&self) -> Option<String> {
+        self.edited.map(format_local_full)
     }
 
     /// Replaces the text, as an edit made locally does before the server
@@ -203,8 +216,8 @@ pub(in crate::discord) fn convert_message(message: twilight_model::channel::Mess
         mention_everyone: message.mention_everyone,
         mention_roles: message.mention_roles,
         content: message.content,
-        timestamp: format_timestamp(message.timestamp),
-        edited: message.edited_timestamp.is_some(),
+        timestamp: message.timestamp.as_secs(),
+        edited: message.edited_timestamp.map(|edited| edited.as_secs()),
         images: message
             .attachments
             .iter()

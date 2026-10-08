@@ -25,7 +25,7 @@ const AVATAR_RING: f32 = 6.;
 
 /// How far the avatar's left edge sits from the card's, which the content
 /// below it lines up with too.
-const AVATAR_INSET: f32 = 12.;
+const AVATAR_INSET: f32 = 10.;
 
 /// Lines of "About Me" shown before it's cut off with an ellipsis, so a
 /// wall-of-text bio can't stretch the card down the whole window.
@@ -103,8 +103,8 @@ impl HomeScreen {
                     .px(px(AVATAR_INSET))
                     .pb(px(AVATAR_INSET))
                     // Clears the half of the avatar hanging below the banner.
-                    .pt(px(AVATAR_SIZE / 2. + AVATAR_RING + 8.))
-                    .gap(px(12.))
+                    .pt(px(AVATAR_SIZE / 2. + AVATAR_RING + 6.))
+                    .gap(px(10.))
                     .child(render_identity(popup, cx))
                     .child(match (profile, &popup.error) {
                         (Some(profile), _) => render_details(profile, cx),
@@ -183,9 +183,8 @@ fn render_identity(popup: &ProfilePopup, cx: &App) -> impl IntoElement {
 /// The inner box holding the "About Me" and "Member Since" sections.
 fn render_details(profile: &UserProfile, cx: &App) -> AnyElement {
     v_flex()
-        .px(px(10.))
-        .py(px(10.))
-        .gap(px(10.))
+        .p(px(8.))
+        .gap(px(8.))
         .rounded(radius::CONTROL)
         .bg(cx.theme().background)
         .when_some(profile.bio.clone(), |this, bio| {
@@ -231,7 +230,7 @@ fn clamp_lines(text: &str, max: usize) -> String {
 /// content, the way Discord sections the popout.
 fn section(header: &'static str, content: AnyElement, cx: &App) -> impl IntoElement {
     v_flex()
-        .gap(px(6.))
+        .gap(px(5.))
         .child(
             div()
                 .text_size(px(11.))

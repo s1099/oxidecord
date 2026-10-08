@@ -24,8 +24,10 @@ use crate::ui::{dialogs, tooltip};
 
 use inline::{Action, Flattener, ResolvedUser};
 
-/// Follows the text of a message that's been edited, set in a muted colour.
-const EDITED_MARKER: &str = " (edited)";
+/// Follows the text of a message that's been edited, small and muted.
+const EDITED_MARKER: &str = "(edited)";
+/// The size "(edited)" is set in, a step down from the text it follows.
+const EDITED_MARKER_SIZE: f32 = 10.;
 /// How big emoji are drawn in a message of nothing but emoji.
 const JUMBO_SIZE: f32 = 48.;
 /// The width a list's markers are set in, so item text lines up down a list.
@@ -40,8 +42,8 @@ pub(super) struct MarkdownOptions<'a> {
     pub scope: SharedString,
     /// The users the text's message mentions, which name its `<@id>`s.
     pub mentions: &'a [discord::MentionedUser],
-    /// Ends the text with "(edited)".
-    pub edited: bool,
+    /// Ends the text with "(edited)", whose tooltip says when.
+    pub edited: Option<SharedString>,
     /// Draws a message of only emoji large. Message content only; Discord
     /// never does it in embeds.
     pub jumbo: bool,
@@ -56,14 +58,15 @@ impl<'a> MarkdownOptions<'a> {
         Self {
             scope: scope.into(),
             mentions,
-            edited: false,
+            edited: None,
             jumbo: false,
             interactive: true,
         }
     }
 
-    pub fn edited(mut self, edited: bool) -> Self {
-        self.edited = edited;
+    /// Marks the text as edited at `edited`, already formatted for the tooltip.
+    pub fn edited(mut self, edited: Option<impl Into<SharedString>>) -> Self {
+        self.edited = edited.map(Into::into);
         self
     }
 
@@ -210,8 +213,13 @@ impl<'a> Renderer<'a> {
     fn text(&self, inlines: &[Inline], edited: bool) -> impl IntoElement {
         let mut flattener = Flattener::new(self);
         flattener.inlines(inlines);
-        if edited {
-            flattener.trailing(EDITED_MARKER, self.palette.muted);
+        if edited && let Some(when) = &self.options.edited {
+            flattener.marker(
+                EDITED_MARKER,
+                px(EDITED_MARKER_SIZE),
+                self.palette.muted,
+                when.clone(),
+            );
         }
         div().w_full().min_w_0().child(flattener.finish())
     }
@@ -232,13 +240,25 @@ impl<'a> Renderer<'a> {
                     .map(|(ix, block)| self.block(block, inline_marker && ix == last)),
             )
             .when(edited && !inline_marker, |this| {
-                this.child(
-                    div()
-                        .text_xs()
-                        .text_color(self.palette.muted)
-                        .child(EDITED_MARKER.trim_start()),
-                )
+                this.children(self.edited_marker())
             })
+    }
+
+    /// "(edited)" on its own, for where it can't join a line of text.
+    fn edited_marker(&self) -> Option<impl IntoElement> {
+        let when = self.options.edited.clone()?;
+        Some(
+            div()
+                .id(ElementId::Name(
+                    format!("{}-edited", self.options.scope).into(),
+                ))
+                .text_size(px(EDITED_MARKER_SIZE))
+                .text_color(self.palette.muted)
+                .child(EDITED_MARKER)
+                .when(self.options.interactive, |this| {
+                    this.tooltip(tooltip::text(when))
+                }),
+        )
     }
 
     fn block(&self, block: &Block, edited: bool) -> AnyElement {
@@ -375,14 +395,7 @@ impl<'a> Renderer<'a> {
             .items_end()
             .gap(px(2.))
             .children(items)
-            .when(edited, |this| {
-                this.child(
-                    div()
-                        .text_xs()
-                        .text_color(self.palette.muted)
-                        .child(EDITED_MARKER.trim_start()),
-                )
-            })
+            .when(edited, |this| this.children(self.edited_marker()))
     }
 }
 
@@ -396,7 +409,7 @@ impl HomeScreen {
         cx: &Context<Self>,
     ) -> AnyElement {
         let jumbo = options.jumbo && markdown.jumbo;
-        let edited = options.edited;
+        let edited = options.edited.is_some();
         let renderer = Renderer::new(self, options, cx);
         if jumbo && let [Block::Paragraph(inlines)] = markdown.blocks.as_slice() {
             return renderer.jumbo(inlines, edited).into_any_element();
