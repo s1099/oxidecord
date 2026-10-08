@@ -1,6 +1,6 @@
 ## Oxidecord
 
-WIP Cross platform native discord client built with rust gpui.
+WIP Cross platform native discord client built with rust gpui, focused on being memory efficient and blazing fast.
 
 ## Download
 

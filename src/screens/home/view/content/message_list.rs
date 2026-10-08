@@ -113,11 +113,6 @@ impl HomeScreen {
             || message.reply.is_some()
             || self.messages.get(ix - 1).map(|previous| previous.author_id)
                 != Some(message.author_id);
-        // Mirrors the `show_header` logic applied to `ix + 1`.
-        let next_starts_group = self
-            .messages
-            .get(ix + 1)
-            .is_some_and(|next| next.reply.is_some() || next.author_id != message.author_id);
-        self.render_message(message, show_header, next_starts_group, cx)
+        self.render_message(message, show_header, cx)
     }
 }

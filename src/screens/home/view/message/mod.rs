@@ -19,6 +19,13 @@ use crate::screens::home::{HomeScreen, View};
 use super::markdown::MarkdownOptions;
 use super::{GROUP_GAP, MESSAGE_PADDING_X};
 
+/// The avatar beside a group's first message.
+const AVATAR_SIZE: f32 = 40.;
+
+/// Space above and below each message, inside its hover highlight. Kept small
+/// so the highlight hugs the text, like Discord's.
+const MESSAGE_PADDING_Y: f32 = 2.;
+
 /// How far a continuation message and a reply quote are indented, so both line
 /// up with the content column beside the avatar.
 const CONTENT_INDENT: f32 = 52.;
@@ -30,6 +37,9 @@ const MEDIA_MAX_HEIGHT: f32 = 300.;
 
 /// The bar down the left edge of a message that mentions the user.
 const MENTION_BAR_WIDTH: f32 = 2.;
+
+/// Space between a reply quote and the header below it, which its spine spans.
+const REPLY_GAP: f32 = 4.;
 
 /// Scales reported dimensions down into a box, keeping their shape. `None`
 /// when Discord didn't report them, in which case the element is capped rather
@@ -53,7 +63,6 @@ impl HomeScreen {
         &self,
         message: &discord::Message,
         show_header: bool,
-        next_starts_group: bool,
         cx: &Context<Self>,
     ) -> AnyElement {
         let theme = cx.theme();
@@ -145,16 +154,16 @@ impl HomeScreen {
             .into_any_element();
 
         let inner = if show_header {
-            self.render_with_header(message, content, next_starts_group, cx)
+            self.render_with_header(message, content, cx)
         } else {
-            render_continuation(content, next_starts_group)
+            render_continuation(content)
         };
 
         // Hovering anywhere over the row highlights its whole width and reveals
         // the floating action toolbar, like Discord.
         let group_name = SharedString::from(format!("message-{}", message.id.get()));
         let mention_tint = theme.warning;
-        div()
+        let row = div()
             .id(("message", message.id.get()))
             .group(group_name.clone())
             .relative()
@@ -183,7 +192,15 @@ impl HomeScreen {
             // elsewhere, so it's clear which one the box belongs to.
             .when(editing.is_some(), |this| this.bg(theme.accent.opacity(0.4)))
             .child(inner)
-            .child(self.render_message_toolbar(message, &group_name, cx))
+            .child(self.render_message_toolbar(message, &group_name, cx));
+
+        // The gap between author groups sits outside the row, so it never
+        // lights up with the highlight and the highlight stays tight.
+        div()
+            .w_full()
+            .min_w_0()
+            .when(show_header, |this| this.pt(px(GROUP_GAP)))
+            .child(row)
             .into_any_element()
     }
 
@@ -218,7 +235,6 @@ impl HomeScreen {
         &self,
         message: &discord::Message,
         content: AnyElement,
-        next_starts_group: bool,
         cx: &Context<Self>,
     ) -> AnyElement {
         let theme = cx.theme();
@@ -226,7 +242,7 @@ impl HomeScreen {
         let avatar = avatar(
             message.author_name.clone(),
             message.author_avatar_url.clone(),
-            px(40.),
+            px(AVATAR_SIZE),
         );
 
         // Clicking the avatar opens the author's profile card, anchored at the
@@ -265,7 +281,6 @@ impl HomeScreen {
                 v_flex()
                     .flex_1()
                     .min_w_0()
-                    .gap(px(2.))
                     .child(
                         h_flex()
                             .gap_2()
@@ -289,20 +304,11 @@ impl HomeScreen {
         v_flex()
             .w_full()
             .min_w_0()
-            .pt(px(GROUP_GAP / 2.))
-            .pb(px(if next_starts_group {
-                GROUP_GAP / 2.
-            } else {
-                0.
-            }))
+            .py(px(MESSAGE_PADDING_Y))
             .px(px(MESSAGE_PADDING_X))
-            .gap(px(2.))
+            .gap(px(REPLY_GAP))
             .when_some(message.reply.clone(), |this, reference| {
-                this.child(
-                    div()
-                        .pl(px(CONTENT_INDENT))
-                        .child(self.render_reply_preview(message.id.get(), &reference, cx)),
-                )
+                this.child(self.render_reply_preview(message.id.get(), &reference, cx))
             })
             .child(header_row)
             .into_any_element()
@@ -314,18 +320,13 @@ impl HomeScreen {
 ///
 /// The list can't pad its items, so each message carries its own padding, plus
 /// a full width with `min_w_0` so long lines wrap rather than overflow.
-fn render_continuation(content: AnyElement, next_starts_group: bool) -> AnyElement {
+fn render_continuation(content: AnyElement) -> AnyElement {
     div()
         .w_full()
         .min_w_0()
         .pl(px(MESSAGE_PADDING_X + CONTENT_INDENT))
         .pr(px(MESSAGE_PADDING_X))
-        .pt(px(1.))
-        .pb(px(if next_starts_group {
-            GROUP_GAP / 2.
-        } else {
-            1.
-        }))
+        .py(px(MESSAGE_PADDING_Y))
         .text_sm()
         .child(content)
         .into_any_element()
