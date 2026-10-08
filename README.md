@@ -2,6 +2,10 @@
 
 WIP Cross platform native discord client built with rust gpui.
 
+## Download
+
+Download `oxidecord.exe` from the [latest release](https://github.com/s1099/oxidecord/releases/latest), save it anywhere you like, and run it.
+
 ## Running
 
 1. Clone the repo: 
