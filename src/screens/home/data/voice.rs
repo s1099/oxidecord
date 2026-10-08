@@ -57,6 +57,8 @@ impl HomeScreen {
                 context: guild_name,
                 status: VoiceStatus::Connecting,
                 error: None,
+                session_id: None,
+                share_error: None,
             },
             cx,
         );
@@ -82,6 +84,8 @@ impl HomeScreen {
                 context: None,
                 status: VoiceStatus::Connecting,
                 error: None,
+                session_id: None,
+                share_error: None,
             },
             cx,
         );
@@ -106,6 +110,9 @@ impl HomeScreen {
     }
 
     pub(in crate::screens::home) fn leave_voice(&mut self, cx: &mut Context<Self>) {
+        // Leaving ends the stream on Discord's side too, but saying so first
+        // takes it down for viewers without waiting for that.
+        self.stop_screen_share(cx);
         let guild_id = self.voice.as_ref().and_then(|call| call.guild_id);
         if let Some(gateway) = &self.gateway {
             gateway.update_voice_state(guild_id, None, self.voice_muted, self.voice_deafened);
@@ -122,6 +129,7 @@ impl HomeScreen {
         }
         self.voice = None;
         self.pending_voice = None;
+        self.screen_share = None;
         self.voice_speaking.clear();
     }
 
@@ -221,7 +229,11 @@ impl HomeScreen {
                     {
                         self.follow_move(channel_id, state.guild_id);
                     }
-                    // The session id completes half of what a connection needs.
+                    // The session id completes half of what a connection
+                    // needs, and a stream later opens under it too.
+                    if let Some(call) = &mut self.voice {
+                        call.session_id = Some(state.session_id.clone());
+                    }
                     let pending = self.pending_voice.get_or_insert_with(PendingVoice::default);
                     pending.session_id = Some(state.session_id.clone());
                     self.try_connect_voice(cx);
@@ -292,6 +304,9 @@ impl HomeScreen {
         }
         self.pending_voice = Some(PendingVoice::default());
         self.voice_speaking.clear();
+        // A stream belongs to the channel it was started in, and Discord ends
+        // it with the move.
+        self.screen_share = None;
         // Follow the move on screen only if the old channel was the one open;
         // someone reading a text channel stays where they are.
         if self.selected_channel == previous {
@@ -433,6 +448,7 @@ impl HomeScreen {
                     muted: state.self_mute || state.mute,
                     deafened: state.self_deaf || state.deaf,
                     speaking: self.voice_speaking.contains(&state.user_id),
+                    streaming: state.self_stream,
                     is_self,
                 }
             })

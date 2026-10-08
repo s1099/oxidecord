@@ -5,6 +5,8 @@
 //! voice states the gateway keeps up to date, so a participant list is always
 //! built from the latest ones.
 
+use crate::platform::capture::CaptureSource;
+use crate::voice::stream::GoLive;
 use twilight_model::id::{
     Id,
     marker::{ChannelMarker, GuildMarker, UserMarker},
@@ -44,6 +46,32 @@ pub(super) struct VoiceCall {
     pub status: VoiceStatus,
     /// Why the call failed, when it did.
     pub error: Option<String>,
+    /// The voice session the gateway assigned the join. A stream is opened
+    /// under the same session, so it's kept after the call connects.
+    pub session_id: Option<String>,
+    /// Why the last screen share couldn't start or stopped early.
+    pub share_error: Option<String>,
+}
+
+/// The user's own stream into the call: what's being shared, and the
+/// connection parameters as the gateway delivers them.
+///
+/// `STREAM_CREATE` carries the server id and `STREAM_SERVER_UPDATE` the
+/// server, in either order, so the source waits here until both have landed.
+pub(super) struct ScreenShare {
+    /// Names the stream in every gateway command and dispatch about it.
+    pub stream_key: String,
+    /// The window title or display name, for the panel.
+    pub source_name: String,
+    /// The picked source, until the connection takes it.
+    pub source: Option<CaptureSource>,
+    pub server_id: Option<String>,
+    pub endpoint: Option<String>,
+    pub token: Option<String>,
+    /// The running stream. Dropping it stops the capture and the connection.
+    pub stream: Option<GoLive>,
+    /// Frames are going out.
+    pub live: bool,
 }
 
 /// The connection parameters, as the two gateway dispatches that answer a join
@@ -70,5 +98,7 @@ pub(super) struct VoiceParticipant {
     pub deafened: bool,
     /// Transmitting right now.
     pub speaking: bool,
+    /// Sharing their screen.
+    pub streaming: bool,
     pub is_self: bool,
 }

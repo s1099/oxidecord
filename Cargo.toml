@@ -12,7 +12,7 @@ twilight-http = "0.17.1"
 twilight-model = "0.17.1"
 twilight-gateway = "0.17.1"
 twilight-util = { version = "0.17.0", features = ["permission-calculator"] }
-tokio = { version = "1", features = ["rt-multi-thread", "time"] }
+tokio = { version = "1", features = ["rt-multi-thread", "time", "net", "macros"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["raw_value"] }
 regex = "1"
@@ -25,19 +25,40 @@ cpal = "0.18.2"
 opus2 = "0.4.0"
 symphonia = { version = "0.5.5", default-features = false, features = ["pcm"] }
 async-trait = "0.1.92"
+# Go Live runs its own voice connection beside songbird's, which has no video
+tokio-websockets = { version = "0.11", features = ["client", "fastrand", "sha1_smol", "simd", "ring", "rustls-native-roots"] }
+davey = "0.1.4"
+aes-gcm = "0.10"
+chacha20poly1305 = "0.10"
+raw-window-handle = "0.6"
 image = { version = "0.25", default-features = false }
 emojis = "0.9.0"
 chrono = { version = "0.4.45", default-features = false, features = ["clock", "std"] }
 
-# Video playback goes through Media Foundation so no codec ships with the app
+# Video playback and screen capture go through Media Foundation and Direct3D,
+# so no codec ships with the app
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.62", features = [
+    "Foundation",
+    "Graphics_Capture",
+    "Graphics_DirectX_Direct3D11",
     "Win32_Foundation",
+    "Win32_Graphics_Direct3D",
+    "Win32_Graphics_Direct3D11",
+    "Win32_Graphics_Dxgi_Common",
     "Win32_Media_MediaFoundation",
     "Win32_System_Com",
     "Win32_System_Com_StructuredStorage",
+    "Win32_System_Ole",
     "Win32_System_Variant",
+    "Win32_System_WinRT_Direct3D11",
+    "Win32_System_WinRT_Graphics_Capture",
+    "Win32_UI_Shell",
 ] }
+
+# The capture test picks the primary display by monitor handle
+[target.'cfg(windows)'.dev-dependencies]
+windows = { version = "0.62", features = ["Win32_Graphics_Gdi"] }
 
 [build-dependencies]
 embed-resource = "3"

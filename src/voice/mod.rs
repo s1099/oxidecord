@@ -9,8 +9,13 @@
 //! Everything here runs on the shared Tokio runtime. [`VoiceEngine`] is the
 //! only handle the rest of the app holds: commands go down a channel, events
 //! come back up another, so no songbird type crosses into gpui's thread.
+//!
+//! Screen sharing is a separate connection with its own server, in
+//! [`stream`]: songbird has no way to send video, so that one is spoken
+//! directly.
 
 mod audio;
+pub mod stream;
 
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};

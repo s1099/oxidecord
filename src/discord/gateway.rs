@@ -20,9 +20,9 @@ use crate::platform::runtime;
 
 use super::model::{
     GuildEmoji, Message, RawEmoji, RawMember, RawRole, RawVoiceServer, RawVoiceState,
-    ReactionEmoji, Role, VoiceServerInfo, VoiceUserState, convert_guild_emoji,
+    ReactionEmoji, Role, StreamServerInfo, VoiceServerInfo, VoiceUserState, convert_guild_emoji,
     convert_guild_voice_states, convert_message, convert_reaction_emoji, convert_role,
-    convert_voice_server, convert_voice_state,
+    convert_stream_server, convert_voice_server, convert_voice_state,
 };
 
 /// A message received live over the gateway, tagged with the channel it
@@ -66,6 +66,18 @@ pub enum GatewayEvent {
     },
     /// The voice server assigned to a call the user is joining.
     VoiceServer(VoiceServerInfo),
+    /// A stream was created. For the user's own, it names the server the
+    /// stream connection identifies to.
+    StreamCreate {
+        stream_key: String,
+        rtc_server_id: String,
+    },
+    /// The voice server assigned to a stream.
+    StreamServer(StreamServerInfo),
+    /// A stream ended.
+    StreamDelete {
+        stream_key: String,
+    },
     /// Every role in a guild, from `READY` or `GUILD_CREATE`. Replaces what
     /// was known before.
     GuildRoles {
@@ -150,6 +162,53 @@ impl GatewaySender {
         });
         let _ = self.inner.send(payload.to_string());
     }
+
+    /// Sends `STREAM_CREATE` (opcode 18): goes live in the call in
+    /// `channel_id`. Discord answers with the stream's server, as dispatches.
+    pub fn create_stream(&self, guild_id: Option<Id<GuildMarker>>, channel_id: Id<ChannelMarker>) {
+        let payload = serde_json::json!({
+            "op": 18,
+            "d": {
+                "type": if guild_id.is_some() { "guild" } else { "call" },
+                "guild_id": guild_id,
+                "channel_id": channel_id,
+                "preferred_region": null,
+            }
+        });
+        let _ = self.inner.send(payload.to_string());
+    }
+
+    /// Sends `STREAM_SET_PAUSED` (opcode 22). A new stream starts paused
+    /// until told otherwise.
+    pub fn set_stream_paused(&self, stream_key: &str, paused: bool) {
+        let payload = serde_json::json!({
+            "op": 22,
+            "d": { "stream_key": stream_key, "paused": paused }
+        });
+        let _ = self.inner.send(payload.to_string());
+    }
+
+    /// Sends `STREAM_DELETE` (opcode 19): stops streaming.
+    pub fn delete_stream(&self, stream_key: &str) {
+        let payload = serde_json::json!({
+            "op": 19,
+            "d": { "stream_key": stream_key }
+        });
+        let _ = self.inner.send(payload.to_string());
+    }
+}
+
+/// `STREAM_CREATE`, of which only what a connection needs is read.
+#[derive(Deserialize)]
+struct StreamCreatePayload {
+    stream_key: String,
+    rtc_server_id: String,
+}
+
+/// `STREAM_DELETE`.
+#[derive(Deserialize)]
+struct StreamDeletePayload {
+    stream_key: String,
 }
 
 /// The envelope every gateway payload arrives in. Only dispatches (opcode 0)
@@ -437,6 +496,24 @@ fn dispatch(name: &str, data: &RawValue) -> Vec<GatewayEvent> {
             .unwrap_or_default(),
         "VOICE_SERVER_UPDATE" => serde_json::from_str::<RawVoiceServer>(data)
             .map(|server| vec![GatewayEvent::VoiceServer(convert_voice_server(server))])
+            .unwrap_or_default(),
+        "STREAM_CREATE" => serde_json::from_str::<StreamCreatePayload>(data)
+            .map(|stream| {
+                vec![GatewayEvent::StreamCreate {
+                    stream_key: stream.stream_key,
+                    rtc_server_id: stream.rtc_server_id,
+                }]
+            })
+            .unwrap_or_default(),
+        "STREAM_SERVER_UPDATE" => serde_json::from_str::<StreamServerInfo>(data)
+            .map(|server| vec![GatewayEvent::StreamServer(convert_stream_server(server))])
+            .unwrap_or_default(),
+        "STREAM_DELETE" => serde_json::from_str::<StreamDeletePayload>(data)
+            .map(|stream| {
+                vec![GatewayEvent::StreamDelete {
+                    stream_key: stream.stream_key,
+                }]
+            })
             .unwrap_or_default(),
         "GUILD_CREATE" => serde_json::from_str::<GatewayGuild>(data)
             .map(|guild| {

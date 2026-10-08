@@ -103,7 +103,8 @@
 | Feature | Status | Notes |
 |---|---|---|
 | Video calls (camera) | Missing | Button present but disabled |
-| Screen sharing (Go Live) and watching streams | Missing | Button present but disabled |
+| Screen sharing (Go Live) | Partial | Windows only, video only: no stream audio. Fixed at 720p30; no quality picker. The stream ends if Discord moves it to another server |
+| Watching streams | Missing | Live streams show a LIVE tag on the streamer's tile, but can't be opened |
 | Output device selection | Missing | Only an input device picker |
 | Input and output volume sliders | Missing | |
 | Per-user volume and local mute | Missing | |

@@ -15,8 +15,8 @@ pub use model::{
     Block, Channel, ChannelKind, CurrentUser, DirectMessage, Embed, EmbedAuthor, EmbedField,
     EmbedFooter, EmbedLayout, EmbedMedia, ForwardedMessage, Guild, GuildEmoji, GuildFolders,
     ImageAttachment, Inline, List, Markdown, Mention, MentionedUser, Message, MessageReference,
-    Reaction, ReactionEmoji, Role, SPOILER_PREFIX, SpoilerCover, UserProfile, VideoAttachment,
-    VoiceServerInfo, VoiceUserState,
+    Reaction, ReactionEmoji, Role, SPOILER_PREFIX, SpoilerCover, StreamServerInfo, UserProfile,
+    VideoAttachment, VoiceServerInfo, VoiceUserState, stream_key,
 };
 pub use rest::{
     MAX_ATTACHMENT_SIZE, MESSAGE_PAGE_SIZE, delete_message, edit_message, fetch_channels,
