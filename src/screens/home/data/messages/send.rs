@@ -24,7 +24,7 @@ impl HomeScreen {
             return;
         }
 
-        let content = self.message_input.read(cx).value().trim().to_string();
+        let content = self.resolve_emoji_names(self.message_input.read(cx).value().trim());
         if content.is_empty() && self.pending_attachments.is_empty() {
             return;
         }

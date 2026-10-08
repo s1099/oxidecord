@@ -72,6 +72,7 @@ impl Render for HomeScreen {
             .children(sidebar)
             .child(inset(self.render_content(cx), cx))
             .children(self.render_profile_popup(cx))
+            .children(self.render_emoji_picker(cx))
     }
 }
 

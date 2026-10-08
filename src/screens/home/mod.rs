@@ -9,6 +9,7 @@
 
 mod channels;
 mod data;
+mod emoji;
 mod folders;
 mod state;
 mod view;
@@ -31,7 +32,7 @@ pub const EDIT_CONTEXT: &str = "MessageEdit";
 /// the up arrow to editing the last message.
 pub const COMPOSER_CONTEXT: &str = "MessageComposer";
 
-use state::{EditingMessage, ProfilePopup, ReplyTarget, View};
+use state::{EditingMessage, EmojiPicker, ProfilePopup, ReplyTarget, View};
 
 actions!(
     oxidecord,

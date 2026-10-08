@@ -5,6 +5,7 @@
 //! while nothing outside the home screen can.
 
 use std::collections::{HashMap, HashSet};
+use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -23,6 +24,7 @@ use crate::ui::smooth_scroll::SmoothScroll;
 
 use super::channels::ChannelGroup;
 use super::data::attachments::PendingAttachment;
+use super::emoji::PickerRow;
 use super::folders::RailEntry;
 use super::voice::{PendingVoice, VoiceCall};
 use crate::voice::VoiceEngine;
@@ -75,6 +77,22 @@ pub(super) struct ProfilePopup {
     /// the meantime.
     pub profile: Option<discord::UserProfile>,
     pub error: Option<String>,
+}
+
+/// The open emoji picker.
+pub(super) struct EmojiPicker {
+    /// Window coordinates of the click that opened it, which its bottom-right
+    /// corner sits just above.
+    pub position: Point<Pixels>,
+    pub search: Entity<InputState>,
+    /// The list as last laid out. Rebuilt when the search changes rather than
+    /// every frame — the screen repaints for every video frame, and this is a
+    /// couple of thousand emoji.
+    pub rows: Rc<Vec<PickerRow>>,
+    /// The emoji under the pointer, named in the footer.
+    pub hovered: Option<super::emoji::PickerEmoji>,
+    pub scroll: UniformListScrollHandle,
+    pub _search_changed: Subscription,
 }
 
 /// One video attachment or embed in the message list: which playback is
@@ -256,6 +274,10 @@ pub struct HomeScreen {
     /// Every guild's roles, from the gateway, so a role mention can be named
     /// and coloured.
     pub(super) guild_roles: HashMap<Id<GuildMarker>, HashMap<Id<RoleMarker>, discord::Role>>,
+    /// Every guild's custom emoji, from the gateway, for the emoji picker.
+    pub(super) guild_emojis: HashMap<Id<GuildMarker>, Vec<discord::GuildEmoji>>,
+    /// The emoji picker, while it's open.
+    pub(super) emoji_picker: Option<EmojiPicker>,
     /// The roles the signed-in user holds in each guild, which decide whether
     /// a role mention pings them.
     pub(super) self_roles: HashMap<Id<GuildMarker>, Vec<Id<RoleMarker>>>,
@@ -352,6 +374,8 @@ impl HomeScreen {
             profile_cache: HashMap::new(),
             guild_roles: HashMap::new(),
             self_roles: HashMap::new(),
+            guild_emojis: HashMap::new(),
+            emoji_picker: None,
             revealed_spoilers: HashSet::new(),
             video: None,
             message_input,

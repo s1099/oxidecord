@@ -37,6 +37,9 @@ pub struct Channel {
     /// Whether the current user holds `MANAGE_MESSAGES` here, which is what
     /// lets them delete other people's messages.
     pub can_manage_messages: bool,
+    /// Whether the current user holds `USE_EXTERNAL_EMOJIS` here. Nitro is
+    /// needed as well before another guild's emoji can be sent.
+    pub can_use_external_emoji: bool,
 }
 
 /// A 1:1 or group direct-message conversation from the user's DM list.
@@ -56,6 +59,7 @@ pub(in crate::discord) fn convert_channel(
     channel: twilight_model::channel::Channel,
     can_send: bool,
     can_manage_messages: bool,
+    can_use_external_emoji: bool,
 ) -> Option<Channel> {
     let kind = match channel.kind {
         ChannelType::GuildText => ChannelKind::Text,
@@ -76,6 +80,7 @@ pub(in crate::discord) fn convert_channel(
         topic: channel.topic.filter(|topic| !topic.is_empty()),
         can_send,
         can_manage_messages,
+        can_use_external_emoji,
     })
 }
 

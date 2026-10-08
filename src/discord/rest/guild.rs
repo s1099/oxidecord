@@ -87,6 +87,7 @@ pub async fn fetch_channels(
                             channel,
                             permissions.contains(Permissions::SEND_MESSAGES),
                             permissions.contains(Permissions::MANAGE_MESSAGES),
+                            permissions.contains(Permissions::USE_EXTERNAL_EMOJIS),
                         )
                     })
                     .flatten()

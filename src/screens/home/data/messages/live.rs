@@ -101,6 +101,9 @@ impl HomeScreen {
                 }
                 cx.notify();
             }
+            discord::GatewayEvent::GuildEmojis { guild_id, emojis } => {
+                self.guild_emojis.insert(guild_id, emojis);
+            }
             discord::GatewayEvent::MemberRoles {
                 guild_id,
                 user_id,

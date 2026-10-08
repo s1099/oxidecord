@@ -2,12 +2,14 @@
 //! text input, wrapped in one rounded surface.
 
 mod attachments;
+mod emoji_picker;
 mod reply_banner;
 
 use gpui::prelude::FluentBuilder as _;
 use gpui::*;
 use gpui_component::{
-    ActiveTheme as _, IconName, Sizable as _, Size, StyleSized as _, h_flex, input::Input, v_flex,
+    ActiveTheme as _, Icon, IconName, Selectable as _, Sizable as _, Size, StyleSized as _, h_flex,
+    input::Input, v_flex,
 };
 
 use crate::screens::home::{COMPOSER_CONTEXT, HomeScreen, SendMessage};
@@ -114,6 +116,30 @@ impl HomeScreen {
                                             // on that height, which the
                                             // can't-send notice is sized to.
                                             .py(px(6.)),
+                                    ),
+                            )
+                            .child(
+                                h_flex()
+                                    .h(COMPOSER_LINE_HEIGHT)
+                                    .flex_shrink_0()
+                                    .items_center()
+                                    .pr_1()
+                                    .child(
+                                        Button::new("emoji-picker")
+                                            .icon(Icon::default().path("icons/smile.svg"))
+                                            .ghost()
+                                            .small()
+                                            .selected(self.emoji_picker.is_some())
+                                            .tooltip("Select emoji")
+                                            .on_click(cx.listener(
+                                                |this, event: &ClickEvent, window, cx| {
+                                                    this.toggle_emoji_picker(
+                                                        event.position(),
+                                                        window,
+                                                        cx,
+                                                    );
+                                                },
+                                            )),
                                     ),
                             ),
                     ),

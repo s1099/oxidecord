@@ -7,6 +7,7 @@
 mod cdn;
 mod channel;
 mod embed;
+mod emoji;
 mod guild;
 mod markdown;
 mod message;
@@ -17,6 +18,7 @@ mod voice;
 
 pub use channel::{Channel, ChannelKind, DirectMessage};
 pub use embed::{Embed, EmbedAuthor, EmbedField, EmbedFooter, EmbedLayout, EmbedMedia};
+pub use emoji::GuildEmoji;
 pub use guild::{Guild, Role};
 pub use markdown::{Block, Inline, List, Markdown, Mention};
 pub use message::{
@@ -28,6 +30,7 @@ pub use user::{CurrentUser, UserProfile};
 pub use voice::{VoiceServerInfo, VoiceUserState};
 
 pub(super) use channel::{convert_channel, convert_dms};
+pub(super) use emoji::{RawEmoji, convert_guild_emoji};
 pub(super) use guild::{RawMember, RawRole, convert_guild, convert_role};
 pub(super) use message::convert_message;
 pub(super) use settings::{RawSettingsProto, parse_guild_folders};

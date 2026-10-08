@@ -7,6 +7,7 @@
 
 pub(super) mod attachments;
 pub(super) mod dms;
+pub(super) mod emoji;
 pub(super) mod guilds;
 pub(super) mod messages;
 pub(super) mod profile;

@@ -105,7 +105,7 @@ impl HomeScreen {
             return;
         };
         let message_id = editing.message_id;
-        let content = editing.input.read(cx).value().trim().to_string();
+        let content = self.resolve_emoji_names(editing.input.read(cx).value().trim());
         let Some(message) = self
             .messages
             .iter_mut()

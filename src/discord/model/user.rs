@@ -18,6 +18,9 @@ pub struct CurrentUser {
     /// The `@handle` username.
     pub username: String,
     pub avatar_url: Option<String>,
+    /// Whether they have any tier of Nitro, which is what lets custom emoji be
+    /// used outside their own guild and animated ones at all.
+    pub premium: bool,
 }
 
 /// Another user, as shown in the profile popout opened from their avatar.
@@ -160,6 +163,9 @@ pub(in crate::discord) fn convert_current_user(
         avatar_url: user
             .avatar
             .map(|hash| cdn::small_avatar_url(user.id.get(), &hash.to_string())),
+        premium: user
+            .premium_type
+            .is_some_and(|tier| tier != twilight_model::user::PremiumType::None),
         username: user.name,
     }
 }

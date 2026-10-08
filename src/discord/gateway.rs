@@ -19,9 +19,9 @@ use twilight_model::id::{
 use crate::platform::runtime;
 
 use super::model::{
-    Message, RawMember, RawRole, RawVoiceServer, RawVoiceState, Role, VoiceServerInfo,
-    VoiceUserState, convert_guild_voice_states, convert_message, convert_role,
-    convert_voice_server, convert_voice_state,
+    GuildEmoji, Message, RawEmoji, RawMember, RawRole, RawVoiceServer, RawVoiceState, Role,
+    VoiceServerInfo, VoiceUserState, convert_guild_emoji, convert_guild_voice_states,
+    convert_message, convert_role, convert_voice_server, convert_voice_state,
 };
 
 /// A message received live over the gateway, tagged with the channel it
@@ -68,6 +68,12 @@ pub enum GatewayEvent {
     RoleDelete {
         guild_id: Id<GuildMarker>,
         role_id: Id<RoleMarker>,
+    },
+    /// Every custom emoji in a guild, from `READY`, `GUILD_CREATE`, or
+    /// `GUILD_EMOJIS_UPDATE`. Replaces what was known before.
+    GuildEmojis {
+        guild_id: Id<GuildMarker>,
+        emojis: Vec<GuildEmoji>,
     },
     /// A guild member's roles, from `READY`, `GUILD_CREATE`, or
     /// `GUILD_MEMBER_UPDATE`. Not only the signed-in user's — a user session
@@ -157,6 +163,18 @@ struct GatewayGuild {
     roles: Vec<RawRole>,
     #[serde(default)]
     members: Vec<RawMember>,
+    /// `None` for an unavailable guild, which says nothing about its emoji,
+    /// as opposed to a guild that has none.
+    #[serde(default, deserialize_with = "skip_invalid_opt")]
+    emojis: Option<Vec<RawEmoji>>,
+}
+
+/// `GUILD_EMOJIS_UPDATE`: the guild's whole emoji list as it now stands.
+#[derive(Deserialize)]
+struct EmojisUpdatePayload {
+    guild_id: Id<GuildMarker>,
+    #[serde(deserialize_with = "skip_invalid")]
+    emojis: Vec<RawEmoji>,
 }
 
 /// `GUILD_DELETE`: the user left the guild, or it went unavailable.
@@ -204,6 +222,14 @@ where
         .into_iter()
         .filter_map(|item| serde_json::from_str(item.get()).ok())
         .collect())
+}
+
+fn skip_invalid_opt<'de, D, T>(deserializer: D) -> Result<Option<Vec<T>>, D::Error>
+where
+    D: Deserializer<'de>,
+    T: DeserializeOwned,
+{
+    skip_invalid(deserializer).map(Some)
 }
 
 /// Opens a gateway websocket connection and invokes `on_event` for every
@@ -276,6 +302,7 @@ fn dispatch(name: &str, data: &RawValue) -> Vec<GatewayEvent> {
                         guild.members.iter().chain(&merged),
                     ));
                     roles.extend(member_roles(guild.id, merged));
+                    roles.extend(guild_emojis(guild.id, guild.emojis));
                     roles.extend(guild_roles(guild.id, guild.roles, guild.members));
                 }
                 // `Ready` goes first: the member roles that follow are only
@@ -323,6 +350,7 @@ fn dispatch(name: &str, data: &RawValue) -> Vec<GatewayEvent> {
                     ),
                 };
                 std::iter::once(voice)
+                    .chain(guild_emojis(guild.id, guild.emojis))
                     .chain(guild_roles(guild.id, guild.roles, guild.members))
                     .collect()
             })
@@ -353,11 +381,26 @@ fn dispatch(name: &str, data: &RawValue) -> Vec<GatewayEvent> {
                 }]
             })
             .unwrap_or_default(),
+        "GUILD_EMOJIS_UPDATE" => serde_json::from_str::<EmojisUpdatePayload>(data)
+            .map(|update| {
+                guild_emojis(update.guild_id, Some(update.emojis))
+                    .into_iter()
+                    .collect()
+            })
+            .unwrap_or_default(),
         "GUILD_MEMBER_UPDATE" => serde_json::from_str::<MemberUpdatePayload>(data)
             .map(|update| member_roles(update.guild_id, vec![update.member]).collect())
             .unwrap_or_default(),
         _ => Vec::new(),
     }
+}
+
+/// A guild's emoji as an event, unless the guild arrived without its list.
+fn guild_emojis(guild_id: Id<GuildMarker>, emojis: Option<Vec<RawEmoji>>) -> Option<GatewayEvent> {
+    Some(GatewayEvent::GuildEmojis {
+        guild_id,
+        emojis: emojis?.into_iter().map(convert_guild_emoji).collect(),
+    })
 }
 
 /// Each member's roles as an event, skipping any that arrived without a user.
@@ -504,6 +547,38 @@ mod tests {
         assert_eq!(*guild_id, Id::new(10));
         // A cleared nickname falls through to the global name.
         assert_eq!(states[0].name.as_deref(), Some("Global"));
+    }
+
+    #[test]
+    fn guild_emojis_arrive_with_the_guild_and_their_updates() {
+        let events = dispatch_json(
+            "GUILD_CREATE",
+            r#"{
+                "id": "10",
+                "emojis": [
+                    {"id": "5", "name": "wave", "animated": true, "roles": ["20"]},
+                    {"id": null, "name": "broken"}
+                ]
+            }"#,
+        );
+        let emojis = events.iter().find_map(|event| match event {
+            GatewayEvent::GuildEmojis { emojis, .. } => Some(emojis),
+            _ => None,
+        });
+        let [emoji] = emojis
+            .expect("GUILD_CREATE should carry its emoji")
+            .as_slice()
+        else {
+            panic!("the malformed emoji should be skipped");
+        };
+        assert!(emoji.animated && emoji.available);
+        assert_eq!(emoji.roles, [Id::new(20)]);
+
+        let events = dispatch_json("GUILD_EMOJIS_UPDATE", r#"{"guild_id": "10", "emojis": []}"#);
+        assert!(matches!(
+            events.as_slice(),
+            [GatewayEvent::GuildEmojis { emojis, .. }] if emojis.is_empty()
+        ));
     }
 
     #[test]

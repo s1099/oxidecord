@@ -26,6 +26,7 @@ opus2 = "0.4.0"
 symphonia = { version = "0.5.5", default-features = false, features = ["pcm"] }
 async-trait = "0.1.92"
 image = { version = "0.25", default-features = false }
+emojis = "0.9.0"
 
 # Video playback goes through Media Foundation so no codec ships with the app
 [target.'cfg(windows)'.dependencies]
