@@ -153,7 +153,7 @@ impl HomeScreen {
 
         let ix = self.messages.len();
         self.messages.push(incoming.message);
-        self.messages_list.splice(ix..ix, 1);
+        self.splice_messages(ix..ix, 1);
         // Follow the conversation only when the newest message was already in
         // view; if the user has scrolled up to read history, leave them there.
         if self.at_bottom {

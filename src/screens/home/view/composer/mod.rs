@@ -43,6 +43,7 @@ impl HomeScreen {
                             .items_center()
                             .input_size(Size::Medium)
                             .input_text_size(Size::Medium)
+                            .h(COMPOSER_LINE_HEIGHT)
                             .text_color(theme.muted_foreground)
                             .child("You do not have permission to send messages in this channel."),
                     ),
@@ -110,12 +111,11 @@ impl HomeScreen {
                                             .appearance(false)
                                             .focus_bordered(false)
                                             // A multi-line input sizes to its
-                                            // padding and line height, not the
-                                            // fixed height a single-line one
-                                            // takes. This puts one line back
-                                            // on that height, which the
-                                            // can't-send notice is sized to.
-                                            .py(px(6.)),
+                                            // padding and rows, not a fixed
+                                            // height. This pads one line out
+                                            // to the composer's height, which
+                                            // the can't-send notice is sized to.
+                                            .py(COMPOSER_PADDING_Y),
                                     ),
                             )
                             .child(
@@ -148,8 +148,13 @@ impl HomeScreen {
     }
 }
 
-/// A one-line composer's height: a medium single-line input's.
-const COMPOSER_LINE_HEIGHT: Pixels = px(32.);
+/// A one-line composer's height. Roomier than a medium input's 32px, like
+/// Discord's.
+const COMPOSER_LINE_HEIGHT: Pixels = px(44.);
+
+/// The input's vertical padding: centres a medium input's 20px line in
+/// `COMPOSER_LINE_HEIGHT`.
+const COMPOSER_PADDING_Y: Pixels = px(12.);
 
 /// The composer's surface. Flat, unlike the buttons around it: a shadow made
 /// the input read as a box sitting on the page rather than a field. Dark themes

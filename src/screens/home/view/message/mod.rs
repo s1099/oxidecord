@@ -3,6 +3,7 @@
 mod attachment;
 mod edit;
 mod embed;
+mod forward;
 mod reactions;
 mod reply;
 mod toolbar;
@@ -79,6 +80,9 @@ impl HomeScreen {
             .w_full()
             .min_w_0()
             .gap_1()
+            .when_some(message.forward.as_ref(), |this, forward| {
+                this.child(self.render_forward(message.id.get(), forward, cx))
+            })
             .when_some(editing, |this, editing| {
                 this.child(self.render_edit_box(editing, cx))
             })
@@ -96,6 +100,7 @@ impl HomeScreen {
             .when(
                 editing.is_none()
                     && message.content.is_empty()
+                    && message.forward.is_none()
                     && !has_images
                     && !has_videos
                     && !has_embeds,
@@ -108,41 +113,11 @@ impl HomeScreen {
                     )
                 },
             )
-            .when(has_images, |this| {
-                this.child(
-                    v_flex()
-                        .gap_1()
-                        .children(message.images.iter().enumerate().map(|(index, image)| {
-                            self.render_image(
-                                image,
-                                MediaKey {
-                                    message_id: message.id.get(),
-                                    index,
-                                },
-                                cx,
-                            )
-                        })),
-                )
-            })
-            .when(has_videos, |this| {
-                this.child(
-                    v_flex()
-                        .gap_1()
-                        .children(message.videos.iter().enumerate().map(|(index, video)| {
-                            self.render_video(
-                                video,
-                                MediaKey {
-                                    message_id: message.id.get(),
-                                    index,
-                                },
-                                cx,
-                            )
-                        })),
-                )
-            })
-            .when(has_embeds, |this| {
-                this.child(self.render_embeds(
+            .when(has_images || has_videos || has_embeds, |this| {
+                this.child(self.render_media(
                     message.id.get(),
+                    &message.images,
+                    &message.videos,
                     &message.embeds,
                     &message.mentions,
                     cx,
@@ -202,6 +177,40 @@ impl HomeScreen {
             .when(show_header, |this| this.pt(px(GROUP_GAP)))
             .child(row)
             .into_any_element()
+    }
+
+    /// A message's images, videos, and embeds, stacked under its text.
+    ///
+    /// `message_id` keys the media's element ids and playback. A forward's
+    /// media borrows its forwarding message's id: Discord sends any comment
+    /// on a forward as a message of its own, so a forward never carries media
+    /// of its own for those keys to collide with.
+    fn render_media(
+        &self,
+        message_id: u64,
+        images: &[discord::ImageAttachment],
+        videos: &[discord::VideoAttachment],
+        embeds: &[discord::Embed],
+        mentions: &[discord::MentionedUser],
+        cx: &Context<Self>,
+    ) -> impl IntoElement {
+        v_flex()
+            .w_full()
+            .min_w_0()
+            .gap_1()
+            .when(!images.is_empty(), |this| {
+                this.child(v_flex().gap_1().children(images.iter().enumerate().map(
+                    |(index, image)| self.render_image(image, MediaKey { message_id, index }, cx),
+                )))
+            })
+            .when(!videos.is_empty(), |this| {
+                this.child(v_flex().gap_1().children(videos.iter().enumerate().map(
+                    |(index, video)| self.render_video(video, MediaKey { message_id, index }, cx),
+                )))
+            })
+            .when(!embeds.is_empty(), |this| {
+                this.child(self.render_embeds(message_id, embeds, mentions, cx))
+            })
     }
 
     /// Whether a message pings the signed-in user, which Discord marks by

@@ -2,9 +2,10 @@
 
 use std::sync::Arc;
 
+use twilight_model::channel::message::{MessageReferenceType, MessageSnapshot};
 use twilight_model::id::{
     Id,
-    marker::{EmojiMarker, MessageMarker, RoleMarker, UserMarker},
+    marker::{EmojiMarker, GuildMarker, MessageMarker, RoleMarker, UserMarker},
 };
 
 use super::cdn;
@@ -44,6 +45,8 @@ pub struct Message {
     /// The message this one is a reply to, when it references another. Carries
     /// just enough to render the quoted preview above the message.
     pub reply: Option<MessageReference>,
+    /// The message this one forwards, as it stood when it was forwarded.
+    pub forward: Option<ForwardedMessage>,
     /// Reactions on the message, in Discord's order (first reacted first).
     pub reactions: Vec<Reaction>,
 }
@@ -145,6 +148,34 @@ pub struct MessageReference {
     pub mentions: Vec<MentionedUser>,
 }
 
+/// A copy of a forwarded message, taken when it was forwarded. Discord sends
+/// it without an author, so the view credits where it came from instead.
+#[derive(Clone)]
+pub struct ForwardedMessage {
+    pub content: String,
+    pub markdown: Arc<Markdown>,
+    pub mentions: Vec<MentionedUser>,
+    /// When the original was sent, in Unix seconds.
+    pub timestamp: i64,
+    pub edited: Option<i64>,
+    pub images: Vec<ImageAttachment>,
+    pub videos: Vec<VideoAttachment>,
+    pub embeds: Vec<Embed>,
+    /// The guild the original was sent in; `None` for a direct message.
+    pub guild_id: Option<Id<GuildMarker>>,
+}
+
+impl ForwardedMessage {
+    /// When the original was sent, formatted like a message header's time.
+    pub fn timestamp_label(&self) -> String {
+        format_message_time(self.timestamp)
+    }
+
+    pub fn edited_label(&self) -> Option<String> {
+        self.edited.map(format_local_full)
+    }
+}
+
 #[derive(Clone)]
 pub struct ImageAttachment {
     pub url: String,
@@ -205,6 +236,17 @@ pub(in crate::discord) fn convert_message(message: twilight_model::channel::Mess
         .and_then(|member| member.nick)
         .or(message.author.global_name)
         .unwrap_or_else(|| message.author.name.clone());
+    let (images, videos) = convert_attachments(&message.attachments);
+    // A forward points at its original through the same reference a reply
+    // does, so only a plain reference counts as a reply.
+    let is_forward = message
+        .reference
+        .as_ref()
+        .is_some_and(|reference| reference.kind == MessageReferenceType::Forward);
+    let forward = is_forward
+        .then(|| message.message_snapshots.into_iter().next())
+        .flatten()
+        .map(convert_snapshot);
 
     Message {
         id: message.id,
@@ -218,51 +260,14 @@ pub(in crate::discord) fn convert_message(message: twilight_model::channel::Mess
         content: message.content,
         timestamp: message.timestamp.as_secs(),
         edited: message.edited_timestamp.map(|edited| edited.as_secs()),
-        images: message
-            .attachments
-            .iter()
-            .filter(|attachment| is_image(attachment))
-            .map(|attachment| ImageAttachment {
-                url: cdn::scaled_url(
-                    &attachment.proxy_url,
-                    attachment.width,
-                    attachment.height,
-                    PREVIEW_MAX_WIDTH,
-                    PREVIEW_MAX_HEIGHT,
-                ),
-                width: attachment.width.map(|w| w as u32),
-                height: attachment.height.map(|h| h as u32),
-                spoiler: is_spoiler(attachment).then(|| SpoilerCover {
-                    url: cdn::scaled_url(
-                        &attachment.proxy_url,
-                        attachment.width,
-                        attachment.height,
-                        SpoilerCover::SIZE,
-                        SpoilerCover::SIZE,
-                    ),
-                }),
-            })
-            .collect(),
-        videos: message
-            .attachments
-            .iter()
-            .filter(|attachment| is_video(attachment))
-            .map(|attachment| VideoAttachment {
-                url: attachment.proxy_url.clone(),
-                poster_url: poster_url(attachment, PREVIEW_MAX_WIDTH, PREVIEW_MAX_HEIGHT),
-                spoiler: is_spoiler(attachment).then(|| SpoilerCover {
-                    url: poster_url(attachment, SpoilerCover::SIZE, SpoilerCover::SIZE),
-                }),
-                filename: attachment.filename.clone(),
-                width: attachment.width.map(|w| w as u32),
-                height: attachment.height.map(|h| h as u32),
-                size: attachment.size,
-            })
-            .collect(),
+        images,
+        videos,
         embeds: message.embeds.into_iter().map(convert_embed).collect(),
         reply: message
             .referenced_message
+            .filter(|_| !is_forward)
             .map(|referenced| convert_reference(*referenced)),
+        forward,
         reactions: message
             .reactions
             .into_iter()
@@ -272,6 +277,69 @@ pub(in crate::discord) fn convert_message(message: twilight_model::channel::Mess
                 me: reaction.me,
             })
             .collect(),
+    }
+}
+
+/// Splits attachments into the images and videos the view draws inline;
+/// anything else isn't shown.
+fn convert_attachments(
+    attachments: &[twilight_model::channel::Attachment],
+) -> (Vec<ImageAttachment>, Vec<VideoAttachment>) {
+    let images = attachments
+        .iter()
+        .filter(|attachment| is_image(attachment))
+        .map(|attachment| ImageAttachment {
+            url: cdn::scaled_url(
+                &attachment.proxy_url,
+                attachment.width,
+                attachment.height,
+                PREVIEW_MAX_WIDTH,
+                PREVIEW_MAX_HEIGHT,
+            ),
+            width: attachment.width.map(|w| w as u32),
+            height: attachment.height.map(|h| h as u32),
+            spoiler: is_spoiler(attachment).then(|| SpoilerCover {
+                url: cdn::scaled_url(
+                    &attachment.proxy_url,
+                    attachment.width,
+                    attachment.height,
+                    SpoilerCover::SIZE,
+                    SpoilerCover::SIZE,
+                ),
+            }),
+        })
+        .collect();
+    let videos = attachments
+        .iter()
+        .filter(|attachment| is_video(attachment))
+        .map(|attachment| VideoAttachment {
+            url: attachment.proxy_url.clone(),
+            poster_url: poster_url(attachment, PREVIEW_MAX_WIDTH, PREVIEW_MAX_HEIGHT),
+            spoiler: is_spoiler(attachment).then(|| SpoilerCover {
+                url: poster_url(attachment, SpoilerCover::SIZE, SpoilerCover::SIZE),
+            }),
+            filename: attachment.filename.clone(),
+            width: attachment.width.map(|w| w as u32),
+            height: attachment.height.map(|h| h as u32),
+            size: attachment.size,
+        })
+        .collect();
+    (images, videos)
+}
+
+fn convert_snapshot(snapshot: MessageSnapshot) -> ForwardedMessage {
+    let message = snapshot.message;
+    let (images, videos) = convert_attachments(&message.attachments);
+    ForwardedMessage {
+        markdown: Arc::new(Markdown::parse(&message.content)),
+        content: message.content,
+        mentions: convert_mentions(message.mentions),
+        timestamp: message.timestamp.as_secs(),
+        edited: message.edited_timestamp.map(|edited| edited.as_secs()),
+        images,
+        videos,
+        embeds: message.embeds.into_iter().map(convert_embed).collect(),
+        guild_id: snapshot.guild_id,
     }
 }
 
@@ -314,6 +382,12 @@ pub(in crate::discord) fn convert_reaction_emoji(
 /// don't carry guild `member` data, so the author name falls back to the global
 /// display name and then the username.
 fn convert_reference(referenced: twilight_model::channel::Message) -> MessageReference {
+    // A forward has no text of its own, so a reply to one quotes what it
+    // carries.
+    let content = match referenced.message_snapshots.first() {
+        Some(snapshot) if referenced.content.is_empty() => snapshot.message.content.as_str(),
+        _ => referenced.content.as_str(),
+    };
     MessageReference {
         author_name: referenced
             .author
@@ -321,8 +395,8 @@ fn convert_reference(referenced: twilight_model::channel::Message) -> MessageRef
             .clone()
             .unwrap_or_else(|| referenced.author.name.clone()),
         author_avatar_url: small_avatar_url(&referenced.author),
-        content: single_line_preview(&referenced.content),
-        preview: markdown::parse_preview(&referenced.content),
+        content: single_line_preview(content),
+        preview: markdown::parse_preview(content),
         mentions: convert_mentions(referenced.mentions),
     }
 }

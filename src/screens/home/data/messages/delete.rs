@@ -49,7 +49,7 @@ impl HomeScreen {
         {
             self.editing = None;
         }
-        self.messages_list.splice(ix..ix + 1, 0);
+        self.splice_messages(ix..ix + 1, 0);
         cx.notify();
 
         cx.spawn(async move |this, cx| {
@@ -64,7 +64,7 @@ impl HomeScreen {
                 }
                 let ix = ix.min(this.messages.len());
                 this.messages.insert(ix, removed);
-                this.messages_list.splice(ix..ix, 1);
+                this.splice_messages(ix..ix, 1);
                 this.send_error = Some(err);
                 cx.notify();
             });
@@ -94,7 +94,7 @@ impl HomeScreen {
                 continue;
             };
             self.messages.remove(ix);
-            self.messages_list.splice(ix..ix + 1, 0);
+            self.splice_messages(ix..ix + 1, 0);
             changed = true;
         }
         if !changed {

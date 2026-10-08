@@ -10,6 +10,10 @@ use crate::screens::home::HomeScreen;
 
 use crate::screens::home::view::MESSAGE_PADDING_X;
 
+/// Space under the newest message, on top of the list's own padding, so it
+/// doesn't sit flush against the composer.
+const NEWEST_MESSAGE_GAP: f32 = 16.;
+
 /// Placeholder message rows. The widths are fixed rather than random so the
 /// skeleton doesn't reshuffle on every frame.
 pub(super) fn skeleton() -> impl IntoElement {
@@ -73,10 +77,7 @@ impl HomeScreen {
             .flex_1()
             .min_h_0()
             .w_full()
-            .pt_2()
-            // Breathing room between the newest message and the composer, taken
-            // from the list's viewport so the composer keeps its height.
-            .pb_6()
+            .py_2()
             .on_scroll_wheel(
                 cx.listener(|this, event, window, _| this.messages_scroll.absorb(event, window)),
             );
@@ -116,6 +117,18 @@ impl HomeScreen {
             || message.reply.is_some()
             || self.messages.get(ix - 1).map(|previous| previous.author_id)
                 != Some(message.author_id);
-        self.render_message(message, show_header, cx)
+        let row = self.render_message(message, show_header, cx);
+        // The space belongs to the newest row rather than the list's padding,
+        // so it scrolls away with the conversation instead of shrinking the
+        // viewport. Data-side splices go through `splice_messages`, which
+        // re-lays out the row that loses it.
+        if ix + 1 == self.messages.len() {
+            div()
+                .pb(px(NEWEST_MESSAGE_GAP))
+                .child(row)
+                .into_any_element()
+        } else {
+            row
+        }
     }
 }

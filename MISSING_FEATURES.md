@@ -16,7 +16,6 @@
 | Stickers (sending and rendering) | Missing | |
 | GIF picker (Tenor) | Missing | |
 | Polls (creating, voting, results) | Missing | |
-| Forwarded messages | Missing | |
 | Non-media file attachments shown in the chat (audio player, file cards for PDFs, zips, and so on) | Missing | The message model only has images and videos; other attachments are dropped from the view |
 | Voice messages (recording and playback) | Missing | |
 | Uploads larger than 10 MB (Nitro and boosted-server limits) | Partial | Hard-coded 10 MB cap (`MAX_ATTACHMENT_SIZE`) |
@@ -26,7 +25,7 @@
 | System messages (joins, pins, boosts, calls, thread created, and so on) | Missing | |
 | Pinning and unpinning messages, and the pinned-messages panel | Missing | |
 | Message search (with filters: from, in, has, before, after) | Missing | |
-| Jump to a message (from a reply, a link, or search) | Missing | Clicking a reply quote doesn't scroll to the original |
+| Jump to a message (from a reply, a link, or search) | Missing | Clicking a reply quote or a forward's source doesn't open the original |
 | "Jump to present" and the new-messages bar | Missing | |
 | Mark as unread | Missing | |
 | Copy text, copy message ID, and other developer-mode context-menu items | Missing | Only "Copy Message Link" is there |
