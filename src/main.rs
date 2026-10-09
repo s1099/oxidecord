@@ -94,5 +94,10 @@ fn main() {
             cx.new(|cx| Root::new(app_view, window, cx))
         })
         .expect("Failed to open window");
+
+        // After the window, so the update toast has somewhere to appear.
+        if platform::updater::supported() {
+            platform::updater::check(cx);
+        }
     });
 }

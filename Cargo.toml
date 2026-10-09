@@ -34,6 +34,7 @@ raw-window-handle = "0.6"
 image = { version = "0.25", default-features = false }
 emojis = "0.9.0"
 chrono = { version = "0.4.45", default-features = false, features = ["clock", "std"] }
+sha2 = "0.10.9"
 
 # Video playback and screen capture go through Media Foundation and Direct3D,
 # so no codec ships with the app

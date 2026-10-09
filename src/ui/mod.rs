@@ -8,4 +8,5 @@ pub mod settings;
 pub mod smooth_scroll;
 pub mod theme;
 pub mod tooltip;
+pub mod update_notice;
 pub mod window_controls;

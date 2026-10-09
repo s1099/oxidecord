@@ -6,8 +6,11 @@
 //! app is up: the app hands the last step to a second copy of *itself*, started
 //! with [`APPLY_UPDATE_ARG`], and then quits. That helper waits for the app to
 //! go away, renames the old binary aside, moves the downloaded one into its
-//! place, and exits. The renamed-aside file is deleted by the next launch (see
+//! place, starts it, and exits. The renamed-aside file is deleted by the next launch (see
 //! [`init`]), since the helper can't delete the image it is itself running from.
+//!
+//! The download is checked against the SHA-256 digest GitHub records for the
+//! asset, and only a match is staged; a release without one isn't installed.
 //!
 //! Only the Windows path exists so far; elsewhere the settings page says as
 //! much and the buttons are inert.
@@ -22,6 +25,7 @@ use std::{
 
 use futures::{StreamExt as _, channel::mpsc};
 use gpui::{App, Global, SharedString};
+use sha2::{Digest as _, Sha256};
 
 use super::{http, runtime};
 
@@ -65,6 +69,8 @@ pub enum Status {
     Available {
         version: SharedString,
         url: SharedString,
+        /// Lowercase hex, as GitHub reports it.
+        sha256: SharedString,
     },
     /// Percentage is only meaningful when the response declared a length; it
     /// stays at 0 otherwise.
@@ -72,7 +78,7 @@ pub enum Status {
         version: SharedString,
         percent: u8,
     },
-    /// Downloaded and staged; the swap happens on the next quit.
+    /// Downloaded and staged; the swap happens on the next quit or restart.
     Ready {
         version: SharedString,
     },
@@ -80,9 +86,10 @@ pub enum Status {
 }
 
 /// The updater's state, global because the settings page is rebuilt from
-/// scratch on every frame and has nowhere of its own to keep it.
+/// scratch on every frame and has nowhere of its own to keep it. Observing it
+/// is how the update toast hears about changes.
 #[derive(Default)]
-struct Updater {
+pub struct Updater {
     status: Status,
 }
 
@@ -124,6 +131,7 @@ pub fn check(cx: &mut App) {
                 Ok(Some(release)) => Status::Available {
                     version: release.version.into(),
                     url: release.url.into(),
+                    sha256: release.sha256.into(),
                 },
                 Ok(None) => Status::UpToDate,
                 Err(error) => Status::Failed(error.to_string().into()),
@@ -136,7 +144,12 @@ pub fn check(cx: &mut App) {
 
 /// Downloads the available release and stages it beside the running binary.
 pub fn download(cx: &mut App) {
-    let Status::Available { version, url } = status(cx) else {
+    let Status::Available {
+        version,
+        url,
+        sha256,
+    } = status(cx)
+    else {
         return;
     };
     let Some(staged) = sibling_path(STAGED_NAME) else {
@@ -156,7 +169,12 @@ pub fn download(cx: &mut App) {
         // channel, so progress reaches the UI without the two sides polling
         // each other; only whole-percent changes are sent.
         let (tx, mut rx) = mpsc::unbounded();
-        runtime::handle().spawn(download_asset(url.to_string(), staged, tx));
+        runtime::handle().spawn(download_asset(
+            url.to_string(),
+            sha256.to_string(),
+            staged,
+            tx,
+        ));
 
         while let Some(progress) = rx.next().await {
             let version = version.clone();
@@ -176,7 +194,8 @@ pub fn download(cx: &mut App) {
     .detach();
 }
 
-/// Hands the swap to a helper process and quits so it can go ahead.
+/// Hands the swap to a helper process and quits so it can go ahead; the helper
+/// starts the new version once it's in place.
 pub fn install(cx: &mut App) {
     if !matches!(status(cx), Status::Ready { .. }) {
         return;
@@ -189,7 +208,9 @@ pub fn install(cx: &mut App) {
 }
 
 fn set_status(status: Status, cx: &mut App) {
-    if cx.default_global::<Updater>().status == status {
+    // Read without `default_global`, which counts as a change and would wake
+    // the global's observers for nothing.
+    if self::status(cx) == status {
         return;
     }
     cx.default_global::<Updater>().status = status;
@@ -241,6 +262,13 @@ pub fn apply_update() -> ! {
     for attempt in 0..SWAP_ATTEMPTS {
         _ = fs::remove_file(&retired);
         if fs::rename(&exe, &retired).is_ok() && fs::rename(&staged, &exe).is_ok() {
+            // Bring the app back, now on the new version. Nothing here waits
+            // on it, so this process is gone before it gets far into startup.
+            _ = Command::new(&exe)
+                .stdin(Stdio::null())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .spawn();
             std::process::exit(0);
         }
         // Put the old binary back if only the second rename failed, so a give-up
@@ -265,6 +293,7 @@ enum Progress {
 struct Release {
     version: String,
     url: String,
+    sha256: String,
 }
 
 /// Fetches the newest release, or `None` when it isn't newer than this build.
@@ -296,25 +325,40 @@ async fn fetch_latest() -> Result<Option<Release>, String> {
         return Ok(None);
     }
 
-    let url = release["assets"]
+    let asset = release["assets"]
         .as_array()
         .into_iter()
         .flatten()
         .find(|asset| asset["name"].as_str() == Some(ASSET_NAME))
-        .and_then(|asset| asset["browser_download_url"].as_str())
         .ok_or(format!("release {tag} has no {ASSET_NAME}"))?;
+    let url = asset["browser_download_url"]
+        .as_str()
+        .ok_or(format!("release {tag} has no {ASSET_NAME}"))?;
+    // Without a digest there's nothing to tell a corrupted or substituted
+    // download from the real one, so such a release is refused outright.
+    let sha256 = asset["digest"]
+        .as_str()
+        .and_then(|digest| digest.strip_prefix("sha256:"))
+        .ok_or(format!("release {tag} has no checksum for {ASSET_NAME}"))?;
 
     Ok(Some(Release {
         version: tag.trim_start_matches(['v', 'V']).to_string(),
         url: url.to_string(),
+        sha256: sha256.to_ascii_lowercase(),
     }))
 }
 
-/// Streams the asset to `staged`, reporting each whole percent along the way.
-async fn download_asset(url: String, staged: PathBuf, tx: mpsc::UnboundedSender<Progress>) {
-    let result = write_asset(url, &staged, &tx).await;
+/// Streams the asset to `staged`, reporting each whole percent along the way,
+/// and keeps it only if it hashes to `sha256`.
+async fn download_asset(
+    url: String,
+    sha256: String,
+    staged: PathBuf,
+    tx: mpsc::UnboundedSender<Progress>,
+) {
+    let result = write_asset(url, &sha256, &staged, &tx).await;
     if result.is_err() {
-        // A partial file would be swapped in as if it were a build.
+        // A partial or mismatched file would be swapped in as if it were a build.
         _ = fs::remove_file(&staged);
     }
     _ = tx.unbounded_send(Progress::Done(result));
@@ -322,6 +366,7 @@ async fn download_asset(url: String, staged: PathBuf, tx: mpsc::UnboundedSender<
 
 async fn write_asset(
     url: String,
+    sha256: &str,
     staged: &Path,
     tx: &mpsc::UnboundedSender<Progress>,
 ) -> Result<(), String> {
@@ -338,6 +383,7 @@ async fn write_asset(
     let mut file = fs::File::create(staged)
         .map_err(|error| format!("couldn't write beside the app: {error}"))?;
 
+    let mut hasher = Sha256::new();
     let mut written = 0u64;
     let mut reported = 0u8;
     while let Some(chunk) = response
@@ -347,6 +393,7 @@ async fn write_asset(
     {
         file.write_all(&chunk)
             .map_err(|error| format!("couldn't write the download: {error}"))?;
+        hasher.update(&chunk);
         written += chunk.len() as u64;
 
         // Nothing to report when the response didn't declare a length.
@@ -362,7 +409,17 @@ async fn write_asset(
     }
 
     file.flush()
-        .map_err(|error| format!("couldn't finish writing the download: {error}"))
+        .map_err(|error| format!("couldn't finish writing the download: {error}"))?;
+
+    let actual: String = hasher
+        .finalize()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect();
+    if actual != sha256 {
+        return Err("the download didn't match its checksum".into());
+    }
+    Ok(())
 }
 
 /// A path beside the running binary.

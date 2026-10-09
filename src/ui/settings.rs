@@ -322,7 +322,7 @@ fn status_message(status: &Status, cx: &App) -> (Option<SharedString>, Hsla) {
             (Some(format!("Downloading… {percent}%").into()), muted)
         }
         Status::Ready { version } => (
-            Some(format!("Version {version} is ready to install.").into()),
+            Some(format!("Version {version} is ready. Restart to install it.").into()),
             cx.theme().success,
         ),
         Status::Failed(error) => (Some(error.clone()), cx.theme().danger),
@@ -346,9 +346,9 @@ fn action_button(status: &Status) -> Option<Button> {
             .primary()
             .on_click(|_, _window, cx| updater::download(cx)),
         Status::Ready { .. } => Button::new("update-action")
-            // The swap can only happen once this process is gone, so quitting
+            // The swap can only happen once this process is gone, so restarting
             // is the install rather than a step before it.
-            .label("Install and quit")
+            .label("Restart to update")
             .primary()
             .on_click(|_, _window, cx| updater::install(cx)),
         Status::Idle | Status::UpToDate | Status::Failed(_) => Button::new("update-action")

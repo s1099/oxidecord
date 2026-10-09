@@ -5810,6 +5810,7 @@ dependencies = [
  "regex",
  "serde",
  "serde_json",
+ "sha2",
  "songbird",
  "symphonia",
  "tokio",
