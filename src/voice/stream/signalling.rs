@@ -34,7 +34,6 @@ mod op {
     pub const SELECT_PROTOCOL: u8 = 1;
     pub const READY: u8 = 2;
     pub const HEARTBEAT: u8 = 3;
-    pub const HEARTBEAT_ACK: u8 = 6;
     pub const SESSION_DESCRIPTION: u8 = 4;
     pub const SPEAKING: u8 = 5;
     pub const HELLO: u8 = 8;
@@ -274,16 +273,7 @@ impl Signalling {
                 continue;
             }
 
-            let mut shown = envelope.d.clone();
-            if let Some(fields) = shown.as_object_mut() {
-                fields.remove("secret_key");
-            }
-            eprintln!("screen share: session description (key left out): {shown}");
             let description: SessionDescription = parse(envelope.d)?;
-            eprintln!(
-                "screen share: connected with {}, DAVE version {}",
-                description.mode, description.dave_protocol_version
-            );
             self.dave.protocol_version = description.dave_protocol_version;
             if let Some(key_package) = self.dave.reinit()? {
                 self.send_binary(op::MLS_KEY_PACKAGE, &key_package).await?;
@@ -456,19 +446,7 @@ impl Signalling {
                     }
                 }
             }
-            op::HEARTBEAT_ACK => {}
-            other => {
-                let mut text = envelope.d.to_string();
-                if text.len() > 300 {
-                    let cut = (0..=300)
-                        .rev()
-                        .find(|&i| text.is_char_boundary(i))
-                        .unwrap_or(0);
-                    text.truncate(cut);
-                    text.push('…');
-                }
-                eprintln!("screen share: server sent op {other}: {text}");
-            }
+            _ => {}
         }
         Ok(())
     }
@@ -480,15 +458,6 @@ impl Signalling {
             return Ok(());
         };
         self.seq_ack = i64::from(u16::from_be_bytes([*seq_high, *seq_low]));
-        eprintln!(
-            "screen share: server sent DAVE op {opcode} ({} bytes){}",
-            payload.len(),
-            if self.early.is_some() {
-                ", held until the session starts"
-            } else {
-                ""
-            }
-        );
         if let Some(early) = &mut self.early {
             early.push(data.to_vec());
             return Ok(());
@@ -496,11 +465,10 @@ impl Signalling {
 
         match *opcode {
             op::MLS_EXTERNAL_SENDER => {
-                if let Some(session) = &mut self.dave.session {
-                    match session.set_external_sender(payload) {
-                        Ok(()) => eprintln!("screen share: DAVE external sender set"),
-                        Err(err) => eprintln!("DAVE: couldn't set the external sender: {err}"),
-                    }
+                if let Some(session) = &mut self.dave.session
+                    && let Err(err) = session.set_external_sender(payload)
+                {
+                    eprintln!("DAVE: couldn't set the external sender: {err}");
                 }
             }
             op::MLS_PROPOSALS => {
@@ -518,18 +486,13 @@ impl Signalling {
                 };
                 match session.process_proposals(kind, proposals, Some(&members)) {
                     Ok(Some(commit)) => {
-                        eprintln!(
-                            "screen share: DAVE committing proposals ({} connected, welcome: {})",
-                            members.len(),
-                            commit.welcome.is_some()
-                        );
                         let mut message = commit.commit;
                         if let Some(welcome) = commit.welcome {
                             message.extend_from_slice(&welcome);
                         }
                         self.send_binary(op::MLS_COMMIT_WELCOME, &message).await?;
                     }
-                    Ok(None) => eprintln!("screen share: DAVE proposals needed no commit"),
+                    Ok(None) => {}
                     Err(err) => eprintln!(
                         "DAVE: couldn't process proposals ({} connected): {err}",
                         members.len()
@@ -556,14 +519,6 @@ impl Signalling {
 
                 match result {
                     Ok(()) => {
-                        eprintln!(
-                            "screen share: DAVE {} processed for transition {transition_id}",
-                            if *opcode == op::MLS_WELCOME {
-                                "welcome"
-                            } else {
-                                "commit"
-                            }
-                        );
                         if transition_id != 0 {
                             self.dave
                                 .pending
@@ -670,10 +625,6 @@ impl Dave {
                     .map_err(|err| format!("Couldn't start end-to-end encryption: {err}"))?,
             ),
         };
-        eprintln!(
-            "screen share: DAVE joining as {} in group {}",
-            self.user_id, self.channel_id
-        );
         session
             .create_key_package()
             .map(Some)
@@ -682,12 +633,7 @@ impl Dave {
 
     fn execute(&mut self, transition_id: u16) {
         match self.pending.remove(&transition_id) {
-            Some(version) => {
-                eprintln!(
-                    "screen share: DAVE transition {transition_id} executed, now version {version}"
-                );
-                self.protocol_version = version;
-            }
+            Some(version) => self.protocol_version = version,
             None => eprintln!("DAVE: asked to execute unknown transition {transition_id}"),
         }
     }
@@ -695,18 +641,6 @@ impl Dave {
     /// Whether frames can be sent right now.
     pub(super) fn is_ready(&self) -> bool {
         self.protocol_version == 0 || self.session.as_ref().is_some_and(DaveSession::is_ready)
-    }
-
-    /// [`Self::protect`] for an Opus frame.
-    pub(super) fn protect_audio<'a>(&mut self, frame: &'a [u8]) -> Option<Cow<'a, [u8]>> {
-        if self.protocol_version == 0 {
-            return Some(Cow::Borrowed(frame));
-        }
-        let session = self.session.as_mut()?;
-        if !session.is_ready() {
-            return None;
-        }
-        session.encrypt_opus(frame).ok()
     }
 
     /// End-to-end encrypts a frame, or passes it through on a connection
