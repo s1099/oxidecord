@@ -53,7 +53,8 @@ impl HomeScreen {
             return;
         };
         let message = &self.messages[ix];
-        if !self.is_own_message(message) {
+        // A message still sending has no id on the server to edit yet.
+        if !self.is_own_message(message) || message.delivery != discord::Delivery::Sent {
             return;
         }
 
@@ -218,7 +219,9 @@ impl HomeScreen {
             .messages
             .iter()
             .rev()
-            .find(|message| self.is_own_message(message))
+            .find(|message| {
+                self.is_own_message(message) && message.delivery == discord::Delivery::Sent
+            })
             .map(|message| message.id)
         else {
             cx.propagate();

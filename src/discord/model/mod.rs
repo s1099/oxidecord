@@ -22,8 +22,8 @@ pub use emoji::GuildEmoji;
 pub use guild::{Guild, Role};
 pub use markdown::{Block, Inline, List, Markdown, Mention};
 pub use message::{
-    ForwardedMessage, ImageAttachment, MentionedUser, Message, MessageReference, Reaction,
-    ReactionEmoji, SPOILER_PREFIX, SpoilerCover, VideoAttachment,
+    Delivery, ForwardedMessage, ImageAttachment, MentionedUser, Message, MessageReference,
+    Reaction, ReactionEmoji, SPOILER_PREFIX, SpoilerCover, VideoAttachment,
 };
 pub use settings::GuildFolders;
 pub use user::{CurrentUser, UserProfile};

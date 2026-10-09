@@ -12,7 +12,7 @@ use super::cdn;
 use super::embed::{Embed, convert_embed};
 use super::markdown::{self, Inline, Markdown};
 use super::time::{format_local_full, format_message_time};
-use super::user::small_avatar_url;
+use super::user::{CurrentUser, small_avatar_url};
 
 #[derive(Clone)]
 pub struct Message {
@@ -49,9 +49,63 @@ pub struct Message {
     pub forward: Option<ForwardedMessage>,
     /// Reactions on the message, in Discord's order (first reacted first).
     pub reactions: Vec<Reaction>,
+    /// Whether the server has the message yet. Only ever not [`Delivery::Sent`]
+    /// for one the user just sent, shown before Discord confirms it.
+    pub delivery: Delivery,
+}
+
+/// How far a message sent from here has got.
+#[derive(Clone, PartialEq, Eq)]
+pub enum Delivery {
+    Sent,
+    /// Shown optimistically while the request is in flight. Its id is the
+    /// nonce the request carried, so the confirmed copy can take its place.
+    /// Carries the names of the files being uploaded with it, which have no
+    /// URL to draw from yet.
+    Sending {
+        uploads: Vec<String>,
+    },
+    /// The request failed; the message stays in the list so the text isn't
+    /// lost, like Discord's red failed message.
+    Failed,
 }
 
 impl Message {
+    /// A message the user is sending, as it's shown before the server has it.
+    ///
+    /// `id` is the request's nonce: a snowflake for the moment it was sent, so
+    /// it sorts and dates like a real id. Mentions resolve once the confirmed
+    /// copy arrives with the mentioned users attached.
+    pub fn pending(
+        id: Id<MessageMarker>,
+        author: &CurrentUser,
+        content: String,
+        timestamp: i64,
+        reply_to: Option<&Message>,
+        uploads: Vec<String>,
+    ) -> Self {
+        Self {
+            id,
+            author_id: author.id,
+            author_name: author.name.clone(),
+            author_avatar_url: author.avatar_url.clone(),
+            markdown: Arc::new(Markdown::parse(&content)),
+            content,
+            mentions: Vec::new(),
+            mention_everyone: false,
+            mention_roles: Vec::new(),
+            timestamp,
+            edited: None,
+            images: Vec::new(),
+            videos: Vec::new(),
+            embeds: Vec::new(),
+            reply: reply_to.map(MessageReference::quoting),
+            forward: None,
+            reactions: Vec::new(),
+            delivery: Delivery::Sending { uploads },
+        }
+    }
+
     /// Takes on what an edit can change from `edited`, the same message as the
     /// server now has it.
     ///
@@ -146,6 +200,23 @@ pub struct MessageReference {
     /// only.
     pub preview: Vec<Inline>,
     pub mentions: Vec<MentionedUser>,
+}
+
+impl MessageReference {
+    /// The quote for a reply to `message`, built from the copy already loaded.
+    fn quoting(message: &Message) -> Self {
+        let content = match &message.forward {
+            Some(forward) if message.content.is_empty() => forward.content.as_str(),
+            _ => message.content.as_str(),
+        };
+        Self {
+            author_name: message.author_name.clone(),
+            author_avatar_url: message.author_avatar_url.clone(),
+            content: single_line_preview(content),
+            preview: markdown::parse_preview(content),
+            mentions: message.mentions.clone(),
+        }
+    }
 }
 
 /// A copy of a forwarded message, taken when it was forwarded. Discord sends
@@ -277,6 +348,7 @@ pub(in crate::discord) fn convert_message(message: twilight_model::channel::Mess
                 me: reaction.me,
             })
             .collect(),
+        delivery: Delivery::Sent,
     }
 }
 

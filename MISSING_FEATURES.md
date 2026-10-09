@@ -33,7 +33,7 @@
 | Report message | Missing | |
 | Suppress embeds on your own message | Missing | |
 | Scheduled and silent messages (`@silent`) | Missing | |
-| Send failure retry and a local pending-message state | Missing | |
+| Send failure retry | Partial | Sends show a pending message at once; a failed one stays marked, but there is no retry or dismiss yet |
 | Slowmode indicator and cooldown | Missing | |
 | Typing indicator ("X is typing…") and sending typing events | Missing | `TYPING_START` is dropped in the gateway |
 | Message requests and filtering DMs from strangers | Missing | |

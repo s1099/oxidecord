@@ -70,8 +70,11 @@ pub async fn toggle_reaction(
     .await
 }
 
+/// Sends a message. `nonce` comes back on the gateway's `MESSAGE_CREATE` for
+/// it, which is how the optimistic copy shown meanwhile is matched up.
 pub async fn send_message(
     channel_id: Id<ChannelMarker>,
+    nonce: u64,
     content: String,
     reply_to: Option<Id<MessageMarker>>,
     attachments: Vec<(String, Vec<u8>)>,
@@ -87,7 +90,7 @@ pub async fn send_message(
 
         // Discord requires at least one of content/attachments; both the
         // content and attachments borrows must outlive the awaited request.
-        let mut request = client.create_message(channel_id);
+        let mut request = client.create_message(channel_id).nonce(nonce);
         if !content.is_empty() {
             request = request.content(&content);
         }

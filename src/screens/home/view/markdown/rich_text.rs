@@ -181,13 +181,12 @@ impl Element for RichText {
             owned.push(' ');
             owned.push_str(&fill);
             runs.push(base.to_run(1));
-            runs.push(
-                base.highlight(HighlightStyle {
-                    color: Some(transparent_black()),
-                    ..Default::default()
-                })
-                .to_run(fill.len()),
-            );
+            // Set on the run, not via `highlight`: that blends the color over
+            // the base, and transparent over anything leaves it unchanged.
+            runs.push(TextRun {
+                color: transparent_black(),
+                ..base.to_run(fill.len())
+            });
             if let Some(tooltip) = marker.tooltip {
                 self.tooltips
                     .push((shaped.start..shaped.start + fill.len(), tooltip));

@@ -2,6 +2,7 @@
 //! events that ride alongside it.
 
 use gpui::*;
+use twilight_model::id::Id;
 
 use crate::discord;
 use crate::screens::home::HomeScreen;
@@ -141,13 +142,25 @@ impl HomeScreen {
         if self.messages_loading {
             return;
         }
-        // Ignore duplicates: the echo of a message we just sent ourselves, or a
-        // repeated dispatch.
-        if self
-            .messages
-            .iter()
-            .any(|message| message.id == incoming.message.id)
+        // The echo of a message sent from here takes the place of its pending
+        // copy.
+        if let Some(nonce) = incoming.nonce.and_then(Id::new_checked)
+            && self.confirm_pending_message(nonce, incoming.message.clone())
         {
+            cx.notify();
+            return;
+        }
+        // Otherwise it's a duplicate: a message sent from here whose response
+        // got in first, or a repeated dispatch.
+        if let Some(existing) = self
+            .messages
+            .iter_mut()
+            .find(|message| message.id == incoming.message.id)
+        {
+            // The send's response has no guild member on it, so the echo is
+            // what carries the author's nickname.
+            existing.author_name = incoming.message.author_name;
+            cx.notify();
             return;
         }
 

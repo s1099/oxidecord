@@ -76,6 +76,11 @@ impl HomeScreen {
         let has_images = !message.images.is_empty();
         let has_videos = !message.videos.is_empty();
         let has_embeds = !message.embeds.is_empty();
+        let uploads = match &message.delivery {
+            discord::Delivery::Sending { uploads } => uploads.as_slice(),
+            _ => &[],
+        };
+        let failed = message.delivery == discord::Delivery::Failed;
         let content: AnyElement = v_flex()
             .w_full()
             .min_w_0()
@@ -100,6 +105,7 @@ impl HomeScreen {
             .when(
                 editing.is_none()
                     && message.content.is_empty()
+                    && uploads.is_empty()
                     && message.forward.is_none()
                     && !has_images
                     && !has_videos
@@ -123,9 +129,29 @@ impl HomeScreen {
                     cx,
                 ))
             })
+            .children(uploads.iter().map(|filename| {
+                div()
+                    .text_sm()
+                    .text_color(theme.muted_foreground)
+                    .child(format!("Uploading {filename}…"))
+            }))
             .when(!message.reactions.is_empty(), |this| {
                 this.child(self.render_reactions(message, cx))
             })
+            .when(failed, |this| {
+                this.child(
+                    div()
+                        .text_xs()
+                        .text_color(theme.danger)
+                        .child("Message failed to send."),
+                )
+            })
+            // Dimmed until the server has it, as Discord shows a message in
+            // flight.
+            .when(
+                matches!(message.delivery, discord::Delivery::Sending { .. }),
+                |this| this.opacity(0.5),
+            )
             .into_any_element();
 
         let inner = if show_header {
@@ -167,7 +193,10 @@ impl HomeScreen {
             // elsewhere, so it's clear which one the box belongs to.
             .when(editing.is_some(), |this| this.bg(theme.accent.opacity(0.4)))
             .child(inner)
-            .child(self.render_message_toolbar(message, &group_name, cx));
+            // Nothing on the toolbar applies until the server knows the message.
+            .when(message.delivery == discord::Delivery::Sent, |this| {
+                this.child(self.render_message_toolbar(message, &group_name, cx))
+            });
 
         // The gap between author groups sits outside the row, so it never
         // lights up with the highlight and the highlight stays tight.

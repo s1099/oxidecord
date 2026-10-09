@@ -30,6 +30,9 @@ use super::model::{
 pub struct IncomingMessage {
     pub channel_id: Id<ChannelMarker>,
     pub message: Message,
+    /// The nonce the sender attached, when this is a new message. Matches the
+    /// id of the optimistic copy of a message sent from here.
+    pub nonce: Option<u64>,
 }
 
 /// The live events the app acts on.
@@ -234,6 +237,24 @@ struct RoleDeletePayload {
     role_id: Id<RoleMarker>,
 }
 
+/// The `nonce` on a `MESSAGE_CREATE`. Discord echoes it as whatever the sender
+/// used, a string or a number, and other clients' nonces needn't be numeric.
+#[derive(Deserialize)]
+struct NoncePayload {
+    #[serde(default, deserialize_with = "deserialize_nonce")]
+    nonce: Option<u64>,
+}
+
+fn deserialize_nonce<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<u64>, D::Error> {
+    Ok(
+        match Option::<serde_json::Value>::deserialize(deserializer)? {
+            Some(serde_json::Value::String(nonce)) => nonce.parse().ok(),
+            Some(serde_json::Value::Number(nonce)) => nonce.as_u64(),
+            _ => None,
+        },
+    )
+}
+
 /// `MESSAGE_DELETE`.
 #[derive(Deserialize)]
 struct MessageDeletePayload {
@@ -373,9 +394,14 @@ fn dispatch(name: &str, data: &RawValue) -> Vec<GatewayEvent> {
             .unwrap_or_default(),
         "MESSAGE_CREATE" => serde_json::from_str::<twilight_model::channel::Message>(data)
             .map(|message| {
+                // twilight's message model has no nonce, so it's read apart.
+                let nonce = serde_json::from_str::<NoncePayload>(data)
+                    .ok()
+                    .and_then(|payload| payload.nonce);
                 vec![GatewayEvent::Message(IncomingMessage {
                     channel_id: message.channel_id,
                     message: convert_message(message),
+                    nonce,
                 })]
             })
             .unwrap_or_default(),
@@ -387,6 +413,7 @@ fn dispatch(name: &str, data: &RawValue) -> Vec<GatewayEvent> {
                 vec![GatewayEvent::MessageUpdate(IncomingMessage {
                     channel_id: message.channel_id,
                     message: convert_message(message),
+                    nonce: None,
                 })]
             })
             .unwrap_or_default(),
