@@ -26,11 +26,11 @@ use windows::Graphics::Capture::{
 use windows::Graphics::DirectX::Direct3D11::IDirect3DDevice;
 use windows::Graphics::DirectX::DirectXPixelFormat;
 use windows::Graphics::SizeInt32;
-use windows::Win32::Foundation::{HMODULE, HWND, RECT};
+use windows::Win32::Foundation::{HMODULE, HWND, LUID, RECT};
 use windows::Win32::Graphics::Direct3D::D3D_DRIVER_TYPE_HARDWARE;
 use windows::Win32::Graphics::Direct3D11::*;
 use windows::Win32::Graphics::Dxgi::Common::*;
-use windows::Win32::Graphics::Dxgi::IDXGIDevice;
+use windows::Win32::Graphics::Dxgi::{IDXGIAdapter, IDXGIDevice};
 use windows::Win32::Media::MediaFoundation::*;
 use windows::Win32::System::Com::{
     COINIT_MULTITHREADED, CoInitializeEx, CoTaskMemFree, CoUninitialize,
@@ -627,7 +627,13 @@ impl Encoder {
 
         // A machine can list several hardware encoders — one per GPU — and
         // only the one on the GPU the device was made on will accept it.
-        for activate in encoders(MFT_ENUM_FLAG_HARDWARE | MFT_ENUM_FLAG_SORTANDFILTER) {
+        // Asking for that GPU's alone spares the others a failed start, which
+        // some drivers (NVIDIA's) report loudly.
+        let adapter = adapter_luid(device);
+        for activate in encoders(
+            MFT_ENUM_FLAG_HARDWARE | MFT_ENUM_FLAG_SORTANDFILTER,
+            adapter,
+        ) {
             match Self::hardware(&activate, &manager, context, size, settings) {
                 Ok(encoder) => return Ok(encoder),
                 Err(err) => {
@@ -639,7 +645,7 @@ impl Encoder {
             }
         }
 
-        for activate in encoders(MFT_ENUM_FLAG_SYNCMFT | MFT_ENUM_FLAG_SORTANDFILTER) {
+        for activate in encoders(MFT_ENUM_FLAG_SYNCMFT | MFT_ENUM_FLAG_SORTANDFILTER, None) {
             match Self::software(&activate, device, context, size, settings) {
                 Ok(encoder) => return Ok(encoder),
                 Err(err) => eprintln!("skipping encoder {}: {err}", name_of(&activate)),
@@ -1080,7 +1086,17 @@ fn sequence_header(transform: &IMFTransform) -> Option<Vec<u8>> {
     }
 }
 
-fn encoders(flags: MFT_ENUM_FLAG) -> Vec<IMFActivate> {
+/// The GPU a device was made on, to find the encoder that lives there.
+fn adapter_luid(device: &ID3D11Device) -> Option<LUID> {
+    let dxgi: IDXGIDevice = device.cast().ok()?;
+    let adapter: IDXGIAdapter = unsafe { dxgi.GetAdapter() }.ok()?;
+    unsafe { adapter.GetDesc() }
+        .ok()
+        .map(|desc| desc.AdapterLuid)
+}
+
+/// H.264 encoders taking NV12, limited to one GPU's when `adapter` is given.
+fn encoders(flags: MFT_ENUM_FLAG, adapter: Option<LUID>) -> Vec<IMFActivate> {
     let input = MFT_REGISTER_TYPE_INFO {
         guidMajorType: MFMediaType_Video,
         guidSubtype: MFVideoFormat_NV12,
@@ -1091,12 +1107,24 @@ fn encoders(flags: MFT_ENUM_FLAG) -> Vec<IMFActivate> {
     };
     let mut list = std::ptr::null_mut();
     let mut count = 0;
+    let attributes = adapter.and_then(|luid| {
+        let mut attributes = None;
+        unsafe {
+            MFCreateAttributes(&mut attributes, 1).ok()?;
+            let attributes = attributes?;
+            let bytes =
+                std::slice::from_raw_parts((&luid as *const LUID).cast::<u8>(), size_of::<LUID>());
+            attributes.SetBlob(&MFT_ENUM_ADAPTER_LUID, bytes).ok()?;
+            Some(attributes)
+        }
+    });
     let found = unsafe {
-        MFTEnumEx(
+        MFTEnum2(
             MFT_CATEGORY_VIDEO_ENCODER,
             flags,
             Some(&input),
             Some(&output),
+            attributes.as_ref(),
             &mut list,
             &mut count,
         )
@@ -1287,7 +1315,7 @@ mod tests {
             bitrate: 1_000_000,
         };
         let size = (640, 360);
-        let activate = encoders(MFT_ENUM_FLAG_SYNCMFT | MFT_ENUM_FLAG_SORTANDFILTER)
+        let activate = encoders(MFT_ENUM_FLAG_SYNCMFT | MFT_ENUM_FLAG_SORTANDFILTER, None)
             .into_iter()
             .next()
             .expect("a software H.264 encoder");

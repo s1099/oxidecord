@@ -2,11 +2,9 @@
 //! in as RTCP.
 //!
 //! Packets are laid out the way Discord's `_rtpsize` modes want them: the
-//! RTP header and the four-byte header of its extension block stay in the
-//! clear as associated data, and everything after — the extension's body,
-//! then the payload — is encrypted, with the tag and a four-byte nonce
-//! counter appended. RTCP is the same with its first eight bytes in the
-//! clear.
+//! RTP header stays in the clear as associated data, and the payload is
+//! encrypted, with the tag and a four-byte nonce counter appended. RTCP is
+//! the same with its first eight bytes in the clear.
 
 use std::net::{IpAddr, SocketAddr};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -34,13 +32,6 @@ const MAX_PAYLOAD: usize = 1200;
 /// longer than any viewer's loss report takes to arrive.
 const HISTORY: usize = 1024;
 
-/// RTP extension header: the one-byte-header profile, one word long.
-const EXTENSION_HEADER: [u8; 4] = [0xBE, 0xDE, 0x00, 0x01];
-/// The extension's body: WebRTC's playout-delay (id 5, three bytes) set to
-/// zero both ways, which asks viewers to render frames as they arrive
-/// instead of buffering them for smoothness.
-const PLAYOUT_DELAY: [u8; 4] = [0x52, 0x00, 0x00, 0x00];
-
 /// Seconds between the NTP epoch (1900) and the Unix one.
 const NTP_OFFSET: u64 = 2_208_988_800;
 
@@ -55,10 +46,45 @@ pub(super) struct Ssrcs {
 /// What viewers asked of the sender.
 #[derive(Default)]
 pub(super) struct Feedback {
+    /// A viewer's report came through and decrypted: media is reaching
+    /// someone.
+    pub heard: bool,
+    /// RTCP arrived that the transport key wouldn't open.
+    pub undecryptable: bool,
     /// Someone can't decode the stream until the next keyframe.
     pub keyframe: bool,
     /// Packets someone lost, by sequence number.
     pub lost: Vec<u16>,
+    /// Each RTCP packet in the compound, named, with its bytes, for the
+    /// console.
+    pub kinds: Vec<(String, Vec<u8>)>,
+    /// Reception report blocks, by the SSRC they're about: what the server
+    /// got of each stream.
+    pub reports: Vec<(u32, ReceptionReport)>,
+}
+
+/// One RTCP reception report block, as a receiver saw a stream.
+#[derive(Clone, Copy)]
+pub(super) struct ReceptionReport {
+    pub fraction_lost: u8,
+    pub cumulative_lost: u32,
+    /// The highest sequence number received, extended with a wrap count.
+    pub highest_sequence: u32,
+    pub jitter: u32,
+}
+
+/// What the socket has done, for the console.
+#[derive(Default, Clone)]
+pub(super) struct Counters {
+    pub packets: u64,
+    pub bytes: u64,
+    pub send_errors: u64,
+    pub last_error: Option<String>,
+    pub received: u64,
+    pub rtcp: u64,
+    pub undecryptable: u64,
+    /// Received packets that weren't RTCP at all.
+    pub other: u64,
 }
 
 enum Cipher {
@@ -141,6 +167,34 @@ pub(super) struct Media {
     octets: u32,
 
     history: Vec<Option<Sent>>,
+    pub(super) counters: Counters,
+    /// Debugging switches from `OXIDECORD_STREAM_EXPERIMENT`.
+    pub(super) experiments: Experiments,
+    audio_sequence: u16,
+    audio_timestamp: u32,
+}
+
+/// Switches for narrowing down why a stream reaches no one, set as a comma
+/// list in `OXIDECORD_STREAM_EXPERIMENT`: `audio` sends Opus silence on the
+/// audio SSRC so the server's reports show whether it accepts anything at
+/// all.
+#[derive(Clone, Copy, Default)]
+pub(super) struct Experiments {
+    pub audio: bool,
+}
+
+impl Experiments {
+    fn from_env() -> Self {
+        let value = std::env::var("OXIDECORD_STREAM_EXPERIMENT").unwrap_or_default();
+        let has = |name: &str| value.split(',').any(|part| part.trim() == name);
+        let this = Self {
+            audio: has("audio"),
+        };
+        if !value.is_empty() {
+            eprintln!("screen share: experiments: audio {}", this.audio);
+        }
+        this
+    }
 }
 
 impl Media {
@@ -175,6 +229,10 @@ impl Media {
                 packets: 0,
                 octets: 0,
                 history: (0..HISTORY).map(|_| None).collect(),
+                counters: Counters::default(),
+                experiments: Experiments::from_env(),
+                audio_sequence: rand_u32() as u16,
+                audio_timestamp: rand_u32(),
             },
             external,
         ))
@@ -218,7 +276,7 @@ impl Media {
         if let Some(packet) = packet {
             self.packets = self.packets.wrapping_add(1);
             self.octets = self.octets.wrapping_add(payload.len() as u32);
-            let _ = self.socket.send(&packet).await;
+            self.send_counted(&packet).await;
         }
 
         self.history[usize::from(sequence) % HISTORY] = Some(Sent {
@@ -256,12 +314,52 @@ impl Media {
                 marker,
                 &payload,
             ) {
-                let _ = self.socket.send(&packet).await;
+                self.send_counted(&packet).await;
             }
         }
     }
 
-    /// Builds and encrypts one RTP packet.
+    async fn send_counted(&mut self, packet: &[u8]) {
+        match self.socket.send(packet).await {
+            Ok(_) => {
+                self.counters.packets += 1;
+                self.counters.bytes += packet.len() as u64;
+            }
+            Err(err) => {
+                self.counters.send_errors += 1;
+                self.counters.last_error = Some(err.to_string());
+            }
+        }
+    }
+
+    /// The sequence number the next video packet will carry.
+    pub(super) fn next_sequence(&self) -> u16 {
+        self.sequence
+    }
+
+    /// Sends one 20ms Opus frame on the audio SSRC, as songbird would: no
+    /// header extension. Only for the `audio` experiment.
+    pub(super) async fn send_audio(&mut self, frame: &[u8]) {
+        let sequence = self.audio_sequence;
+        self.audio_sequence = sequence.wrapping_add(1);
+        let timestamp = self.audio_timestamp;
+        self.audio_timestamp = timestamp.wrapping_add(960);
+
+        let mut header = [0u8; 12];
+        header[0] = 0x80;
+        header[1] = OPUS_PAYLOAD;
+        header[2..4].copy_from_slice(&sequence.to_be_bytes());
+        header[4..8].copy_from_slice(&timestamp.to_be_bytes());
+        header[8..12].copy_from_slice(&self.ssrcs.audio.to_be_bytes());
+        if let Some(packet) = self.seal(&header, frame.to_vec()) {
+            self.send_counted(&packet).await;
+        }
+    }
+
+    /// Builds and encrypts one RTP packet. There's no header extension: the
+    /// SFU silently drops video carrying WebRTC's playout-delay extension
+    /// (its reports never advanced past seq 0), likely because it was never
+    /// negotiated for this connection.
     fn rtp(
         &mut self,
         payload_type: u8,
@@ -271,19 +369,14 @@ impl Media {
         marker: bool,
         payload: &[u8],
     ) -> Option<Vec<u8>> {
-        let mut header = [0u8; 16];
-        // Version 2, with an extension.
-        header[0] = 0x90;
+        let mut header = [0u8; 12];
+        // Version 2, no padding, extension or CSRCs.
+        header[0] = 0x80;
         header[1] = payload_type | if marker { 0x80 } else { 0 };
         header[2..4].copy_from_slice(&sequence.to_be_bytes());
         header[4..8].copy_from_slice(&timestamp.to_be_bytes());
         header[8..12].copy_from_slice(&ssrc.to_be_bytes());
-        header[12..16].copy_from_slice(&EXTENSION_HEADER);
-
-        let mut body = Vec::with_capacity(PLAYOUT_DELAY.len() + payload.len() + 16);
-        body.extend_from_slice(&PLAYOUT_DELAY);
-        body.extend_from_slice(payload);
-        self.seal(&header, body)
+        self.seal(&header, payload.to_vec())
     }
 
     /// Encrypts `body` behind the clear `header` and appends the nonce.
@@ -336,15 +429,18 @@ impl Media {
     /// Reads what a received packet asks of the sender. Anything that isn't
     /// RTCP feedback for the video stream is ignored — nobody sends media to
     /// the streamer.
-    pub(super) fn feedback(&self, packet: &[u8]) -> Feedback {
+    pub(super) fn feedback(&mut self, packet: &[u8]) -> Feedback {
+        self.counters.received += 1;
         let Some(cipher) = &self.cipher else {
             return Feedback::default();
         };
         // RTCP packet types are 200 to 206; an RTP payload type can't collide
         // with them, marker bit or not, at the ones this connection uses.
         if packet.len() < 8 + 16 + 4 || !(200..=206).contains(&packet[1]) {
+            self.counters.other += 1;
             return Feedback::default();
         }
+        self.counters.rtcp += 1;
 
         let (aad, rest) = packet.split_at(8);
         let (body, counter) = rest.split_at(rest.len() - 4);
@@ -353,10 +449,17 @@ impl Media {
             .open(counter.try_into().unwrap_or_default(), aad, &mut body)
             .is_err()
         {
-            return Feedback::default();
+            self.counters.undecryptable += 1;
+            return Feedback {
+                undecryptable: true,
+                ..Feedback::default()
+            };
         }
 
-        parse_feedback(&[aad, &body].concat(), self.ssrcs.video)
+        Feedback {
+            heard: true,
+            ..parse_feedback(&[aad, &body].concat(), self.ssrcs.video)
+        }
     }
 }
 
@@ -420,6 +523,39 @@ fn parse_feedback(compound: &[u8], video_ssrc: u32) -> Feedback {
             compound[offset + 10],
             compound[offset + 11],
         ]);
+        feedback.kinds.push((
+            describe(kind, format, &compound[offset..end]),
+            compound[offset..end].to_vec(),
+        ));
+
+        // Sender and receiver reports carry reception report blocks, after
+        // the sender info in a sender report's case.
+        let blocks = match kind {
+            200 => Some(offset + 28),
+            201 => Some(offset + 8),
+            _ => None,
+        };
+        if let Some(start) = blocks {
+            for block in compound
+                .get(start..end)
+                .unwrap_or_default()
+                .chunks_exact(24)
+                .take(usize::from(format))
+            {
+                let word = |at: usize| {
+                    u32::from_be_bytes([block[at], block[at + 1], block[at + 2], block[at + 3]])
+                };
+                feedback.reports.push((
+                    word(0),
+                    ReceptionReport {
+                        fraction_lost: block[4],
+                        cumulative_lost: word(4) & 0x00FF_FFFF,
+                        highest_sequence: word(8),
+                        jitter: word(12),
+                    },
+                ));
+            }
+        }
 
         match (kind, format) {
             // Picture loss names the stream it's about; a full intra request
@@ -445,6 +581,29 @@ fn parse_feedback(compound: &[u8], video_ssrc: u32) -> Feedback {
         offset += length;
     }
     feedback
+}
+
+/// A short name for one RTCP packet, for the console.
+fn describe(kind: u8, format: u8, packet: &[u8]) -> String {
+    match (kind, format) {
+        (200, _) => "sender report".into(),
+        (201, _) => "receiver report".into(),
+        (202, _) => "source description".into(),
+        (203, _) => "goodbye".into(),
+        (205, 1) => "NACK".into(),
+        (205, 15) => "transport-cc".into(),
+        (206, 1) => "PLI".into(),
+        (206, 4) => "FIR".into(),
+        (206, 15) if packet.get(12..16) == Some(b"REMB") => match packet.get(17..20) {
+            Some(&[a, b, c]) => {
+                let exponent = a >> 2;
+                let mantissa = (u64::from(a & 3) << 16) | (u64::from(b) << 8) | u64::from(c);
+                format!("REMB {} kbps", (mantissa << exponent) / 1000)
+            }
+            _ => "REMB".into(),
+        },
+        (kind, format) => format!("RTCP {kind}/{format}"),
+    }
 }
 
 /// Discord's IP discovery: send our SSRC, get back the address and port the
