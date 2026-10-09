@@ -16,7 +16,7 @@ use twilight_http::{Client as HttpClient, error::ErrorType};
 use crate::discord::token;
 use crate::platform::runtime;
 
-pub use channel::fetch_dms;
+pub use channel::{fetch_dms, ring_call};
 pub use guild::{fetch_channels, fetch_guilds};
 pub use message::{
     MAX_ATTACHMENT_SIZE, MESSAGE_PAGE_SIZE, delete_message, edit_message, fetch_messages,

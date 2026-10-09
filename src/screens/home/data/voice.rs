@@ -57,6 +57,7 @@ impl HomeScreen {
                 context: guild_name,
                 status: VoiceStatus::Connecting,
                 error: None,
+                ring: false,
             },
             cx,
         );
@@ -82,6 +83,7 @@ impl HomeScreen {
                 context: None,
                 status: VoiceStatus::Connecting,
                 error: None,
+                ring: true,
             },
             cx,
         );
@@ -299,6 +301,38 @@ impl HomeScreen {
         }
     }
 
+    /// Rings the DM's other members once the user is connected to a call they
+    /// placed, so there's a call on Discord's side to ring and someone in it
+    /// to answer. Only the first connection rings; a reconnect doesn't.
+    fn ring_if_placed(&mut self, channel_id: Id<ChannelMarker>, cx: &mut Context<Self>) {
+        let Some(call) = self
+            .voice
+            .as_mut()
+            .filter(|call| call.ring && call.channel_id == channel_id)
+        else {
+            return;
+        };
+        call.ring = false;
+
+        cx.spawn(async move |this, cx| {
+            let Err(err) = discord::ring_call(channel_id).await else {
+                return;
+            };
+            let _ = this.update(cx, |this, cx| {
+                // The call itself is fine; only the other side wasn't told.
+                if let Some(call) = this
+                    .voice
+                    .as_mut()
+                    .filter(|call| call.channel_id == channel_id)
+                {
+                    call.error = Some(format!("Couldn't ring: {err}"));
+                }
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
     /// Records the voice server for the join in flight.
     pub(in crate::screens::home) fn handle_voice_server(
         &mut self,
@@ -376,6 +410,8 @@ impl HomeScreen {
                 if let Some(call) = &mut self.voice {
                     call.status = VoiceStatus::Connected;
                     call.error = None;
+                    let channel_id = call.channel_id;
+                    self.ring_if_placed(channel_id, cx);
                 }
             }
             VoiceEvent::Disconnected => {

@@ -44,6 +44,10 @@ pub(super) struct VoiceCall {
     pub status: VoiceStatus,
     /// Why the call failed, when it did.
     pub error: Option<String>,
+    /// Whether the DM's other members still need ringing. Set when the user
+    /// places a DM call, and cleared once the user is connected and the ring goes out:
+    /// Discord only has a call to ring once someone is in it.
+    pub ring: bool,
 }
 
 /// The connection parameters, as the two gateway dispatches that answer a join
