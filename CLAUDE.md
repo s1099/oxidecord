@@ -28,15 +28,18 @@ older than the installed Visual Studio, build through Ninja: `CMAKE_GENERATOR=Ni
   `view/markdown/` draws parsed markdown. Its `RichText` element exists because gpui text
   can't change font family per run or hold images, so custom emoji are painted into
   placeholder gaps once the text has wrapped.
-- `src/platform/` — runtime, http client, prefs, updater, and `video/` (inline video
-  playback, decoded by the OS).
+- `src/platform/` — runtime, http client, prefs, updater, `video/` (inline video
+  playback, decoded by the OS), and `capture/` (screen capture and H.264 encoding for
+  Go Live, also by the OS).
 - `platform/prefs.rs` — user preferences persisted to `prefs.json` in the config dir (theme,
   input device, collapsed channel categories per guild). Reads/writes never fail — a bad file
   reads as defaults. Use `prefs::update` to change one field without clobbering the rest; it
   does disk I/O, so call it on discrete events (a pick, a switch), not every frame or toggle.
   Collapsed categories load when a guild is opened and save on channel/guild switches.
 - `src/ui/` — theming, settings, dialogs, shared widgets.
-- `src/voice/` — songbird/cpal audio engine.
+- `src/voice/` — songbird/cpal audio engine. `stream/` is Go Live: a second voice
+  connection of its own (gateway v8, DAVE via davey, RTP/RTCP over UDP), since songbird
+  can't send video.
 - `themes/` — JSON presets baked into the binary by `build.rs`.
 
 ## Threading

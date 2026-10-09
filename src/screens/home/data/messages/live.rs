@@ -6,6 +6,7 @@ use twilight_model::id::Id;
 
 use crate::discord;
 use crate::screens::home::HomeScreen;
+use crate::voice::stream::StreamEvent;
 use crate::voice::{VoiceEngine, VoiceEvent};
 
 impl HomeScreen {
@@ -64,6 +65,24 @@ impl HomeScreen {
             }
         })
         .detach();
+
+        let (tx, rx) = futures::channel::mpsc::unbounded::<StreamEvent>();
+        self.stream_events = Some(tx);
+
+        cx.spawn(async move |this, cx| {
+            use futures::StreamExt as _;
+
+            let mut rx = rx;
+            while let Some(event) = rx.next().await {
+                if this
+                    .update(cx, |this, cx| this.handle_stream_event(event, cx))
+                    .is_err()
+                {
+                    break;
+                }
+            }
+        })
+        .detach();
     }
 
     fn handle_gateway_event(&mut self, event: discord::GatewayEvent, cx: &mut Context<Self>) {
@@ -93,6 +112,14 @@ impl HomeScreen {
                 self.replace_voice_states(Some(guild_id), states, cx)
             }
             discord::GatewayEvent::VoiceServer(server) => self.handle_voice_server(server, cx),
+            discord::GatewayEvent::StreamCreate {
+                stream_key,
+                rtc_server_id,
+            } => self.handle_stream_create(stream_key, rtc_server_id, cx),
+            discord::GatewayEvent::StreamServer(server) => self.handle_stream_server(server, cx),
+            discord::GatewayEvent::StreamDelete { stream_key } => {
+                self.handle_stream_delete(stream_key, cx)
+            }
             discord::GatewayEvent::GuildRoles { guild_id, roles } => {
                 let roles = roles.into_iter().map(|role| (role.id, role)).collect();
                 self.guild_roles.insert(guild_id, roles);

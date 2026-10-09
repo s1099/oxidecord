@@ -27,7 +27,7 @@ pub use message::{
 };
 pub use settings::GuildFolders;
 pub use user::{CurrentUser, UserProfile};
-pub use voice::{VoiceServerInfo, VoiceUserState};
+pub use voice::{StreamServerInfo, VoiceServerInfo, VoiceUserState, stream_key};
 
 pub(super) use channel::{convert_channel, convert_dms};
 pub(super) use emoji::{RawEmoji, convert_guild_emoji};
@@ -36,6 +36,6 @@ pub(super) use message::{convert_message, convert_reaction_emoji};
 pub(super) use settings::{RawSettingsProto, parse_guild_folders};
 pub(super) use user::{RawProfile, convert_current_user, convert_user_profile};
 pub(super) use voice::{
-    RawVoiceServer, RawVoiceState, convert_guild_voice_states, convert_voice_server,
-    convert_voice_state,
+    RawVoiceServer, RawVoiceState, convert_guild_voice_states, convert_stream_server,
+    convert_voice_server, convert_voice_state,
 };

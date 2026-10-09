@@ -1,4 +1,6 @@
-//! Voice states: who is in which voice channel, and what they've silenced.
+//! Voice states: who is in which voice channel, what they've silenced, and
+//! who is streaming. Also the streams themselves, which are voice
+//! connections of their own.
 //!
 //! These arrive as raw gateway dispatches rather than through twilight's
 //! models, because a DM call's `VOICE_SERVER_UPDATE` carries no guild id and
@@ -28,6 +30,8 @@ pub struct VoiceUserState {
     /// Muted or deafened by a moderator, which the user can't undo themselves.
     pub mute: bool,
     pub deaf: bool,
+    /// Going live: sharing their screen into the call.
+    pub self_stream: bool,
     /// Display name and avatar, carried by dispatches that include the member.
     /// Absent ones fall back to whatever the app already knows about the user.
     pub name: Option<String>,
@@ -63,6 +67,8 @@ pub(in crate::discord) struct RawVoiceState {
     mute: bool,
     #[serde(default)]
     deaf: bool,
+    #[serde(default)]
+    self_stream: bool,
     #[serde(default)]
     member: Option<RawMember>,
 }
@@ -126,6 +132,7 @@ fn convert(
         self_deaf: raw.self_deaf,
         mute: raw.mute,
         deaf: raw.deaf,
+        self_stream: raw.self_stream,
         name,
         avatar_url,
     }
@@ -133,16 +140,48 @@ fn convert(
 
 pub(in crate::discord) fn convert_voice_server(raw: RawVoiceServer) -> VoiceServerInfo {
     VoiceServerInfo {
-        // The voice websocket is spoken over TLS, but Discord has handed out
-        // endpoints with a plaintext `:80` on them; dropping it leaves the
-        // default 443 the connection actually wants.
-        endpoint: raw.endpoint.map(|endpoint| {
-            endpoint
-                .strip_suffix(":80")
-                .map_or(endpoint.clone(), str::to_owned)
-        }),
+        endpoint: raw.endpoint.map(secure_endpoint),
         token: raw.token,
         guild_id: raw.guild_id,
         channel_id: raw.channel_id,
+    }
+}
+
+/// Where a stream's voice websocket lives, from `STREAM_SERVER_UPDATE`.
+#[derive(Clone, Deserialize)]
+pub struct StreamServerInfo {
+    pub stream_key: String,
+    /// Absent while Discord is reallocating the stream, like a call's.
+    #[serde(default)]
+    pub endpoint: Option<String>,
+    pub token: String,
+}
+
+pub(in crate::discord) fn convert_stream_server(raw: StreamServerInfo) -> StreamServerInfo {
+    StreamServerInfo {
+        endpoint: raw.endpoint.map(secure_endpoint),
+        ..raw
+    }
+}
+
+/// The voice websocket is spoken over TLS, but Discord has handed out
+/// endpoints with a plaintext `:80` on them; dropping it leaves the default
+/// 443 the connection actually wants.
+fn secure_endpoint(endpoint: String) -> String {
+    endpoint
+        .strip_suffix(":80")
+        .map_or(endpoint.clone(), str::to_owned)
+}
+
+/// The key Discord names a user's stream by: the call it's in, and whose it
+/// is. A DM call has no guild, and says so in the prefix.
+pub fn stream_key(
+    guild_id: Option<Id<GuildMarker>>,
+    channel_id: Id<ChannelMarker>,
+    user_id: Id<UserMarker>,
+) -> String {
+    match guild_id {
+        Some(guild_id) => format!("guild:{guild_id}:{channel_id}:{user_id}"),
+        None => format!("call:{channel_id}:{user_id}"),
     }
 }

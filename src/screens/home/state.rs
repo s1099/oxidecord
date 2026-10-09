@@ -26,8 +26,9 @@ use super::channels::ChannelGroup;
 use super::data::attachments::PendingAttachment;
 use super::emoji::PickerRow;
 use super::folders::RailEntry;
-use super::voice::{PendingVoice, VoiceCall};
+use super::voice::{PendingVoice, ScreenShare, VoiceCall};
 use crate::voice::VoiceEngine;
+use crate::voice::stream::StreamEvent;
 
 /// How many lines the composer grows to before it scrolls.
 const COMPOSER_MAX_ROWS: usize = 12;
@@ -253,6 +254,12 @@ pub struct HomeScreen {
     pub(super) pending_voice: Option<PendingVoice>,
     /// Runs the call. Started with the gateway, since a call needs both.
     pub(super) voice_engine: Option<VoiceEngine>,
+    /// The user's screen share into the call, from the moment it's announced
+    /// to the gateway.
+    pub(super) screen_share: Option<ScreenShare>,
+    /// Where stream connections report back. One channel for every stream,
+    /// each event tagged with the stream it's about.
+    pub(super) stream_events: Option<futures::channel::mpsc::UnboundedSender<StreamEvent>>,
     /// Sends commands up the gateway — joining and leaving voice channels is
     /// done with a gateway command, not a REST call.
     pub(super) gateway: Option<discord::GatewaySender>,
@@ -366,6 +373,8 @@ impl HomeScreen {
             voice_speaking: HashSet::new(),
             pending_voice: None,
             voice_engine: None,
+            screen_share: None,
+            stream_events: None,
             gateway: None,
             self_user_id: None,
             shift_held: false,

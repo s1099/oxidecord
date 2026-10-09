@@ -6,6 +6,7 @@ use gpui::*;
 use gpui_component::{
     ActiveTheme as _, Disableable as _, Icon, IconName, Selectable as _, Sizable as _, h_flex,
     menu::{ContextMenuExt as _, PopupMenuItem},
+    tag::Tag,
     v_flex,
 };
 
@@ -23,10 +24,9 @@ const DM_STAGE_HEIGHT: f32 = 280.;
 /// Diameter of the avatar on a participant tile.
 const TILE_AVATAR: f32 = 72.;
 
-/// What the camera and screen-share buttons say. Both are drawn because the
-/// call has a place for them, and disabled because nothing behind them sends
-/// video yet.
-const VIDEO_UNAVAILABLE: &str = "Video isn't supported yet";
+/// What the camera button says. It's drawn because the call has a place for
+/// it, and disabled because nothing behind it sends camera video yet.
+const CAMERA_UNAVAILABLE: &str = "Camera isn't supported yet";
 
 impl HomeScreen {
     /// The sidebar footer: the call panel when there's a call, the account
@@ -115,7 +115,7 @@ impl HomeScreen {
                                     .small()
                                     .flex_1()
                                     .disabled(true)
-                                    .tooltip(VIDEO_UNAVAILABLE),
+                                    .tooltip(CAMERA_UNAVAILABLE),
                             )
                             .child(
                                 Button::new("voice-panel-share")
@@ -123,12 +123,73 @@ impl HomeScreen {
                                     .ghost()
                                     .small()
                                     .flex_1()
-                                    .disabled(true)
-                                    .tooltip(VIDEO_UNAVAILABLE),
+                                    .selected(self.screen_share.is_some())
+                                    .disabled(!self.share_button_enabled())
+                                    .tooltip(self.share_tooltip())
+                                    .on_click(cx.listener(|this, _, window, cx| {
+                                        this.toggle_screen_share(window, cx)
+                                    })),
                             ),
-                    ),
+                    )
+                    .children(self.render_share_status(call, cx)),
             ),
         )
+    }
+
+    /// The panel's line about the screen share: what's live, or why the last
+    /// one stopped.
+    fn render_share_status(
+        &self,
+        call: &VoiceCall,
+        cx: &Context<Self>,
+    ) -> Option<impl IntoElement> {
+        let theme = cx.theme();
+        let (label, detail, color) = match (&self.screen_share, &call.share_error) {
+            (Some(share), _) if share.live => ("Live", share.source_name.clone(), theme.danger),
+            (Some(share), _) => (
+                "Starting",
+                share.source_name.clone(),
+                theme.muted_foreground,
+            ),
+            (None, Some(error)) => ("Stream stopped", error.clone(), theme.danger),
+            (None, None) => return None,
+        };
+
+        Some(
+            h_flex()
+                .gap_1()
+                .items_center()
+                .text_xs()
+                .child(
+                    div()
+                        .flex_shrink_0()
+                        .font_weight(FontWeight::SEMIBOLD)
+                        .text_color(color)
+                        .child(label),
+                )
+                .child(
+                    div()
+                        .truncate()
+                        .text_color(theme.muted_foreground)
+                        .child(detail),
+                ),
+        )
+    }
+
+    /// The share button works while the call is up, and always works to stop
+    /// a stream that's running.
+    fn share_button_enabled(&self) -> bool {
+        self.screen_share.is_some() || self.can_share_screen()
+    }
+
+    fn share_tooltip(&self) -> &'static str {
+        if self.screen_share.is_some() {
+            "Stop Streaming"
+        } else if crate::platform::capture::is_supported() {
+            "Share Your Screen"
+        } else {
+            "Screen sharing isn't supported on this system"
+        }
     }
 
     /// A voice channel's pane: the stage when the user is in it, an invitation
@@ -266,6 +327,9 @@ impl HomeScreen {
                         )
                     }),
             )
+            .when(participant.streaming, |this| {
+                this.child(Tag::danger().xsmall().child("LIVE"))
+            })
     }
 
     /// The row of call actions under the stage.
@@ -315,7 +379,7 @@ impl HomeScreen {
                 control(
                     "call-camera",
                     "icons/video-off.svg",
-                    VIDEO_UNAVAILABLE,
+                    CAMERA_UNAVAILABLE,
                     false,
                 )
                 .disabled(true),
@@ -324,10 +388,11 @@ impl HomeScreen {
                 control(
                     "call-share",
                     "icons/screen-share.svg",
-                    VIDEO_UNAVAILABLE,
-                    false,
+                    self.share_tooltip(),
+                    self.screen_share.is_some(),
                 )
-                .disabled(true),
+                .disabled(!self.share_button_enabled())
+                .on_click(cx.listener(|this, _, window, cx| this.toggle_screen_share(window, cx))),
             )
             .child(
                 Button::new("call-hangup")

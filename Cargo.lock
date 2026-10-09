@@ -5789,10 +5789,13 @@ dependencies = [
 name = "oxidecord"
 version = "0.5.0"
 dependencies = [
+ "aes-gcm",
  "anyhow",
  "async-trait",
+ "chacha20poly1305",
  "chrono",
  "cpal",
+ "davey",
  "embed-resource",
  "emojis",
  "futures",
@@ -5803,12 +5806,14 @@ dependencies = [
  "keyring",
  "lb-wry",
  "opus2",
+ "raw-window-handle",
  "regex",
  "serde",
  "serde_json",
  "songbird",
  "symphonia",
  "tokio",
+ "tokio-websockets 0.11.4",
  "twilight-gateway",
  "twilight-http",
  "twilight-model",
