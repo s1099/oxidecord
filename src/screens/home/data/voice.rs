@@ -484,6 +484,7 @@ impl HomeScreen {
                         .clone()
                         .or_else(|| current.and_then(|user| user.avatar_url.clone()))
                         .or_else(|| profile.and_then(|profile| profile.avatar_url.clone())),
+                    accent_color: profile.and_then(|profile| profile.accent_color),
                     muted: state.self_mute || state.mute,
                     deafened: state.self_deaf || state.deaf,
                     speaking: self.voice_speaking.contains(&state.user_id),

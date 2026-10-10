@@ -296,6 +296,10 @@ pub struct HomeScreen {
     /// gpui's sprite atlas on the next render — the one place a window is
     /// always to hand, whatever ended the watch.
     pub(super) retired_stream_frames: Vec<Arc<RenderImage>>,
+    /// The call stage's tile area as last laid out. Tiles are sized to fill
+    /// it, which takes knowing how big it is before they're built, so a
+    /// change is caught at paint and lays the stage out again.
+    pub(super) voice_stage_size: Size<Pixels>,
     /// Sends commands up the gateway — joining and leaving voice channels is
     /// done with a gateway command, not a REST call.
     pub(super) gateway: Option<discord::GatewaySender>,
@@ -434,6 +438,7 @@ impl HomeScreen {
             stream_events: None,
             watching: None,
             retired_stream_frames: Vec::new(),
+            voice_stage_size: Size::default(),
             gateway: None,
             self_user_id: None,
             shift_held: false,

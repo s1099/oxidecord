@@ -8,7 +8,6 @@ use gpui_component::{
     menu::{ContextMenuExt as _, PopupMenuItem},
     spinner::Spinner,
     tag::Tag,
-    tooltip::Tooltip,
     v_flex,
 };
 
@@ -23,8 +22,19 @@ use crate::voice;
 /// stage fills its pane instead, since there's no chat under it.
 const DM_STAGE_HEIGHT: f32 = 280.;
 
-/// Diameter of the avatar on a participant tile.
-const TILE_AVATAR: f32 = 72.;
+/// Largest diameter of the avatar on a participant tile; smaller tiles get a
+/// smaller one.
+const TILE_AVATAR: f32 = 80.;
+
+/// Space between tiles, and around them inside the stage.
+const TILE_GAP: f32 = 8.;
+const STAGE_PADDING: f32 = 16.;
+
+/// Tiles are video-shaped, like Discord's, so a stream or camera can fill one.
+const TILE_ASPECT: f32 = 16. / 9.;
+
+/// The tiles under a channel's join button, which aren't fitted to anything.
+const JOIN_TILE: Size<Pixels> = size(px(224.), px(126.));
 
 /// What the camera button says. It's drawn because the call has a place for
 /// it, and disabled because nothing behind it sends camera video yet.
@@ -258,19 +268,43 @@ impl HomeScreen {
                 .child(self.render_call_controls(cx));
         }
 
+        // Discord gives a stream a tile of its own, ahead of everyone's
+        // faces, so it reads as something to open rather than a badge.
+        let tiles = participants.len() + participants.iter().filter(|p| p.streaming).count();
+        let grid = fit_tiles(tiles, self.voice_stage_size);
+        let screen = cx.entity().downgrade();
+
         v_flex()
             .w_full()
             .min_h_0()
             .bg(theme.muted.opacity(0.4))
             .child(
-                h_flex()
+                div()
+                    .relative()
                     .flex_1()
                     .min_h_0()
-                    .p_4()
-                    .gap_4()
-                    .flex_wrap()
+                    .p(px(STAGE_PADDING))
+                    .flex()
                     .items_center()
                     .justify_center()
+                    .overflow_hidden()
+                    .child(
+                        canvas(
+                            move |bounds, _, cx| {
+                                screen
+                                    .update(cx, |this, cx| {
+                                        if this.voice_stage_size != bounds.size {
+                                            this.voice_stage_size = bounds.size;
+                                            cx.notify();
+                                        }
+                                    })
+                                    .ok();
+                            },
+                            |_, _, _, _| {},
+                        )
+                        .absolute()
+                        .inset_0(),
+                    )
                     .when(waiting, |this| {
                         this.child(
                             div()
@@ -278,11 +312,26 @@ impl HomeScreen {
                                 .child(call.status.label()),
                         )
                     })
-                    .children(
-                        participants
-                            .iter()
-                            .map(|participant| self.participant_tile(participant, cx)),
-                    ),
+                    .when(!waiting, |this| {
+                        this.child(
+                            h_flex()
+                                .w(grid.row_width())
+                                .flex_wrap()
+                                .justify_center()
+                                .gap(px(TILE_GAP))
+                                .children(
+                                    participants
+                                        .iter()
+                                        .filter(|participant| participant.streaming)
+                                        .map(|participant| {
+                                            self.stream_tile(participant, grid.size, cx)
+                                        }),
+                                )
+                                .children(participants.iter().map(|participant| {
+                                    self.participant_tile(participant, grid.size, cx)
+                                })),
+                        )
+                    }),
             )
             .child(self.render_call_controls(cx))
     }
@@ -356,82 +405,132 @@ impl HomeScreen {
         )
     }
 
-    /// One participant: their avatar, their name, and what they've silenced.
-    /// A live one opens their stream when clicked, if it can be watched.
+    /// One participant: their avatar on their banner colour, and a badge with
+    /// their name and what they've silenced. Ringed while they're talking.
     fn participant_tile(
         &self,
         participant: &VoiceParticipant,
+        size: Size<Pixels>,
         cx: &Context<Self>,
     ) -> Stateful<Div> {
         let theme = cx.theme();
         let user_id = participant.user_id;
-        let watchable = participant.streaming && self.can_watch(user_id);
+        let avatar_size = (size.height * 0.4).clamp(px(32.), px(TILE_AVATAR));
 
-        let avatar = avatar(
+        let badge = name_badge(None, participant.name.clone())
+            .when(participant.muted, |this| {
+                this.child(
+                    Icon::default()
+                        .path("icons/mic-off.svg")
+                        .size_3()
+                        .text_color(theme.danger),
+                )
+            })
+            .when(participant.deafened, |this| {
+                this.child(
+                    Icon::default()
+                        .path("icons/headphone-off.svg")
+                        .size_3()
+                        .text_color(theme.danger),
+                )
+            });
+
+        tile(format!("voice-tile-{user_id}"), size, cx)
+            .when_some(participant.accent_color, |this, color| this.bg(rgb(color)))
+            .child(avatar(
+                participant.name.clone(),
+                participant.avatar_url.clone(),
+                avatar_size,
+            ))
+            .child(badge)
+            // Drawn over the card's own edge rather than as a thicker one, so
+            // starting to talk doesn't shift anything inside the tile.
+            .when(participant.speaking, |this| {
+                this.child(
+                    div()
+                        .absolute()
+                        .inset_0()
+                        .rounded(radius::CARD - px(1.))
+                        .border_2()
+                        .border_color(theme.success),
+                )
+            })
+    }
+
+    /// The tile a live participant's stream gets beside their own: the way to
+    /// open it, or, for the user's own, what's going out and the way to stop.
+    fn stream_tile(
+        &self,
+        participant: &VoiceParticipant,
+        size: Size<Pixels>,
+        cx: &Context<Self>,
+    ) -> Stateful<Div> {
+        let user_id = participant.user_id;
+        let watchable = self.can_watch(user_id);
+        let caption = |text: String| {
+            div()
+                .max_w_full()
+                .px_4()
+                .truncate()
+                .text_sm()
+                .text_color(white().opacity(0.7))
+                .child(text)
+        };
+
+        let middle = if participant.is_self {
+            let streaming = match &self.screen_share {
+                Some(share) if !share.source_name.is_empty() => {
+                    format!("You're streaming {}", share.source_name)
+                }
+                _ => "You're streaming".into(),
+            };
+            v_flex()
+                .max_w_full()
+                .gap_2()
+                .items_center()
+                .child(caption(streaming))
+                .when(self.screen_share.is_some(), |this| {
+                    this.child(
+                        Button::new("stream-tile-stop")
+                            .label("Stop Streaming")
+                            .small()
+                            .on_click(cx.listener(|this, _, _, cx| this.stop_screen_share(cx))),
+                    )
+                })
+                .into_any_element()
+        } else if watchable {
+            Button::new(SharedString::from(format!("stream-watch-{user_id}")))
+                .label("Watch Stream")
+                .on_click(
+                    cx.listener(move |this, _, window, cx| this.watch_stream(user_id, window, cx)),
+                )
+                .into_any_element()
+        } else {
+            caption("Connecting…".into()).into_any_element()
+        };
+
+        let badge = name_badge(
+            Some(Icon::default().path("icons/screen-share.svg").size_3p5()),
             participant.name.clone(),
-            participant.avatar_url.clone(),
-            px(TILE_AVATAR),
         );
 
-        depth::card(radius::CARD, cx)
-            .id(SharedString::from(format!("voice-tile-{user_id}")))
-            .flex()
-            .flex_col()
-            .w(px(180.))
-            .h(px(150.))
-            .gap_2()
-            .items_center()
-            .justify_center()
+        tile(format!("voice-stream-{user_id}"), size, cx)
+            // Black rather than a theme colour, like the watched stream's
+            // letterbox: it's where the picture goes.
+            .bg(black())
+            .child(middle)
             .child(
-                // The speaking ring goes on a wrapper rather than the avatar,
-                // so appearing and disappearing doesn't nudge the layout.
                 div()
-                    .rounded_full()
-                    .border_2()
-                    .p(px(2.))
-                    .border_color(if participant.speaking {
-                        theme.success
-                    } else {
-                        transparent_black()
-                    })
-                    .child(avatar),
+                    .absolute()
+                    .top_2()
+                    .right_2()
+                    .child(Tag::danger().xsmall().child("LIVE")),
             )
-            .child(
-                h_flex()
-                    .max_w_full()
-                    .gap_1()
-                    .items_center()
-                    .child(
-                        div()
-                            .truncate()
-                            .text_sm()
-                            .font_weight(FontWeight::MEDIUM)
-                            .child(participant.name.clone()),
-                    )
-                    .when(participant.muted, |this| {
-                        this.child(
-                            Icon::default()
-                                .path("icons/mic-off.svg")
-                                .size_3()
-                                .text_color(theme.danger),
-                        )
-                    })
-                    .when(participant.deafened, |this| {
-                        this.child(
-                            Icon::default()
-                                .path("icons/headphone-off.svg")
-                                .size_3()
-                                .text_color(theme.danger),
-                        )
-                    }),
-            )
-            .when(participant.streaming, |this| {
-                this.child(Tag::danger().xsmall().child("LIVE"))
-            })
+            .child(badge)
             .when(watchable, |this| {
+                let hover = cx.theme().danger;
                 this.cursor_pointer()
-                    .hover(|style| style.border_color(theme.danger))
-                    .tooltip(|window, cx| Tooltip::new("Watch Stream").build(window, cx))
+                    .hover(move |style| style.border_color(hover))
                     .on_click(cx.listener(move |this, _, window, cx| {
                         this.watch_stream(user_id, window, cx)
                     }))
@@ -551,9 +650,9 @@ impl HomeScreen {
                         .items_center()
                         .justify_center()
                         .children(
-                            participants
-                                .iter()
-                                .map(|participant| self.participant_tile(participant, cx)),
+                            participants.iter().map(|participant| {
+                                self.participant_tile(participant, JOIN_TILE, cx)
+                            }),
                         ),
                 )
             })
@@ -638,6 +737,87 @@ fn control(id: &'static str, icon: &'static str, tooltip: &'static str, active: 
         .large()
         .selected(active)
         .tooltip(tooltip)
+}
+
+/// A tile on the stage: a card with its contents centred, sized by the grid.
+fn tile(id: String, size: Size<Pixels>, cx: &App) -> Stateful<Div> {
+    depth::card(radius::CARD, cx)
+        .id(SharedString::from(id))
+        .relative()
+        .flex_shrink_0()
+        .w(size.width)
+        .h(size.height)
+        .overflow_hidden()
+        .flex()
+        .items_center()
+        .justify_center()
+}
+
+/// The name in a tile's bottom-left corner. White on translucent black rather
+/// than theme colours, since it sits on whatever the tile shows — a banner
+/// colour, or a picture.
+fn name_badge(icon: Option<Icon>, name: String) -> Div {
+    h_flex()
+        .absolute()
+        .bottom_2()
+        .left_2()
+        .max_w(relative(0.8))
+        .px_2()
+        .py_1()
+        .gap_1()
+        .items_center()
+        .rounded(radius::ITEM)
+        .bg(black().opacity(0.6))
+        .text_sm()
+        .text_color(white())
+        .children(icon)
+        .child(div().min_w_0().truncate().child(name))
+}
+
+/// How the stage's tiles are laid out: how many to a row, and how big.
+struct TileGrid {
+    columns: usize,
+    size: Size<Pixels>,
+}
+
+impl TileGrid {
+    /// The width that wraps exactly `columns` tiles to a row, so a shorter
+    /// last row centres under the others.
+    fn row_width(&self) -> Pixels {
+        self.size.width * self.columns as f32 + px(TILE_GAP) * (self.columns - 1) as f32
+    }
+}
+
+/// The largest tiles that fit `count` of them into `stage`, trying every
+/// column count and keeping whichever leaves them biggest.
+fn fit_tiles(count: usize, stage: Size<Pixels>) -> TileGrid {
+    let count = count.max(1);
+    let width = f32::from(stage.width) - STAGE_PADDING * 2.;
+    let height = f32::from(stage.height) - STAGE_PADDING * 2.;
+    // Not laid out yet: something sensible for the one frame before it is.
+    if width <= 0. || height <= 0. {
+        return TileGrid {
+            columns: count.min(3),
+            size: size(px(240.), px(240. / TILE_ASPECT)),
+        };
+    }
+
+    let (columns, tile_width) = (1..=count)
+        .map(|columns| {
+            let rows = count.div_ceil(columns);
+            let by_width = (width - TILE_GAP * (columns - 1) as f32) / columns as f32;
+            let by_height = (height - TILE_GAP * (rows - 1) as f32) / rows as f32 * TILE_ASPECT;
+            (columns, by_width.min(by_height))
+        })
+        .max_by(|a, b| a.1.total_cmp(&b.1))
+        .unwrap_or((1, width));
+
+    // Floored so rounding can never push a row's last tile onto the next.
+    let tile_width = tile_width.max(1.).floor();
+    TileGrid {
+        columns,
+        size: size(px(tile_width), px((tile_width / TILE_ASPECT).floor())),
+    }
 }
 
 /// Where the call is, as the sidebar panel labels it: `Guild / channel` for a

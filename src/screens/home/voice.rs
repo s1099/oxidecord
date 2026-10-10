@@ -125,6 +125,9 @@ pub(super) struct VoiceParticipant {
     pub user_id: Id<UserMarker>,
     pub name: String,
     pub avatar_url: Option<String>,
+    /// Their profile's banner colour, packed as `0xRRGGBB`, which fills their
+    /// tile. Only known for someone whose profile has been loaded.
+    pub accent_color: Option<u32>,
     /// Silenced, whether by themselves or by a moderator — the tile shows the
     /// badge either way.
     pub muted: bool,
