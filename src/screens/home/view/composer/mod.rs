@@ -1,9 +1,11 @@
 //! The message composer: the reply banner, the staged-attachment tray, and the
-//! text input, wrapped in one rounded surface.
+//! text input, wrapped in one rounded surface, with the typing indicator
+//! floating above it.
 
 mod attachments;
 mod emoji_picker;
 mod reply_banner;
+mod typing_indicator;
 
 use gpui::prelude::FluentBuilder as _;
 use gpui::*;
@@ -27,9 +29,11 @@ impl HomeScreen {
             return v_flex()
                 .w_full()
                 .flex_shrink_0()
+                .relative()
                 .px_2()
                 .pb_2()
                 .gap_1()
+                .children(self.render_typing_indicator(cx))
                 .child(
                     // Same surface and metrics as the composer below, so the
                     // conversation doesn't resize when switching between a
@@ -54,9 +58,11 @@ impl HomeScreen {
         v_flex()
             .w_full()
             .flex_shrink_0()
+            .relative()
             .px_2()
             .pb_2()
             .gap_1()
+            .children(self.render_typing_indicator(cx))
             .when_some(self.send_error.clone(), |this, error| {
                 this.child(div().text_xs().text_color(theme.danger).child(error))
             })

@@ -34,7 +34,6 @@
 | Scheduled and silent messages (`@silent`) | Missing | |
 | Send failure retry | Partial | Sends show a pending message at once; a failed one stays marked, but there is no retry or dismiss yet |
 | Slowmode indicator and cooldown | Missing | |
-| Typing indicator ("X is typing…") | Missing | `TYPING_START` is dropped in the gateway; sending the user's own typing is done |
 | Message requests and filtering DMs from strangers | Missing | |
 
 ## Channels and servers

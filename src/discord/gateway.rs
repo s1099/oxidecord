@@ -55,6 +55,14 @@ pub enum GatewayEvent {
         channel_id: Id<ChannelMarker>,
         message_ids: Vec<Id<MessageMarker>>,
     },
+    /// Someone started typing in a channel. Discord shows it for ten seconds,
+    /// and clients re-send it every few while the typing goes on.
+    Typing {
+        channel_id: Id<ChannelMarker>,
+        user_id: Id<UserMarker>,
+        /// Their name in the guild. `None` in a DM, which sends no member.
+        name: Option<String>,
+    },
     /// A message's reactions changed.
     Reaction {
         channel_id: Id<ChannelMarker>,
@@ -219,7 +227,7 @@ struct StreamDeletePayload {
 /// The envelope every gateway payload arrives in. Only dispatches (opcode 0)
 /// carry a name and data the app cares about. Both borrow from the frame, so
 /// telling what a payload is costs no allocations — which matters, because
-/// most of a user account's firehose (presences, typing) is dropped unread.
+/// most of a user account's firehose (presences, above all) is dropped unread.
 #[derive(Deserialize)]
 struct Envelope<'a> {
     #[serde(default, borrow)]
@@ -341,6 +349,15 @@ struct ReactionPayload {
     user_id: Option<Id<UserMarker>>,
     #[serde(default)]
     emoji: Option<twilight_model::channel::message::EmojiReactionType>,
+}
+
+/// `TYPING_START`.
+#[derive(Deserialize)]
+struct TypingStartPayload {
+    channel_id: Id<ChannelMarker>,
+    user_id: Id<UserMarker>,
+    #[serde(default)]
+    member: Option<RawMember>,
 }
 
 #[derive(Deserialize)]
@@ -520,6 +537,15 @@ fn dispatch(name: &str, data: &RawValue) -> Vec<GatewayEvent> {
                     message_id: payload.message_id,
                     change,
                 }])
+            })
+            .unwrap_or_default(),
+        "TYPING_START" => serde_json::from_str::<TypingStartPayload>(data)
+            .map(|typing| {
+                vec![GatewayEvent::Typing {
+                    channel_id: typing.channel_id,
+                    user_id: typing.user_id,
+                    name: typing.member.and_then(|member| member.display_name()),
+                }]
             })
             .unwrap_or_default(),
         "VOICE_STATE_UPDATE" => serde_json::from_str::<RawVoiceState>(data)

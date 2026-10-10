@@ -98,6 +98,7 @@ impl HomeScreen {
                 if incoming.guild_id.is_none() {
                     self.note_dm_activity(incoming.channel_id, incoming.message.id, cx);
                 }
+                self.stop_typing(incoming.channel_id, incoming.message.author_id, cx);
                 self.handle_incoming_message(incoming, cx)
             }
             discord::GatewayEvent::MessageUpdate(incoming) => {
@@ -107,6 +108,11 @@ impl HomeScreen {
                 channel_id,
                 message_ids,
             } => self.handle_message_delete(channel_id, &message_ids, cx),
+            discord::GatewayEvent::Typing {
+                channel_id,
+                user_id,
+                name,
+            } => self.handle_typing(channel_id, user_id, name, cx),
             discord::GatewayEvent::Reaction {
                 channel_id,
                 message_id,

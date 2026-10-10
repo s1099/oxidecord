@@ -54,6 +54,16 @@ pub(super) struct ReplyTarget {
     pub author_name: String,
 }
 
+/// Someone else typing in a conversation, shown above the message bar until
+/// `until` passes or their message arrives.
+pub(super) struct Typist {
+    pub user_id: Id<UserMarker>,
+    /// Their guild name, from the dispatch. A DM's typists are named from the
+    /// conversation's messages instead.
+    pub name: Option<String>,
+    pub until: Instant,
+}
+
 /// The message being edited in place, and the input standing in for its text.
 ///
 /// The input is made per edit rather than kept on the screen like the
@@ -307,6 +317,8 @@ pub struct HomeScreen {
     pub(super) message_input: Entity<InputState>,
     /// The conversation the typing indicator was last sent to, and when.
     pub(super) typing_sent: Option<(Id<ChannelMarker>, Instant)>,
+    /// Who else is typing, by conversation.
+    pub(super) typists: HashMap<Id<ChannelMarker>, Vec<Typist>>,
     pub(super) _composer_changed: Subscription,
     pub(super) messages_list: ListState,
     /// The video attachment currently playing, if any.
@@ -411,6 +423,7 @@ impl HomeScreen {
             video: None,
             message_input,
             typing_sent: None,
+            typists: HashMap::new(),
             _composer_changed: composer_changed,
             messages_scroll: SmoothScroll::list(messages_list.clone()),
             messages_list,
