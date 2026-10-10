@@ -21,6 +21,7 @@ cargo run --release    # release build, no console
 cargo check            # fast type check — prefer this while iterating
 cargo fmt
 cargo clippy
+./scripts/bundle-macos.sh   # macOS .app with the Icon Composer icon (assets/AppIcon.icon)
 ```
 
 Voice links Opus, built from source, so the build needs CMake and a C compiler. If CMake is

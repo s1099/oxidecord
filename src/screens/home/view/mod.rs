@@ -16,6 +16,7 @@ use gpui_component::{ActiveTheme as _, Sizable as _, avatar::Avatar, h_flex};
 
 use super::{HomeScreen, View};
 use crate::ui::depth;
+use crate::ui::window_controls::MAC_TITLE_BAR_HEIGHT;
 
 /// Horizontal padding, in pixels, on either side of the message list.
 const MESSAGE_PADDING_X: f32 = 16.;
@@ -70,6 +71,11 @@ impl Render for HomeScreen {
             // The rail and sidebar sit straight on the window; the conversation
             // is a panel lifted off it (see `inset`).
             .bg(cx.theme().sidebar)
+            // An empty strip across the top for the traffic lights to sit in,
+            // clear of the rail's first icon.
+            .when(cfg!(target_os = "macos"), |this| {
+                this.pt(px(MAC_TITLE_BAR_HEIGHT))
+            })
             .on_action(cx.listener(Self::on_paste_attachment))
             .on_action(cx.listener(Self::on_edit_last_message))
             .on_modifiers_changed(cx.listener(|this, event: &ModifiersChangedEvent, _, cx| {
@@ -102,7 +108,10 @@ fn inset(content: AnyElement, cx: &App) -> impl IntoElement {
         .flex_1()
         .min_w_0()
         .h_full()
-        .py(px(INSET))
+        // On macOS the title strip above already separates the panel from the
+        // window's top edge.
+        .pt(px(if cfg!(target_os = "macos") { 0. } else { INSET }))
+        .pb(px(INSET))
         .pr(px(INSET))
         .child(
             depth::card(depth::radius::CARD, cx)
