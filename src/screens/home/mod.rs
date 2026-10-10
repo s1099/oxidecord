@@ -19,11 +19,12 @@ use gpui::{EventEmitter, actions};
 
 pub use state::HomeScreen;
 
-/// Emitted when Discord rejects the stored token, so the app can send the user
-/// back to login instead of leaving them on a screen that can't load.
-pub struct SessionExpired;
+/// Emitted when the user logs out or Discord rejects the stored token, so the
+/// app can send the user back to login instead of leaving them on a screen
+/// that can't load.
+pub struct SessionEnded;
 
-impl EventEmitter<SessionExpired> for HomeScreen {}
+impl EventEmitter<SessionEnded> for HomeScreen {}
 
 /// Key context of the inline edit box, which rebinds enter to save.
 pub const EDIT_CONTEXT: &str = "MessageEdit";
