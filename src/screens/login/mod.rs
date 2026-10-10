@@ -2,14 +2,17 @@
 
 mod webview;
 
+use std::sync::Arc;
+
 use gpui::prelude::FluentBuilder as _;
 use gpui::*;
 // Token login is hidden for now; its imports come back with it.
 use gpui_component::{
     ActiveTheme as _,
-    h_flex,
     // input::{Input, InputState},
     // tab::{Tab, TabBar},
+    Sizable as _,
+    h_flex,
     v_flex,
 };
 
@@ -28,8 +31,14 @@ use webview::LoginWebview;
 //     Token,
 // }
 
+/// Drawn size of the app icon at the top of the card. `logo.png` is the app
+/// icon shrunk ahead of time to twice this, for high-DPI screens: gpui scales
+/// images without mipmaps, so drawing the full 1024px icon this small aliases.
+const LOGO_SIZE: f32 = 72.;
+
 pub struct LoginScreen {
     app: WeakEntity<AppScreen>,
+    logo: Arc<Image>,
     // method: LoginMethod,
     // token_input: Entity<InputState>,
 }
@@ -44,6 +53,10 @@ impl LoginScreen {
 
         Self {
             app,
+            logo: Arc::new(Image::from_bytes(
+                ImageFormat::Png,
+                include_bytes!("../../../assets/logo.png").to_vec(),
+            )),
             // method: LoginMethod::Discord,
             // token_input,
         }
@@ -52,13 +65,17 @@ impl LoginScreen {
     fn render_logo(&self, cx: &Context<Self>) -> impl IntoElement {
         let theme = cx.theme();
 
-        v_flex().items_center().gap(px(4.)).child(
-            div()
-                .text_size(px(36.))
-                .font_weight(FontWeight::EXTRA_BOLD)
-                .text_color(theme.primary)
-                .child("Oxidecord"),
-        )
+        v_flex()
+            .items_center()
+            .gap(px(6.))
+            .child(img(self.logo.clone()).size(px(LOGO_SIZE)).mb(px(10.)))
+            .child(
+                div()
+                    .text_size(px(26.))
+                    .font_weight(FontWeight::BOLD)
+                    .text_color(theme.foreground)
+                    .child("Welcome to Oxidecord"),
+            )
     }
 
     // fn render_method_tabs(&self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -84,38 +101,54 @@ impl LoginScreen {
     //         })
     // }
 
-    fn render_discord_pane(&self) -> impl IntoElement {
+    fn render_discord_pane(&self, cx: &Context<Self>) -> impl IntoElement {
         let app = self.app.clone();
 
-        v_flex().w_full().gap(px(16.)).items_center().child(
-            Button::new("btn-discord-login")
-                .label("Continue with Discord")
-                .primary()
-                .on_click(move |_event, window, cx| {
-                    // The button renders in the main window, so this handle
-                    // points at the window we want to switch to Home once the
-                    // login webview reports a token.
-                    let main_window = window.window_handle();
-                    let app = app.clone();
+        v_flex()
+            .w_full()
+            .gap(px(12.))
+            .items_center()
+            .child(
+                Button::new("btn-discord-login")
+                    .label("Continue with Discord")
+                    .primary()
+                    .large()
+                    .w_full()
+                    .on_click(move |_event, window, cx| {
+                        // The button renders in the main window, so this handle
+                        // points at the window we want to switch to Home once the
+                        // login webview reports a token.
+                        let main_window = window.window_handle();
+                        let app = app.clone();
 
-                    let webview_options = WindowOptions {
-                        titlebar: Some(TitlebarOptions {
-                            title: Some("Discord Login".into()),
+                        let webview_options = WindowOptions {
+                            titlebar: Some(TitlebarOptions {
+                                title: Some("Discord Login".into()),
+                                ..Default::default()
+                            }),
+                            window_bounds: Some(WindowBounds::centered(
+                                size(px(500.), px(650.)),
+                                cx,
+                            )),
+                            window_min_size: Some(size(px(400.), px(520.))),
                             ..Default::default()
-                        }),
-                        window_bounds: Some(WindowBounds::centered(size(px(500.), px(650.)), cx)),
-                        window_min_size: Some(size(px(400.), px(520.))),
-                        ..Default::default()
-                    };
+                        };
 
-                    cx.open_window(webview_options, move |window, cx| {
-                        let webview_view =
-                            cx.new(|cx| LoginWebview::new(app, main_window, window, cx));
-                        cx.new(|cx| gpui_component::Root::new(webview_view, window, cx))
-                    })
-                    .expect("Failed to open webview window");
-                }),
-        )
+                        cx.open_window(webview_options, move |window, cx| {
+                            let webview_view =
+                                cx.new(|cx| LoginWebview::new(app, main_window, window, cx));
+                            cx.new(|cx| gpui_component::Root::new(webview_view, window, cx))
+                        })
+                        .expect("Failed to open webview window");
+                    }),
+            )
+            .child(
+                div()
+                    .text_size(px(12.))
+                    .text_center()
+                    .text_color(cx.theme().muted_foreground)
+                    .child("You'll sign in on Discord's own page."),
+            )
     }
 
     // fn render_token_pane(&self, cx: &Context<Self>) -> impl IntoElement {
@@ -147,16 +180,18 @@ impl Render for LoginScreen {
         let card = depth::card(radius::CARD, cx)
             .flex()
             .flex_col()
-            .w(px(400.))
-            .p(px(32.))
-            .gap(px(24.))
+            .w(px(380.))
+            .px(px(32.))
+            .pt(px(36.))
+            .pb(px(28.))
+            .gap(px(28.))
             .child(self.render_logo(cx))
             // .child(v_flex().items_center().child(self.render_method_tabs(cx)))
             // .child(match self.method {
             //     LoginMethod::Discord => self.render_discord_pane().into_any_element(),
             //     LoginMethod::Token => self.render_token_pane(cx).into_any_element(),
             // });
-            .child(self.render_discord_pane());
+            .child(self.render_discord_pane(cx));
 
         v_flex()
             .size_full()
