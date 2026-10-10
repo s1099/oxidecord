@@ -4,6 +4,15 @@ A cross-platform native Discord client in Rust, built on [gpui](https://crates.i
 and [gpui-component](https://crates.io/crates/gpui-component), talking to Discord through
 [twilight](https://github.com/twilight-rs/twilight) (patched to a fork that allows user tokens).
 
+## Discord API reference
+
+Much of what the app uses is undocumented by Discord: user-account gateway opcodes, the
+voice gateway, Go Live streams, DAVE, user settings protos. The community userdocs at
+<https://docs.discord.food> cover these. Check them before implementing or changing anything
+that talks to Discord — payload shapes, opcodes, dispatch fields, close codes — rather than
+guessing. Gateway events are under `topics/gateway-events`, voice and stream connections
+under `topics/voice-connections`.
+
 ## Commands
 
 ```bash
@@ -29,8 +38,8 @@ older than the installed Visual Studio, build through Ninja: `CMAKE_GENERATOR=Ni
   can't change font family per run or hold images, so custom emoji are painted into
   placeholder gaps once the text has wrapped.
 - `src/platform/` — runtime, http client, prefs, updater, `video/` (inline video
-  playback, decoded by the OS), and `capture/` (screen capture and H.264 encoding for
-  Go Live, also by the OS).
+  playback, decoded by the OS), `capture/` (screen capture and H.264 encoding for
+  Go Live, also by the OS), and `h264/` (decoding a watched stream, also by the OS).
 - `platform/prefs.rs` — user preferences persisted to `prefs.json` in the config dir (theme,
   input device, collapsed channel categories per guild). Reads/writes never fail — a bad file
   reads as defaults. Use `prefs::update` to change one field without clobbering the rest; it
@@ -39,7 +48,7 @@ older than the installed Visual Studio, build through Ninja: `CMAKE_GENERATOR=Ni
 - `src/ui/` — theming, settings, dialogs, shared widgets.
 - `src/voice/` — songbird/cpal audio engine. `stream/` is Go Live: a second voice
   connection of its own (gateway v8, DAVE via davey, RTP/RTCP over UDP), since songbird
-  can't send video.
+  can't send video. `stream/watch.rs` is the viewer's side of the same connection.
 - `themes/` — JSON presets baked into the binary by `build.rs`.
 
 ## Threading
