@@ -9,8 +9,8 @@ use gpui::*;
 use gpui_component::input::{Escape, Input};
 use gpui_component::{ActiveTheme as _, Sizable as _, StyledExt as _, h_flex, v_flex};
 
-use crate::screens::home::HomeScreen;
 use crate::screens::home::emoji::{COLUMNS, PickerEmoji, PickerRow};
+use crate::screens::home::{EmojiTarget, HomeScreen};
 use crate::ui::depth::{self, Level, radius};
 use crate::ui::tooltip;
 
@@ -23,14 +23,19 @@ const PADDING: f32 = 8.;
 
 impl HomeScreen {
     /// The open picker, over the whole app like the profile card: a layer that
-    /// closes it on a click outside, with the picker standing just above where
-    /// its button was clicked.
+    /// closes it on a click outside. From the composer it stands just above
+    /// where its button was clicked; from a message's toolbar it hangs to the
+    /// left of the button, clear of the message being reacted to.
     pub(in crate::screens::home) fn render_emoji_picker(
         &self,
         cx: &Context<Self>,
     ) -> Option<AnyElement> {
         let picker = self.emoji_picker.as_ref()?;
         let theme = cx.theme();
+        let (corner, offset) = match picker.target {
+            EmojiTarget::Composer => (Corner::BottomRight, point(px(16.), px(-24.))),
+            EmojiTarget::Reaction(_) => (Corner::TopRight, point(px(-24.), px(-16.))),
+        };
 
         let list = if picker.rows.is_empty() {
             div()
@@ -115,8 +120,8 @@ impl HomeScreen {
                     )
                     .child(
                         anchored()
-                            .anchor(Corner::BottomRight)
-                            .position(picker.position + point(px(16.), px(-24.)))
+                            .anchor(corner)
+                            .position(picker.position + offset)
                             .snap_to_window_with_margin(px(8.))
                             .child(card),
                     ),

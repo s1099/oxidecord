@@ -21,7 +21,7 @@ pub use model::{
 pub use rest::{
     MAX_ATTACHMENT_SIZE, MESSAGE_PAGE_SIZE, delete_message, edit_message, fetch_channels,
     fetch_current_user, fetch_dms, fetch_guild_folders, fetch_guilds, fetch_messages,
-    fetch_user_profile, ring_call, send_message, toggle_reaction,
+    fetch_user_profile, ring_call, send_message, toggle_reaction, trigger_typing,
 };
 pub use token::{load_token, save_token};
 pub use twilight_model::guild::Permissions;

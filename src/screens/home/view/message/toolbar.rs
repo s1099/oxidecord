@@ -3,14 +3,14 @@
 use gpui::prelude::FluentBuilder as _;
 use gpui::*;
 use gpui_component::{
-    ActiveTheme as _, Icon, IconName, Sizable as _, h_flex,
+    ActiveTheme as _, Icon, IconName, Selectable as _, Sizable as _, h_flex,
     menu::{DropdownMenu as _, PopupMenuItem},
 };
 
 use twilight_model::id::{Id, marker::MessageMarker};
 
 use crate::discord;
-use crate::screens::home::{HomeScreen, ReplyTarget};
+use crate::screens::home::{EmojiTarget, HomeScreen, ReplyTarget};
 use crate::ui::button::Button;
 use crate::ui::depth::{self, Finish, Level, Lit as _, radius};
 
@@ -37,6 +37,12 @@ impl HomeScreen {
                 .as_ref()
                 .is_none_or(|editing| editing.message_id != message_id);
         let expanded = self.shift_held;
+        // Kept up while its picker is open, which the pointer leaves the
+        // message to reach.
+        let reacting = self
+            .emoji_picker
+            .as_ref()
+            .is_some_and(|picker| picker.target == EmojiTarget::Reaction(message_id));
 
         div()
             .absolute()
@@ -44,6 +50,7 @@ impl HomeScreen {
             .right(px(12.))
             .invisible()
             .group_hover(group_name.clone(), |this| this.visible())
+            .when(reacting, |this| this.visible())
             .child(
                 h_flex()
                     .gap(px(2.))
@@ -59,6 +66,22 @@ impl HomeScreen {
                         cx,
                     )
                     .rounded(radius::CONTROL)
+                    .child(
+                        Button::new(("message-react", message_id.get()))
+                            .icon(Icon::default().path("icons/smile-plus.svg"))
+                            .ghost()
+                            .small()
+                            .selected(reacting)
+                            .tooltip("Add Reaction")
+                            .on_click(cx.listener(move |this, event: &ClickEvent, window, cx| {
+                                this.toggle_emoji_picker(
+                                    event.position(),
+                                    EmojiTarget::Reaction(message_id),
+                                    window,
+                                    cx,
+                                );
+                            })),
+                    )
                     .when(expanded, |this| {
                         this.child(
                             Button::new(("message-copy-link", message_id.get()))

@@ -75,6 +75,8 @@ impl HomeScreen {
         });
         self.send_error = None;
         self.replying_to = None;
+        // The message ends the indicator, so the next keystroke starts it anew.
+        self.typing_sent = None;
 
         let (nonce, timestamp) = next_nonce();
         let pending_id = Id::new(nonce);

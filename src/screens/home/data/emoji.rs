@@ -11,11 +11,11 @@ use gpui::*;
 use gpui_component::input::{InputEvent, InputState};
 use twilight_model::id::{Id, marker::GuildMarker};
 
-use crate::discord::GuildEmoji;
+use crate::discord::{self, GuildEmoji};
 use crate::screens::home::emoji::{
     PickerEmoji, PickerSection, emoji_names, picker_rows, resolve_custom_emoji,
 };
-use crate::screens::home::{EmojiPicker, HomeScreen, View};
+use crate::screens::home::{EmojiPicker, EmojiTarget, HomeScreen, View};
 
 /// Whether a custom emoji can be sent in the open conversation.
 enum Access {
@@ -30,6 +30,7 @@ impl HomeScreen {
     pub(in crate::screens::home) fn toggle_emoji_picker(
         &mut self,
         position: Point<Pixels>,
+        target: EmojiTarget,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
@@ -45,6 +46,7 @@ impl HomeScreen {
         search.update(cx, |search, cx| search.focus(window, cx));
         self.emoji_picker = Some(EmojiPicker {
             position,
+            target,
             search,
             rows: Rc::default(),
             hovered: None,
@@ -79,14 +81,42 @@ impl HomeScreen {
         cx.notify();
     }
 
-    /// Puts the chosen emoji into the composer at the cursor. Shift keeps the
-    /// picker open for choosing several, as in Discord.
+    /// Puts the chosen emoji into the composer at the cursor, or reacts with it.
+    /// Shift keeps the picker open for choosing several, as in Discord.
     pub(in crate::screens::home) fn pick_emoji(
         &mut self,
         emoji: &PickerEmoji,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        let Some(target) = self.emoji_picker.as_ref().map(|picker| picker.target) else {
+            return;
+        };
+        match target {
+            EmojiTarget::Composer => self.insert_emoji(emoji, window, cx),
+            EmojiTarget::Reaction(message_id) => {
+                let reaction = match emoji {
+                    PickerEmoji::Unicode(emoji) => {
+                        discord::ReactionEmoji::Unicode(emoji.as_str().to_string())
+                    }
+                    PickerEmoji::Custom {
+                        locked: Some(_), ..
+                    } => return,
+                    PickerEmoji::Custom { emoji, .. } => discord::ReactionEmoji::Custom {
+                        id: emoji.id,
+                        name: emoji.name.clone(),
+                        animated: emoji.animated,
+                    },
+                };
+                self.add_reaction(message_id, reaction, cx);
+            }
+        }
+        if !window.modifiers().shift {
+            self.close_emoji_picker(window, cx);
+        }
+    }
+
+    fn insert_emoji(&mut self, emoji: &PickerEmoji, window: &mut Window, cx: &mut Context<Self>) {
         let text = match emoji {
             PickerEmoji::Unicode(emoji) => emoji.as_str().to_string(),
             PickerEmoji::Custom {
@@ -105,9 +135,6 @@ impl HomeScreen {
         self.message_input.update(cx, |input, cx| {
             input.insert(text, window, cx);
         });
-        if !window.modifiers().shift {
-            self.close_emoji_picker(window, cx);
-        }
     }
 
     pub(in crate::screens::home) fn hover_emoji(

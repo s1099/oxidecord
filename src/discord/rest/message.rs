@@ -70,6 +70,16 @@ pub async fn toggle_reaction(
     .await
 }
 
+/// Shows the current user typing in a channel, until they send there or ten
+/// seconds pass.
+pub async fn trigger_typing(channel_id: Id<ChannelMarker>) -> Result<(), String> {
+    request(move |client| async move {
+        client.create_typing_trigger(channel_id).await?;
+        Ok(())
+    })
+    .await
+}
+
 /// Sends a message. `nonce` comes back on the gateway's `MESSAGE_CREATE` for
 /// it, which is how the optimistic copy shown meanwhile is matched up.
 pub async fn send_message(

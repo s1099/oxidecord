@@ -20,7 +20,7 @@ pub use channel::{fetch_dms, ring_call};
 pub use guild::{fetch_channels, fetch_guilds};
 pub use message::{
     MAX_ATTACHMENT_SIZE, MESSAGE_PAGE_SIZE, delete_message, edit_message, fetch_messages,
-    send_message, toggle_reaction,
+    send_message, toggle_reaction, trigger_typing,
 };
 pub use settings::fetch_guild_folders;
 pub use user::{fetch_current_user, fetch_user_profile};

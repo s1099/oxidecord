@@ -7,10 +7,10 @@
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use gpui::*;
-use gpui_component::input::InputState;
+use gpui_component::input::{InputEvent, InputState};
 use gpui_component::slider::SliderState;
 use twilight_model::id::{
     Id,
@@ -80,11 +80,20 @@ pub(super) struct ProfilePopup {
     pub error: Option<String>,
 }
 
+/// Where an emoji chosen from the picker goes.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum EmojiTarget {
+    Composer,
+    /// A reaction on this message, opened from its hover toolbar.
+    Reaction(Id<MessageMarker>),
+}
+
 /// The open emoji picker.
 pub(super) struct EmojiPicker {
-    /// Window coordinates of the click that opened it, which its bottom-right
-    /// corner sits just above.
+    /// Window coordinates of the click that opened it, which the picker sits
+    /// beside.
     pub position: Point<Pixels>,
+    pub target: EmojiTarget,
     pub search: Entity<InputState>,
     /// The list as last laid out. Rebuilt when the search changes rather than
     /// every frame — the screen repaints for every video frame, and this is a
@@ -293,6 +302,9 @@ pub struct HomeScreen {
     /// again once you leave.
     pub(super) revealed_spoilers: HashSet<SharedString>,
     pub(super) message_input: Entity<InputState>,
+    /// The conversation the typing indicator was last sent to, and when.
+    pub(super) typing_sent: Option<(Id<ChannelMarker>, Instant)>,
+    pub(super) _composer_changed: Subscription,
     pub(super) messages_list: ListState,
     /// The video attachment currently playing, if any.
     pub(super) video: Option<VideoPlayback>,
@@ -315,6 +327,12 @@ impl HomeScreen {
             InputState::new(window, cx)
                 .auto_grow(1, COMPOSER_MAX_ROWS)
                 .placeholder("Send a message")
+        });
+
+        let composer_changed = cx.subscribe(&message_input, |this, _, event: &InputEvent, cx| {
+            if matches!(event, InputEvent::Change) {
+                this.on_composer_changed(cx);
+            }
         });
 
         // Bottom-aligned like a chat log; items are measured lazily, and
@@ -388,6 +406,8 @@ impl HomeScreen {
             revealed_spoilers: HashSet::new(),
             video: None,
             message_input,
+            typing_sent: None,
+            _composer_changed: composer_changed,
             messages_scroll: SmoothScroll::list(messages_list.clone()),
             messages_list,
             image_cache: RetainAllImageCache::new(cx),

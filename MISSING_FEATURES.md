@@ -7,7 +7,6 @@
 | Syntax highlighting in code blocks | Missing | Code blocks and inline code render as plain monospace; the language tag is parsed but unused |
 | Local time zone for timestamps | Partial | Message times are local; `<t:…>` markup, embed footers and snowflake dates (member since) are still UTC |
 | Global display names in mentions | Partial | twilight's `Mention` model drops `global_name`, so a mention shows the nickname or username |
-| Adding a new reaction to a message | Partial | Existing reactions can be toggled; there's no picker to add another |
 | Viewing who reacted | Missing | |
 | Super reactions (burst) | Missing | |
 | Autocomplete for `@mentions`, `#channels`, `:emoji:` in the composer | Missing | |
@@ -35,7 +34,7 @@
 | Scheduled and silent messages (`@silent`) | Missing | |
 | Send failure retry | Partial | Sends show a pending message at once; a failed one stays marked, but there is no retry or dismiss yet |
 | Slowmode indicator and cooldown | Missing | |
-| Typing indicator ("X is typing…") and sending typing events | Missing | `TYPING_START` is dropped in the gateway |
+| Typing indicator ("X is typing…") | Missing | `TYPING_START` is dropped in the gateway; sending the user's own typing is done |
 | Message requests and filtering DMs from strangers | Missing | |
 
 ## Channels and servers

@@ -12,7 +12,7 @@ use gpui_component::{
     input::Input, v_flex,
 };
 
-use crate::screens::home::{COMPOSER_CONTEXT, HomeScreen, SendMessage};
+use crate::screens::home::{COMPOSER_CONTEXT, EmojiTarget, HomeScreen, SendMessage};
 use crate::ui::button::Button;
 use crate::ui::depth::radius;
 
@@ -129,12 +129,15 @@ impl HomeScreen {
                                             .icon(Icon::default().path("icons/smile.svg"))
                                             .ghost()
                                             .small()
-                                            .selected(self.emoji_picker.is_some())
+                                            .selected(self.emoji_picker.as_ref().is_some_and(
+                                                |picker| picker.target == EmojiTarget::Composer,
+                                            ))
                                             .tooltip("Select emoji")
                                             .on_click(cx.listener(
                                                 |this, event: &ClickEvent, window, cx| {
                                                     this.toggle_emoji_picker(
                                                         event.position(),
+                                                        EmojiTarget::Composer,
                                                         window,
                                                         cx,
                                                     );

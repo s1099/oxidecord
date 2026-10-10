@@ -7,6 +7,7 @@ mod history;
 mod live;
 mod reactions;
 mod send;
+mod typing;
 
 use std::ops::Range;
 

@@ -19,9 +19,6 @@ impl HomeScreen {
         emoji: discord::ReactionEmoji,
         cx: &mut Context<Self>,
     ) {
-        let Some(channel_id) = self.selected_channel else {
-            return;
-        };
         let Some(add) = self
             .messages
             .iter()
@@ -36,7 +33,45 @@ impl HomeScreen {
         else {
             return;
         };
+        self.send_reaction(message_id, emoji, add, cx);
+    }
 
+    /// Adds the current user's reaction, chosen from the picker. Picking one
+    /// they've already made leaves it be rather than taking it back.
+    pub(in crate::screens::home) fn add_reaction(
+        &mut self,
+        message_id: Id<MessageMarker>,
+        emoji: discord::ReactionEmoji,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(message) = self
+            .messages
+            .iter()
+            .find(|message| message.id == message_id)
+        else {
+            return;
+        };
+        if message
+            .reactions
+            .iter()
+            .any(|reaction| reaction.emoji == emoji && reaction.me)
+        {
+            return;
+        }
+        self.send_reaction(message_id, emoji, true, cx);
+    }
+
+    /// Applies the current user's reaction locally and sends it.
+    fn send_reaction(
+        &mut self,
+        message_id: Id<MessageMarker>,
+        emoji: discord::ReactionEmoji,
+        add: bool,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(channel_id) = self.selected_channel else {
+            return;
+        };
         self.apply_reaction(message_id, &emoji, add);
         cx.notify();
 
@@ -62,12 +97,14 @@ impl HomeScreen {
         emoji: &discord::ReactionEmoji,
         add: bool,
     ) {
-        if let Some(message) = self
+        if let Some(ix) = self
             .messages
-            .iter_mut()
-            .find(|message| message.id == message_id)
+            .iter()
+            .position(|message| message.id == message_id)
         {
-            tally_reaction(&mut message.reactions, emoji, add, true);
+            tally_reaction(&mut self.messages[ix].reactions, emoji, add, true);
+            // A first or last reaction adds or drops the row of pills.
+            self.messages_list.splice(ix..ix + 1, 1);
         }
     }
 
