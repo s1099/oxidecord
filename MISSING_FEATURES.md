@@ -88,7 +88,6 @@
 
 | Feature | Status | Notes |
 |---|---|---|
-| Setting your own status (online, idle, do not disturb, invisible) | Missing | Listed on the README TODO |
 | Custom status | Missing | |
 | Showing other users' presence (status dots) | Missing | `PRESENCE_UPDATE` is dropped |
 | Rich presence and activities (games, Spotify, streaming) | Missing | |

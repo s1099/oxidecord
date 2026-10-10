@@ -45,16 +45,23 @@ impl HomeScreen {
         .detach();
     }
 
-    /// Loads the user's folder settings, which decide the rail's order.
-    /// Best-effort: until it lands the rail uses the plain guild list.
-    pub(in crate::screens::home) fn load_guild_folders(&mut self, cx: &mut Context<Self>) {
+    /// Loads the user's settings: the folders that decide the rail's order,
+    /// and their chosen status. Best-effort: until it lands the rail uses the
+    /// plain guild list.
+    pub(in crate::screens::home) fn load_user_settings(&mut self, cx: &mut Context<Self>) {
         cx.spawn(async move |this, cx| {
-            let result = discord::fetch_guild_folders().await;
+            let result = discord::fetch_user_settings().await;
             let _ = this.update(cx, |this, cx| {
                 match result {
-                    Ok(folders) => this.guild_folders = Some(folders),
+                    Ok(settings) => {
+                        this.guild_folders = Some(settings.guild_folders);
+                        // A status picked while this was in flight wins.
+                        if this.presence_status.is_none() {
+                            this.apply_presence_status(settings.status.unwrap_or_default());
+                        }
+                    }
                     Err(err) => {
-                        eprintln!("failed to load guild folders: {err}");
+                        eprintln!("failed to load user settings: {err}");
                         return;
                     }
                 }

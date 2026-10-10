@@ -33,7 +33,7 @@ won't know that generator so either update CMake, or build through Ninja with
 - [x] Themes
 - [x] Updater
 - [x] App icon
-- [ ] Status changes
+- [x] Status changes
 - [x] Video playback
 - [x] Voice calls
 - [ ] Screenshare and video calls

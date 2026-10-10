@@ -92,7 +92,17 @@ impl HomeScreen {
                 voice_states,
             } => {
                 self.self_user_id = Some(user_id);
+                // A new session starts out online whatever was picked, and
+                // a resume doesn't come through here, so this covers both
+                // the first connect and every reconnect.
+                if let (Some(status), Some(gateway)) = (self.presence_status, &self.gateway) {
+                    gateway.update_presence(status);
+                }
                 self.replace_voice_states(None, voice_states, cx);
+            }
+            discord::GatewayEvent::StatusSettings(status) => {
+                self.presence_status = Some(status);
+                cx.notify();
             }
             discord::GatewayEvent::Message(incoming) => {
                 if incoming.guild_id.is_none() {

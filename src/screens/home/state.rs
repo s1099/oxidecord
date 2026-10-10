@@ -206,6 +206,10 @@ pub struct HomeScreen {
     /// The user's folder settings. `None` until the settings-proto fetch
     /// resolves, or if it fails — the rail falls back to the plain guild order.
     pub(super) guild_folders: Option<discord::GuildFolders>,
+    /// The status the user picked, from settings-proto. `None` until that
+    /// fetch resolves; the account panel shows online meanwhile, and nothing
+    /// is sent to the gateway until it's known.
+    pub(super) presence_status: Option<discord::PresenceStatus>,
     /// Folders the user has opened, by folder id. Folders start collapsed.
     pub(super) expanded_folders: HashSet<i64>,
     pub(super) selected_guild: Option<Id<GuildMarker>>,
@@ -383,6 +387,7 @@ impl HomeScreen {
             guilds: Vec::new(),
             rail_entries: Vec::new(),
             guild_folders: None,
+            presence_status: None,
             expanded_folders: HashSet::new(),
             current_user: None,
             selected_guild: None,
@@ -447,7 +452,7 @@ impl HomeScreen {
             dm_scroll: SmoothScroll::div(),
         };
         this.load_guilds(window, cx);
-        this.load_guild_folders(cx);
+        this.load_user_settings(cx);
         this.load_current_user(cx);
         this.start_gateway(cx);
         // Seeds the focus path so the root element's key listeners are live

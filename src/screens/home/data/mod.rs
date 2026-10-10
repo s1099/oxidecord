@@ -10,6 +10,7 @@ pub(super) mod dms;
 pub(super) mod emoji;
 pub(super) mod guilds;
 pub(super) mod messages;
+pub(super) mod presence;
 pub(super) mod profile;
 pub(super) mod stream;
 pub(super) mod video;

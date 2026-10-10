@@ -22,7 +22,7 @@ pub use message::{
     MAX_ATTACHMENT_SIZE, MESSAGE_PAGE_SIZE, delete_message, edit_message, fetch_messages,
     send_message, toggle_reaction, trigger_typing,
 };
-pub use settings::fetch_guild_folders;
+pub use settings::{fetch_user_settings, save_status};
 pub use user::{fetch_current_user, fetch_user_profile};
 
 /// Runs a request against the shared client on the runtime, flattening its

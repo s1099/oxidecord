@@ -19,10 +19,11 @@ use twilight_model::id::{
 use crate::platform::runtime;
 
 use super::model::{
-    GuildEmoji, Message, RawEmoji, RawMember, RawRole, RawVoiceServer, RawVoiceState,
-    ReactionEmoji, Role, StreamServerInfo, VoiceServerInfo, VoiceUserState, convert_guild_emoji,
-    convert_guild_voice_states, convert_message, convert_reaction_emoji, convert_role,
-    convert_stream_server, convert_voice_server, convert_voice_state,
+    GuildEmoji, Message, PresenceStatus, RawEmoji, RawMember, RawRole, RawVoiceServer,
+    RawVoiceState, ReactionEmoji, Role, StreamServerInfo, VoiceServerInfo, VoiceUserState,
+    convert_guild_emoji, convert_guild_voice_states, convert_message, convert_reaction_emoji,
+    convert_role, convert_stream_server, convert_voice_server, convert_voice_state,
+    parse_user_settings,
 };
 
 /// A message received live over the gateway, tagged with the channel it
@@ -120,6 +121,8 @@ pub enum GatewayEvent {
         user_id: Id<UserMarker>,
         roles: Vec<Id<RoleMarker>>,
     },
+    /// The user picked a status, here or on another of their clients.
+    StatusSettings(PresenceStatus),
 }
 
 /// How a message's reactions changed.
@@ -176,6 +179,21 @@ impl GatewaySender {
         let _ = self.inner.send(payload.to_string());
     }
 
+    /// Sends `PRESENCE_UPDATE` (opcode 3): shows the user as `status` for the
+    /// rest of the session. Activities are left empty — the app reports none.
+    pub fn update_presence(&self, status: PresenceStatus) {
+        let payload = serde_json::json!({
+            "op": 3,
+            "d": {
+                "status": status.as_str(),
+                "since": 0,
+                "activities": [],
+                "afk": false,
+            }
+        });
+        let _ = self.inner.send(payload.to_string());
+    }
+
     /// Sends `STREAM_CREATE` (opcode 18): goes live in the call in
     /// `channel_id`. Discord answers with the stream's server, as dispatches.
     pub fn create_stream(&self, guild_id: Option<Id<GuildMarker>>, channel_id: Id<ChannelMarker>) {
@@ -222,6 +240,21 @@ struct StreamCreatePayload {
 #[derive(Deserialize)]
 struct StreamDeletePayload {
     stream_key: String,
+}
+
+/// `USER_SETTINGS_PROTO_UPDATE`, of which only the `PreloadedUserSettings`
+/// kind (type 1) is read. A partial update carries just the fields that
+/// changed, so a missing status means it didn't change, not that it's gone.
+#[derive(Deserialize)]
+struct SettingsProtoUpdatePayload {
+    settings: SettingsProtoUpdate,
+}
+
+#[derive(Deserialize)]
+struct SettingsProtoUpdate {
+    #[serde(rename = "type")]
+    kind: u8,
+    proto: String,
 }
 
 /// The envelope every gateway payload arrives in. Only dispatches (opcode 0)
@@ -623,6 +656,12 @@ fn dispatch(name: &str, data: &RawValue) -> Vec<GatewayEvent> {
             .unwrap_or_default(),
         "GUILD_MEMBER_UPDATE" => serde_json::from_str::<MemberUpdatePayload>(data)
             .map(|update| member_roles(update.guild_id, vec![update.member]).collect())
+            .unwrap_or_default(),
+        "USER_SETTINGS_PROTO_UPDATE" => serde_json::from_str::<SettingsProtoUpdatePayload>(data)
+            .ok()
+            .filter(|update| update.settings.kind == 1)
+            .and_then(|update| parse_user_settings(&update.settings.proto).ok()?.status)
+            .map(|status| vec![GatewayEvent::StatusSettings(status)])
             .unwrap_or_default(),
         _ => Vec::new(),
     }
