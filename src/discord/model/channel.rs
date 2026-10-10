@@ -53,6 +53,14 @@ pub struct DirectMessage {
     last_message_id: Option<u64>,
 }
 
+impl DirectMessage {
+    /// Records a newly arrived message, so the conversation sorts as the most
+    /// recently active.
+    pub fn record_message(&mut self, message_id: u64) {
+        self.last_message_id = self.last_message_id.max(Some(message_id));
+    }
+}
+
 /// Converts a guild channel, dropping the types the UI can't display (threads,
 /// directories, ...).
 pub(in crate::discord) fn convert_channel(

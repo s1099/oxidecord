@@ -79,7 +79,6 @@
 | Group DM management (add or remove members, rename, change icon, leave) | Missing | |
 | Closing (hiding) a DM from the list | Missing | |
 | Active Now panel | Missing | |
-| Live updates to the DM list (new DM, reordering by recent activity) | Missing | The list is fetched once per session |
 | Notes on users | Missing | |
 | Mutual servers and mutual friends in profiles | Missing | |
 | Full user profile modal (activity, connections, member-since, roles) | Partial | Popout has a banner, bio, pronouns and creation date |

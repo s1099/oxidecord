@@ -94,7 +94,12 @@ impl HomeScreen {
                 self.self_user_id = Some(user_id);
                 self.replace_voice_states(None, voice_states, cx);
             }
-            discord::GatewayEvent::Message(incoming) => self.handle_incoming_message(incoming, cx),
+            discord::GatewayEvent::Message(incoming) => {
+                if incoming.guild_id.is_none() {
+                    self.note_dm_activity(incoming.channel_id, incoming.message.id, cx);
+                }
+                self.handle_incoming_message(incoming, cx)
+            }
             discord::GatewayEvent::MessageUpdate(incoming) => {
                 self.handle_message_update(incoming, cx)
             }

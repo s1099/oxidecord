@@ -208,6 +208,9 @@ pub struct HomeScreen {
     /// Set once the DM list has been fetched, so reopening the view doesn't
     /// refetch it every time.
     pub(super) dms_loaded: bool,
+    /// A background refetch of the loaded DM list is in flight, after a
+    /// message arrived in a conversation the list didn't have.
+    pub(super) dms_refreshing: bool,
     pub(super) collapsed_categories: HashSet<Id<ChannelMarker>>,
     pub(super) channels_loading: bool,
     pub(super) channels_error: Option<String>,
@@ -368,6 +371,7 @@ impl HomeScreen {
             dms_loading: false,
             dms_error: None,
             dms_loaded: false,
+            dms_refreshing: false,
             collapsed_categories: HashSet::new(),
             channels_loading: false,
             channels_error: None,

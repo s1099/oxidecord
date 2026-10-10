@@ -29,6 +29,8 @@ use super::model::{
 /// belongs to so the UI can decide whether it's for the open conversation.
 pub struct IncomingMessage {
     pub channel_id: Id<ChannelMarker>,
+    /// `None` for a message in a DM or group DM.
+    pub guild_id: Option<Id<GuildMarker>>,
     pub message: Message,
     /// The nonce the sender attached, when this is a new message. Matches the
     /// id of the optimistic copy of a message sent from here.
@@ -459,6 +461,7 @@ fn dispatch(name: &str, data: &RawValue) -> Vec<GatewayEvent> {
                     .and_then(|payload| payload.nonce);
                 vec![GatewayEvent::Message(IncomingMessage {
                     channel_id: message.channel_id,
+                    guild_id: message.guild_id,
                     message: convert_message(message),
                     nonce,
                 })]
@@ -471,6 +474,7 @@ fn dispatch(name: &str, data: &RawValue) -> Vec<GatewayEvent> {
             .map(|message| {
                 vec![GatewayEvent::MessageUpdate(IncomingMessage {
                     channel_id: message.channel_id,
+                    guild_id: message.guild_id,
                     message: convert_message(message),
                     nonce: None,
                 })]
