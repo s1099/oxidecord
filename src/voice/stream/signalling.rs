@@ -10,6 +10,10 @@
 //! every member derives the same keys. Media is only end-to-end encrypted
 //! once that's happened, so until [`Dave::protect`] has a ready session,
 //! frames are held back rather than sent.
+//!
+//! A viewer speaks the same protocol, announcing that it sends nothing and
+//! learning from the server's `VIDEO` messages which SSRCs carry the
+//! streamer's picture.
 
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
@@ -37,6 +41,7 @@ mod op {
     pub const SESSION_DESCRIPTION: u8 = 4;
     pub const SPEAKING: u8 = 5;
     pub const HELLO: u8 = 8;
+    pub const MEDIA_SINK_WANTS: u8 = 15;
     pub const CLIENTS_CONNECT: u8 = 11;
     pub const VIDEO: u8 = 12;
     pub const CLIENT_DISCONNECT: u8 = 13;
@@ -66,6 +71,14 @@ pub(super) struct Ready {
     pub mode: &'static str,
 }
 
+/// Where a streamer's picture arrives, as the server's `VIDEO` says.
+#[derive(Clone, Copy)]
+pub(super) struct RemoteVideo {
+    pub ssrc: u32,
+    /// Where retransmissions arrive, when the sender has said.
+    pub rtx_ssrc: Option<u32>,
+}
+
 /// What a message from the server meant for the rest of the stream.
 pub(super) enum Signal {
     Nothing,
@@ -85,6 +98,10 @@ pub(super) struct Signalling {
     /// what says whether there's a DAVE session to give them to. Replayed
     /// once it lands.
     early: Option<Vec<Vec<u8>>>,
+    /// The streamer's video, for a viewer. Kept here rather than handed back
+    /// as a [`Signal`] because the server can announce it during the
+    /// handshake, before anyone is reading signals.
+    pub remote: Option<RemoteVideo>,
 }
 
 #[derive(Deserialize)]
@@ -123,6 +140,22 @@ struct SessionDescription {
     secret_key: Vec<u8>,
     #[serde(default)]
     dave_protocol_version: u16,
+}
+
+#[derive(Deserialize)]
+struct VideoPayload {
+    #[serde(default)]
+    video_ssrc: u32,
+    #[serde(default)]
+    streams: Vec<VideoStream>,
+}
+
+#[derive(Deserialize)]
+struct VideoStream {
+    #[serde(default)]
+    ssrc: u32,
+    #[serde(default)]
+    rtx_ssrc: Option<u32>,
 }
 
 #[derive(Deserialize)]
@@ -168,6 +201,7 @@ impl Signalling {
             heartbeat: Duration::from_secs(10),
             dave: Dave::new(user_id, connection.dave_channel_id),
             early: Some(Vec::new()),
+            remote: None,
         };
 
         this.send_json(
@@ -323,6 +357,31 @@ impl Signalling {
         .await
     }
 
+    /// Tells the server this connection only watches: its video is
+    /// inactive, and it wants the streamer's at full quality. The server
+    /// forwards no video until it's heard a `VIDEO` from each end.
+    pub(super) async fn announce_watching(&mut self, ssrcs: Ssrcs) -> Result<(), String> {
+        self.send_json(
+            op::VIDEO,
+            json!({
+                "audio_ssrc": ssrcs.audio,
+                "video_ssrc": 0,
+                "rtx_ssrc": 0,
+                "streams": [{
+                    "type": "video",
+                    "rid": "100",
+                    "ssrc": ssrcs.video,
+                    "rtx_ssrc": ssrcs.rtx,
+                    "active": false,
+                    "quality": 100,
+                }],
+            }),
+        )
+        .await?;
+        self.send_json(op::MEDIA_SINK_WANTS, json!({ "any": 100 }))
+            .await
+    }
+
     pub(super) async fn send_heartbeat(&mut self) -> Result<(), String> {
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -403,6 +462,27 @@ impl Signalling {
 
     async fn handle_json(&mut self, envelope: Envelope) -> Result<(), String> {
         match envelope.op {
+            op::VIDEO => {
+                if let Ok(payload) = parse::<VideoPayload>(envelope.d) {
+                    let stream = payload
+                        .streams
+                        .iter()
+                        .find(|stream| stream.ssrc == payload.video_ssrc)
+                        .or_else(|| payload.streams.iter().find(|stream| stream.ssrc != 0));
+                    // A zero SSRC with no streams is the sender clearing its
+                    // video; what's known of it stays, since a stream that
+                    // resumes does so on the same SSRCs.
+                    let ssrc = stream.map_or(payload.video_ssrc, |stream| stream.ssrc);
+                    if ssrc != 0 {
+                        self.remote = Some(RemoteVideo {
+                            ssrc,
+                            rtx_ssrc: stream
+                                .and_then(|stream| stream.rtx_ssrc)
+                                .filter(|&rtx| rtx != 0),
+                        });
+                    }
+                }
+            }
             op::CLIENTS_CONNECT => {
                 if let Ok(payload) = parse::<ClientsConnect>(envelope.d) {
                     self.dave.members.extend(
@@ -641,6 +721,27 @@ impl Dave {
     /// Whether frames can be sent right now.
     pub(super) fn is_ready(&self) -> bool {
         self.protocol_version == 0 || self.session.as_ref().is_some_and(DaveSession::is_ready)
+    }
+
+    /// Undoes [`Self::protect`] on a frame from `sender`. `None` when it can't
+    /// be decrypted — most often because the group hasn't formed yet.
+    pub(super) fn unprotect(&mut self, sender: u64, frame: Vec<u8>) -> Option<Vec<u8>> {
+        if self.protocol_version == 0 {
+            return Some(frame);
+        }
+        let session = self.session.as_mut()?;
+        // Every frame fails until the group forms; that isn't worth a line
+        // each.
+        if !session.is_ready() {
+            return None;
+        }
+        match session.decrypt(sender, MediaType::VIDEO, &frame) {
+            Ok(frame) => Some(frame),
+            Err(err) => {
+                eprintln!("DAVE: couldn't decrypt a frame: {err}");
+                None
+            }
+        }
     }
 
     /// End-to-end encrypts a frame, or passes it through on a connection

@@ -138,8 +138,8 @@ impl HomeScreen {
                 rtc_server_id,
             } => self.handle_stream_create(stream_key, rtc_server_id, cx),
             discord::GatewayEvent::StreamServer(server) => self.handle_stream_server(server, cx),
-            discord::GatewayEvent::StreamDelete { stream_key } => {
-                self.handle_stream_delete(stream_key, cx)
+            discord::GatewayEvent::StreamDelete { stream_key, reason } => {
+                self.handle_stream_delete(stream_key, reason, cx)
             }
             discord::GatewayEvent::GuildRoles { guild_id, roles } => {
                 let roles = roles.into_iter().map(|role| (role.id, role)).collect();

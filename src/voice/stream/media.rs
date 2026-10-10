@@ -1,10 +1,12 @@
-//! The stream's UDP side: H.264 frames out as encrypted RTP, viewer feedback
-//! in as RTCP.
+//! The stream's UDP side. For the streamer: H.264 frames out as encrypted
+//! RTP, viewer feedback in as RTCP. For a viewer: the reverse.
 //!
 //! Packets are laid out the way Discord's `_rtpsize` modes want them: the
 //! RTP header stays in the clear as associated data, and the payload is
-//! encrypted, with the tag and a four-byte nonce counter appended. RTCP is
-//! the same with its first eight bytes in the clear.
+//! encrypted, with the tag and a four-byte nonce counter appended. A header
+//! extension's four-byte preamble is part of the clear header, but its
+//! elements are encrypted with the payload. RTCP is the same with its first
+//! eight bytes in the clear.
 
 use std::net::{IpAddr, SocketAddr};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -103,6 +105,17 @@ impl Cipher {
             }
         }
     }
+}
+
+/// A received RTP packet, decrypted, with its header extension and padding
+/// taken off.
+pub(super) struct RtpPacket {
+    pub payload_type: u8,
+    pub marker: bool,
+    pub sequence: u16,
+    pub timestamp: u32,
+    pub ssrc: u32,
+    pub payload: Vec<u8>,
 }
 
 /// A packet as it went out, before encryption, for resending on request.
@@ -317,6 +330,101 @@ impl Media {
         }
     }
 
+    /// Asks the sender of `media_ssrc` for a keyframe (a picture loss
+    /// indication), for a viewer with nothing it can decode from.
+    pub(super) async fn send_picture_loss(&mut self, media_ssrc: u32) {
+        let mut header = [0u8; 8];
+        // Version 2, format 1 (PLI); type 206; two words after this one.
+        header[0] = 0x81;
+        header[1] = 206;
+        header[2..4].copy_from_slice(&2u16.to_be_bytes());
+        header[4..8].copy_from_slice(&self.ssrcs.audio.to_be_bytes());
+        if let Some(packet) = self.seal(&header, media_ssrc.to_be_bytes().to_vec()) {
+            let _ = self.socket.send(&packet).await;
+        }
+    }
+
+    /// Asks the sender of `media_ssrc` to resend `lost` (a generic NACK),
+    /// which it does on its retransmission stream.
+    pub(super) async fn send_nack(&mut self, media_ssrc: u32, lost: &[u16]) {
+        let entries = nack_entries(lost);
+        if entries.is_empty() {
+            return;
+        }
+        let mut header = [0u8; 8];
+        // Version 2, format 1 (generic NACK); type 205.
+        header[0] = 0x81;
+        header[1] = 205;
+        header[2..4].copy_from_slice(&(2 + entries.len() as u16).to_be_bytes());
+        header[4..8].copy_from_slice(&self.ssrcs.audio.to_be_bytes());
+
+        let mut body = Vec::with_capacity(4 + entries.len() * 4);
+        body.extend_from_slice(&media_ssrc.to_be_bytes());
+        for (id, mask) in entries {
+            body.extend_from_slice(&id.to_be_bytes());
+            body.extend_from_slice(&mask.to_be_bytes());
+        }
+        if let Some(packet) = self.seal(&header, body) {
+            let _ = self.socket.send(&packet).await;
+        }
+    }
+
+    /// An empty receiver report. A viewer otherwise sends almost nothing, and
+    /// this keeps the path to it open through NATs that forget a quiet one.
+    pub(super) async fn send_receiver_report(&mut self) {
+        let mut header = [0u8; 8];
+        // Version 2, no report blocks; type 201; one word after this one.
+        header[0] = 0x80;
+        header[1] = 201;
+        header[2..4].copy_from_slice(&1u16.to_be_bytes());
+        header[4..8].copy_from_slice(&self.ssrcs.audio.to_be_bytes());
+        if let Some(packet) = self.seal(&header, Vec::new()) {
+            let _ = self.socket.send(&packet).await;
+        }
+    }
+
+    /// Decrypts a received RTP packet. `None` for RTCP, for anything that
+    /// fails to decrypt, and for anything too malformed to be RTP.
+    pub(super) fn open_rtp(&self, packet: &[u8]) -> Option<RtpPacket> {
+        let cipher = self.cipher.as_ref()?;
+        if packet.len() < 12 || packet[0] >> 6 != 2 || (200..=206).contains(&packet[1]) {
+            return None;
+        }
+
+        let csrcs = usize::from(packet[0] & 0x0F);
+        let mut clear = 12 + 4 * csrcs;
+        let mut extension = 0;
+        if packet[0] & 0x10 != 0 {
+            let preamble = packet.get(clear..clear + 4)?;
+            extension = usize::from(u16::from_be_bytes([preamble[2], preamble[3]])) * 4;
+            clear += 4;
+        }
+        // The tag, at least, has to follow the header, and the counter it.
+        if packet.len() < clear + 16 + 4 {
+            return None;
+        }
+
+        let (aad, rest) = packet.split_at(clear);
+        let (body, counter) = rest.split_at(rest.len() - 4);
+        let mut body = body.to_vec();
+        cipher.open(counter.try_into().ok()?, aad, &mut body).ok()?;
+
+        let mut payload = body.get(extension..)?.to_vec();
+        if packet[0] & 0x20 != 0 {
+            let padding = usize::from(*payload.last()?);
+            payload.truncate(payload.len().checked_sub(padding)?);
+        }
+
+        Some(RtpPacket {
+            payload_type: packet[1] & 0x7F,
+            marker: packet[1] & 0x80 != 0,
+            sequence: u16::from_be_bytes([packet[2], packet[3]]),
+            timestamp: u32::from_be_bytes([packet[4], packet[5], packet[6], packet[7]]),
+            ssrc: u32::from_be_bytes([packet[8], packet[9], packet[10], packet[11]]),
+            payload,
+        })
+    }
+
     pub(super) async fn recv(&self, buffer: &mut [u8]) -> std::io::Result<usize> {
         self.socket.recv(buffer).await
     }
@@ -384,6 +492,30 @@ fn packetize(frame: &[u8]) -> Vec<(Vec<u8>, bool)> {
         }
     }
     packets
+}
+
+/// Packs lost sequence numbers into NACK entries: a packet id, and a bitmask
+/// of which of the sixteen after it were lost too.
+fn nack_entries(lost: &[u16]) -> Vec<(u16, u16)> {
+    let mut lost = lost.to_vec();
+    // Sorted from the oldest, allowing for the count wrapping past zero.
+    if let Some(&first) = lost.first() {
+        lost.sort_by_key(|&id| id.wrapping_sub(first) as i16);
+    }
+    lost.dedup();
+
+    let mut entries: Vec<(u16, u16)> = Vec::new();
+    for id in lost {
+        if let Some((base, mask)) = entries.last_mut() {
+            let offset = id.wrapping_sub(*base);
+            if (1..=16).contains(&offset) {
+                *mask |= 1 << (offset - 1);
+                continue;
+            }
+        }
+        entries.push((id, 0));
+    }
+    entries
 }
 
 /// Reads feedback out of a decrypted compound RTCP packet.
@@ -559,6 +691,26 @@ mod tests {
         let feedback = parse_feedback(&compound, video);
         assert!(feedback.keyframe);
         assert_eq!(feedback.lost, [100, 101, 103]);
+    }
+
+    #[test]
+    fn nacks_pack_into_ids_and_masks_the_feedback_parser_reads_back() {
+        let lost = [100, 103, 101, 130, 65535, 0];
+        let entries = nack_entries(&lost);
+        assert_eq!(entries, [(65535, 1), (100, 0b101), (130, 0)]);
+
+        let video: u32 = 7;
+        let mut compound = vec![0x81, 205, 0, 2 + entries.len() as u8, 0, 0, 0, 9];
+        compound.extend(video.to_be_bytes());
+        for (id, mask) in &entries {
+            compound.extend(id.to_be_bytes());
+            compound.extend(mask.to_be_bytes());
+        }
+        let mut parsed = parse_feedback(&compound, video).lost;
+        parsed.sort_unstable();
+        let mut expected = lost.to_vec();
+        expected.sort_unstable();
+        assert_eq!(parsed, expected);
     }
 
     #[test]

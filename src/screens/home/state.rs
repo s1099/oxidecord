@@ -26,7 +26,7 @@ use super::channels::ChannelGroup;
 use super::data::attachments::PendingAttachment;
 use super::emoji::PickerRow;
 use super::folders::RailEntry;
-use super::voice::{PendingVoice, ScreenShare, VoiceCall};
+use super::voice::{PendingVoice, ScreenShare, StreamWatch, VoiceCall};
 use crate::voice::VoiceEngine;
 use crate::voice::stream::StreamEvent;
 
@@ -289,6 +289,13 @@ pub struct HomeScreen {
     /// Where stream connections report back. One channel for every stream,
     /// each event tagged with the stream it's about.
     pub(super) stream_events: Option<futures::channel::mpsc::UnboundedSender<StreamEvent>>,
+    /// Someone else's stream the user is watching, from the moment it's
+    /// asked for.
+    pub(super) watching: Option<StreamWatch>,
+    /// Pictures from a watch that has ended, waiting to be handed back to
+    /// gpui's sprite atlas on the next render — the one place a window is
+    /// always to hand, whatever ended the watch.
+    pub(super) retired_stream_frames: Vec<Arc<RenderImage>>,
     /// Sends commands up the gateway — joining and leaving voice channels is
     /// done with a gateway command, not a REST call.
     pub(super) gateway: Option<discord::GatewaySender>,
@@ -425,6 +432,8 @@ impl HomeScreen {
             voice_engine: None,
             screen_share: None,
             stream_events: None,
+            watching: None,
+            retired_stream_frames: Vec::new(),
             gateway: None,
             self_user_id: None,
             shift_held: false,

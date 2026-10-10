@@ -5,8 +5,14 @@
 //! voice states the gateway keeps up to date, so a participant list is always
 //! built from the latest ones.
 
+use std::sync::Arc;
+
+use futures::channel::mpsc::UnboundedSender;
+use gpui::RenderImage;
+
 use crate::platform::capture::CaptureSource;
-use crate::voice::stream::GoLive;
+use crate::platform::h264::DecoderEvent;
+use crate::voice::stream::{GoLive, WatchStream};
 use twilight_model::id::{
     Id,
     marker::{ChannelMarker, GuildMarker, UserMarker},
@@ -55,6 +61,8 @@ pub(super) struct VoiceCall {
     pub session_id: Option<String>,
     /// Why the last screen share couldn't start or stopped early.
     pub share_error: Option<String>,
+    /// Why the last stream the user watched couldn't open or stopped early.
+    pub watch_error: Option<String>,
 }
 
 /// The user's own stream into the call: what's being shared, and the
@@ -76,6 +84,27 @@ pub(super) struct ScreenShare {
     pub stream: Option<GoLive>,
     /// Frames are going out.
     pub live: bool,
+}
+
+/// Someone else's stream being watched: whose, the connection parameters as
+/// the gateway delivers them, and the picture on screen.
+///
+/// Like [`ScreenShare`], the connection waits here until both `STREAM_CREATE`
+/// and `STREAM_SERVER_UPDATE` have landed.
+pub(super) struct StreamWatch {
+    pub stream_key: String,
+    pub streamer_id: Id<UserMarker>,
+    pub server_id: Option<String>,
+    pub endpoint: Option<String>,
+    pub token: Option<String>,
+    /// Where decoded pictures go. Cloned into each connection, so one opened
+    /// again after Discord moves the stream feeds the same pump.
+    pub frames: UnboundedSender<DecoderEvent>,
+    /// The running connection. Dropping it closes it and stops the decoder.
+    pub stream: Option<WatchStream>,
+    /// The picture on screen, handed back to gpui's sprite atlas when the
+    /// next replaces it.
+    pub frame: Option<Arc<RenderImage>>,
 }
 
 /// The connection parameters, as the two gateway dispatches that answer a join

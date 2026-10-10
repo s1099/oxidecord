@@ -6,13 +6,15 @@ use gpui::*;
 use gpui_component::{
     ActiveTheme as _, Disableable as _, Icon, IconName, Selectable as _, Sizable as _, h_flex,
     menu::{ContextMenuExt as _, PopupMenuItem},
+    spinner::Spinner,
     tag::Tag,
+    tooltip::Tooltip,
     v_flex,
 };
 
 use crate::screens::home::HomeScreen;
 use crate::screens::home::view::avatar;
-use crate::screens::home::voice::{VoiceCall, VoiceParticipant, VoiceStatus};
+use crate::screens::home::voice::{StreamWatch, VoiceCall, VoiceParticipant, VoiceStatus};
 use crate::ui::button::Button;
 use crate::ui::depth::{self, radius};
 use crate::voice;
@@ -152,7 +154,10 @@ impl HomeScreen {
                 theme.muted_foreground,
             ),
             (None, Some(error)) => ("Stream stopped", error.clone(), theme.danger),
-            (None, None) => return None,
+            (None, None) => match &call.watch_error {
+                Some(error) => ("Couldn't watch", error.clone(), theme.danger),
+                None => return None,
+            },
         };
 
         Some(
@@ -237,6 +242,22 @@ impl HomeScreen {
         // draw — say what's happening rather than show an empty stage.
         let waiting = participants.is_empty();
 
+        // A stream being watched takes the stage over from the tiles.
+        let watched = self.watching.as_ref().and_then(|watch| {
+            participants
+                .iter()
+                .find(|participant| participant.user_id == watch.streamer_id)
+                .map(|streamer| (watch, streamer))
+        });
+        if let Some((watch, streamer)) = watched {
+            return v_flex()
+                .w_full()
+                .min_h_0()
+                .bg(theme.muted.opacity(0.4))
+                .child(self.stream_view(watch, streamer, cx))
+                .child(self.render_call_controls(cx));
+        }
+
         v_flex()
             .w_full()
             .min_h_0()
@@ -266,9 +287,85 @@ impl HomeScreen {
             .child(self.render_call_controls(cx))
     }
 
+    /// A watched stream, filling the stage: the picture once it's arrived,
+    /// who it is, and the way out.
+    fn stream_view(
+        &self,
+        watch: &StreamWatch,
+        streamer: &VoiceParticipant,
+        cx: &Context<Self>,
+    ) -> impl IntoElement {
+        let picture = match &watch.frame {
+            // Raw pixels, so it never touches the image cache.
+            Some(frame) => img(frame.clone())
+                .size_full()
+                .object_fit(ObjectFit::Contain)
+                .into_any_element(),
+            None => v_flex()
+                .absolute()
+                .inset_0()
+                .gap_2()
+                .items_center()
+                .justify_center()
+                .text_sm()
+                .text_color(white().opacity(0.7))
+                .child(Spinner::new().large().color(white()))
+                .child(format!("Joining {}'s stream…", streamer.name))
+                .into_any_element(),
+        };
+
+        div().flex_1().min_h_0().p_4().flex().child(
+            div()
+                .relative()
+                .size_full()
+                .rounded(radius::CARD)
+                .overflow_hidden()
+                // Black rather than a theme colour: it's the letterbox around
+                // the picture, and reads as part of it in either theme.
+                .bg(black())
+                .child(picture)
+                .child(
+                    h_flex()
+                        .absolute()
+                        .top_0()
+                        .left_0()
+                        .right_0()
+                        .p_2()
+                        .gap_2()
+                        .items_center()
+                        .child(Tag::danger().xsmall().child("LIVE"))
+                        .child(
+                            div()
+                                .flex_1()
+                                .min_w_0()
+                                .truncate()
+                                .text_sm()
+                                .font_weight(FontWeight::MEDIUM)
+                                .text_color(white())
+                                .child(streamer.name.clone()),
+                        )
+                        .child(
+                            Button::new("stream-stop-watching")
+                                .icon(IconName::Close)
+                                .ghost()
+                                .small()
+                                .tooltip("Stop Watching")
+                                .on_click(cx.listener(|this, _, _, cx| this.stop_watching(cx))),
+                        ),
+                ),
+        )
+    }
+
     /// One participant: their avatar, their name, and what they've silenced.
-    fn participant_tile(&self, participant: &VoiceParticipant, cx: &Context<Self>) -> Div {
+    /// A live one opens their stream when clicked, if it can be watched.
+    fn participant_tile(
+        &self,
+        participant: &VoiceParticipant,
+        cx: &Context<Self>,
+    ) -> Stateful<Div> {
         let theme = cx.theme();
+        let user_id = participant.user_id;
+        let watchable = participant.streaming && self.can_watch(user_id);
 
         let avatar = avatar(
             participant.name.clone(),
@@ -277,6 +374,7 @@ impl HomeScreen {
         );
 
         depth::card(radius::CARD, cx)
+            .id(SharedString::from(format!("voice-tile-{user_id}")))
             .flex()
             .flex_col()
             .w(px(180.))
@@ -329,6 +427,14 @@ impl HomeScreen {
             )
             .when(participant.streaming, |this| {
                 this.child(Tag::danger().xsmall().child("LIVE"))
+            })
+            .when(watchable, |this| {
+                this.cursor_pointer()
+                    .hover(|style| style.border_color(theme.danger))
+                    .tooltip(|window, cx| Tooltip::new("Watch Stream").build(window, cx))
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        this.watch_stream(user_id, window, cx)
+                    }))
             })
     }
 

@@ -111,6 +111,10 @@ impl HomeScreen {
         rtc_server_id: String,
         cx: &mut Context<Self>,
     ) {
+        if self.watched_stream(&stream_key).is_some() {
+            self.handle_watch_create(rtc_server_id, cx);
+            return;
+        }
         let Some(share) = self.own_stream(&stream_key) else {
             return;
         };
@@ -123,6 +127,10 @@ impl HomeScreen {
         server: discord::StreamServerInfo,
         cx: &mut Context<Self>,
     ) {
+        if self.watched_stream(&server.stream_key).is_some() {
+            self.handle_watch_server(server, cx);
+            return;
+        }
         let Some(share) = self.own_stream(&server.stream_key) else {
             return;
         };
@@ -136,12 +144,18 @@ impl HomeScreen {
     }
 
     /// The server ended the stream — the call ended under it, or a
-    /// moderator stopped it. There's nothing left to tell the gateway.
+    /// moderator stopped it — or refused to let the user watch it. There's
+    /// nothing left to tell the gateway.
     pub(in crate::screens::home) fn handle_stream_delete(
         &mut self,
         stream_key: String,
+        reason: Option<String>,
         cx: &mut Context<Self>,
     ) {
+        if self.watched_stream(&stream_key).is_some() {
+            self.handle_watch_delete(reason, cx);
+            return;
+        }
         if self.own_stream(&stream_key).is_some() {
             self.screen_share = None;
             cx.notify();
@@ -162,6 +176,10 @@ impl HomeScreen {
                 }
             }
             StreamEvent::Ended { stream_key, error } => {
+                if self.watched_stream(&stream_key).is_some() {
+                    self.handle_watch_ended(error, cx);
+                    return;
+                }
                 if self.own_stream(&stream_key).is_none() {
                     return;
                 }

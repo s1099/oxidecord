@@ -41,6 +41,22 @@ impl Render for HomeScreen {
         // nudges the screen when shift goes down or up.
         self.shift_held = window.modifiers().shift;
 
+        // A watched stream is decoded at most at the window's size, which is
+        // as large as the stage can draw it.
+        self.release_stream_frames(window);
+        if let Some(stream) = self
+            .watching
+            .as_ref()
+            .and_then(|watch| watch.stream.as_ref())
+        {
+            let size = window.viewport_size();
+            let scale = window.scale_factor();
+            stream.set_target((
+                (f32::from(size.width) * scale) as u32,
+                (f32::from(size.height) * scale) as u32,
+            ));
+        }
+
         let sidebar = match self.view {
             View::DirectMessages => Some(self.render_dm_sidebar(cx).into_any_element()),
             View::Guild => (self.selected_guild.is_some() || self.loading)

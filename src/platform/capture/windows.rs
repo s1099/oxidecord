@@ -1353,5 +1353,28 @@ mod tests {
             frames.iter().skip(1).any(|frame| frame.keyframe),
             "requested keyframe missing"
         );
+
+        // And back again, through the decoder a viewer watches with.
+        let (events, mut decoded) = futures::channel::mpsc::unbounded();
+        let (decoder, input) = crate::platform::h264::start((320, 320), events);
+        for frame in &frames {
+            assert!(input.decode(frame.data.clone()), "the decoder stopped");
+        }
+        let mut pictures = 0;
+        while pictures < frames.len() - 5 {
+            match futures::executor::block_on(decoded.next()) {
+                Some(crate::platform::h264::DecoderEvent::Frame(picture)) => {
+                    assert_eq!((picture.width, picture.height), (320, 180));
+                    assert_eq!(picture.bgra.len(), 320 * 180 * 4);
+                    decoder.frame_consumed();
+                    pictures += 1;
+                }
+                Some(crate::platform::h264::DecoderEvent::Failed(err)) => {
+                    panic!("decoding failed: {err}")
+                }
+                None => break,
+            }
+        }
+        assert!(pictures >= frames.len() - 5, "only {pictures} decoded");
     }
 }

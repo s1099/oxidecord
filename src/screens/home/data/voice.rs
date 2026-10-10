@@ -60,6 +60,7 @@ impl HomeScreen {
                 ring: false,
                 session_id: None,
                 share_error: None,
+                watch_error: None,
             },
             cx,
         );
@@ -88,6 +89,7 @@ impl HomeScreen {
                 ring: true,
                 session_id: None,
                 share_error: None,
+                watch_error: None,
             },
             cx,
         );
@@ -132,6 +134,7 @@ impl HomeScreen {
         self.voice = None;
         self.pending_voice = None;
         self.screen_share = None;
+        self.end_watch();
         self.voice_speaking.clear();
     }
 

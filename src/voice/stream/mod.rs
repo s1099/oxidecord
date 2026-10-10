@@ -7,13 +7,21 @@
 //! the same server; the streamer never hears from them directly, only
 //! through the RTCP feedback the server relays.
 //!
+//! Watching someone else's stream is the same connection the other way
+//! round, in [`watch`]: [`WatchStream`] receives the streamer's RTP and hands
+//! the frames to the platform's decoder.
+//!
 //! The whole connection — websocket, UDP socket, DAVE session — lives in one
 //! task on the shared runtime, so none of it needs a lock. [`GoLive`] is the
 //! only handle the app holds, and dropping it ends the stream.
 
 mod media;
+mod receive;
 mod signalling;
 mod sps;
+mod watch;
+
+pub use watch::WatchStream;
 
 use std::time::Duration;
 
@@ -44,7 +52,7 @@ pub struct StreamConnection {
     pub dave_channel_id: u64,
     pub user_id: Id<UserMarker>,
     /// The call's voice session: a stream belongs to the session that
-    /// created it.
+    /// created it, and is watched from the session that's in the call.
     pub session_id: String,
     pub token: String,
     pub endpoint: String,

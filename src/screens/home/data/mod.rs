@@ -15,3 +15,4 @@ pub(super) mod profile;
 pub(super) mod stream;
 pub(super) mod video;
 pub(super) mod voice;
+pub(super) mod watch;

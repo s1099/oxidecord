@@ -88,9 +88,12 @@ pub enum GatewayEvent {
     },
     /// The voice server assigned to a stream.
     StreamServer(StreamServerInfo),
-    /// A stream ended.
+    /// A stream ended, or the user stopped watching it. `reason` is
+    /// Discord's code for why — `stream_full` and `unauthorized` when a
+    /// watch was refused.
     StreamDelete {
         stream_key: String,
+        reason: Option<String>,
     },
     /// Every role in a guild, from `READY` or `GUILD_CREATE`. Replaces what
     /// was known before.
@@ -219,7 +222,19 @@ impl GatewaySender {
         let _ = self.inner.send(payload.to_string());
     }
 
-    /// Sends `STREAM_DELETE` (opcode 19): stops streaming.
+    /// Sends `STREAM_WATCH` (opcode 20): starts watching someone's stream in
+    /// the call the user is in. Discord answers with the stream's server, as
+    /// dispatches, or with a `STREAM_DELETE` saying why not.
+    pub fn watch_stream(&self, stream_key: &str) {
+        let payload = serde_json::json!({
+            "op": 20,
+            "d": { "stream_key": stream_key }
+        });
+        let _ = self.inner.send(payload.to_string());
+    }
+
+    /// Sends `STREAM_DELETE` (opcode 19): stops streaming, or stops watching
+    /// a stream that isn't the user's own.
     pub fn delete_stream(&self, stream_key: &str) {
         let payload = serde_json::json!({
             "op": 19,
@@ -240,6 +255,8 @@ struct StreamCreatePayload {
 #[derive(Deserialize)]
 struct StreamDeletePayload {
     stream_key: String,
+    #[serde(default)]
+    reason: Option<String>,
 }
 
 /// `USER_SETTINGS_PROTO_UPDATE`, of which only the `PreloadedUserSettings`
@@ -602,6 +619,7 @@ fn dispatch(name: &str, data: &RawValue) -> Vec<GatewayEvent> {
             .map(|stream| {
                 vec![GatewayEvent::StreamDelete {
                     stream_key: stream.stream_key,
+                    reason: stream.reason,
                 }]
             })
             .unwrap_or_default(),
