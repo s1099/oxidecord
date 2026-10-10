@@ -8,9 +8,13 @@ use std::collections::HashMap;
 use std::sync::LazyLock;
 
 use crate::discord::GuildEmoji;
+use crate::platform::prefs::RecentEmoji;
 
 /// Emoji per picker row.
 pub(in crate::screens::home) const COLUMNS: usize = 9;
+
+/// How many recently used emoji are kept: three full rows.
+pub(in crate::screens::home) const RECENT_LIMIT: usize = COLUMNS * 3;
 
 /// The newest emoji version Windows' Segoe UI Emoji draws. Anything later would
 /// show as tofu, so it's left out of the picker rather than offered broken.
@@ -33,6 +37,14 @@ impl PickerEmoji {
         match self {
             Self::Unicode(emoji) => format!(":{}:", emoji.shortcode().unwrap_or(emoji.name())),
             Self::Custom { emoji, .. } => format!(":{}:", emoji.name),
+        }
+    }
+
+    /// How it's remembered among the recently used.
+    pub fn recent_key(&self) -> RecentEmoji {
+        match self {
+            Self::Unicode(emoji) => RecentEmoji::Unicode(emoji.as_str().to_string()),
+            Self::Custom { emoji, .. } => RecentEmoji::Custom(emoji.id.get()),
         }
     }
 }
@@ -79,14 +91,21 @@ fn group_title(group: emojis::Group) -> &'static str {
     }
 }
 
-/// The picker's lines: the custom sections handed in, then every unicode
-/// category, all narrowed to `query` (matched against names and shortcodes,
-/// ignoring case). Sections left empty by the search are dropped.
+/// The picker's lines: the recently used, the custom sections handed in, then
+/// every unicode category, all narrowed to `query` (matched against names and
+/// shortcodes, ignoring case). Sections left empty by the search are dropped,
+/// and the recently used are left out of a search, which would only repeat
+/// them.
 pub(in crate::screens::home) fn picker_rows(
+    recent: Vec<PickerEmoji>,
     custom: Vec<PickerSection>,
     query: &str,
 ) -> Vec<PickerRow> {
     let query = query.trim().to_lowercase();
+    let recent = query.is_empty().then(|| PickerSection {
+        title: "Recently Used".into(),
+        emojis: recent,
+    });
     let unicode = UNICODE.iter().map(|(title, emojis)| PickerSection {
         title: title.to_string(),
         emojis: emojis
@@ -97,7 +116,7 @@ pub(in crate::screens::home) fn picker_rows(
     });
 
     let mut rows = Vec::new();
-    for mut section in custom.into_iter().chain(unicode) {
+    for mut section in recent.into_iter().chain(custom).chain(unicode) {
         if !query.is_empty() {
             section.emojis.retain(|emoji| match emoji {
                 PickerEmoji::Custom { emoji, .. } => emoji.name.to_lowercase().contains(&query),
@@ -285,10 +304,10 @@ mod tests {
                 locked: None,
             }],
         }];
-        let rows = picker_rows(custom, "WAVE");
+        let rows = picker_rows(Vec::new(), custom, "WAVE");
         assert!(matches!(&rows[0], PickerRow::Header(title) if title == "Guild"));
         // The unicode waving hand matches too.
         assert!(rows.len() > 2);
-        assert!(picker_rows(Vec::new(), "zzzzqqq").is_empty());
+        assert!(picker_rows(Vec::new(), Vec::new(), "zzzzqqq").is_empty());
     }
 }

@@ -12,8 +12,9 @@ use gpui_component::input::{InputEvent, InputState};
 use twilight_model::id::{Id, marker::GuildMarker};
 
 use crate::discord::{self, GuildEmoji};
+use crate::platform::prefs::{self, RecentEmoji};
 use crate::screens::home::emoji::{
-    PickerEmoji, PickerSection, emoji_names, picker_rows, resolve_custom_emoji,
+    PickerEmoji, PickerSection, RECENT_LIMIT, emoji_names, picker_rows, resolve_custom_emoji,
 };
 use crate::screens::home::{EmojiPicker, EmojiTarget, HomeScreen, View};
 
@@ -44,10 +45,12 @@ impl HomeScreen {
             }
         });
         search.update(cx, |search, cx| search.focus(window, cx));
+        let recent = self.recent_emojis();
         self.emoji_picker = Some(EmojiPicker {
             position,
             target,
             search,
+            recent,
             rows: Rc::default(),
             hovered: None,
             scroll: UniformListScrollHandle::new(),
@@ -75,7 +78,7 @@ impl HomeScreen {
             return;
         };
         let query = picker.search.read(cx).value();
-        picker.rows = Rc::new(picker_rows(custom, &query));
+        picker.rows = Rc::new(picker_rows(picker.recent.clone(), custom, &query));
         picker.hovered = None;
         picker.scroll.scroll_to_item(0, ScrollStrategy::Top);
         cx.notify();
@@ -110,6 +113,15 @@ impl HomeScreen {
                 };
                 self.add_reaction(message_id, reaction, cx);
             }
+        }
+        if !matches!(
+            emoji,
+            PickerEmoji::Custom {
+                locked: Some(_),
+                ..
+            }
+        ) {
+            remember_emoji(emoji.recent_key());
         }
         if !window.modifiers().shift {
             self.close_emoji_picker(window, cx);
@@ -183,6 +195,28 @@ impl HomeScreen {
         })
     }
 
+    /// The recently used emoji that are still offered here, newest first.
+    /// Custom ones the user can't see are skipped.
+    fn recent_emojis(&self) -> Vec<PickerEmoji> {
+        let custom: Vec<_> = self
+            .custom_emoji_sections()
+            .into_iter()
+            .flat_map(|section| section.emojis)
+            .collect();
+        prefs::load()
+            .recent_emojis
+            .iter()
+            .filter_map(|recent| match recent {
+                RecentEmoji::Unicode(text) => emojis::get(text).map(PickerEmoji::Unicode),
+                RecentEmoji::Custom(id) => custom
+                    .iter()
+                    .find(|emoji| emoji.recent_key() == RecentEmoji::Custom(*id))
+                    .cloned(),
+            })
+            .take(RECENT_LIMIT)
+            .collect()
+    }
+
     fn custom_emoji_sections(&self) -> Vec<PickerSection> {
         self.emoji_by_guild()
             .filter_map(|(guild_id, emojis)| {
@@ -244,4 +278,15 @@ impl HomeScreen {
             Access::Hidden
         }
     }
+}
+
+/// Moves `emoji` to the front of the recently used. The open picker keeps the
+/// list it was opened with; the next one shows the change.
+fn remember_emoji(emoji: RecentEmoji) {
+    prefs::update(|prefs| {
+        let recent = &mut prefs.recent_emojis;
+        recent.retain(|other| *other != emoji);
+        recent.insert(0, emoji);
+        recent.truncate(RECENT_LIMIT);
+    });
 }

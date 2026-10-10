@@ -105,6 +105,9 @@ pub(super) struct EmojiPicker {
     pub position: Point<Pixels>,
     pub target: EmojiTarget,
     pub search: Entity<InputState>,
+    /// The recently used as they were when the picker opened, so choosing one
+    /// doesn't reshuffle the list under the pointer.
+    pub recent: Vec<super::emoji::PickerEmoji>,
     /// The list as last laid out. Rebuilt when the search changes rather than
     /// every frame — the screen repaints for every video frame, and this is a
     /// couple of thousand emoji.

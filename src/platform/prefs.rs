@@ -26,6 +26,18 @@ pub struct Prefs {
     /// keep this module free of Discord types.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub collapsed_categories: BTreeMap<u64, Vec<u64>>,
+    /// Emoji the user last chose from the picker, newest first.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub recent_emojis: Vec<RecentEmoji>,
+}
+
+/// An emoji in [`Prefs::recent_emojis`]: a custom one by id, a unicode one as
+/// its text. Untagged, so the JSON is just a number or a string.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum RecentEmoji {
+    Custom(u64),
+    Unicode(String),
 }
 
 /// Reads the preferences file, or returns the defaults if it isn't there yet.
