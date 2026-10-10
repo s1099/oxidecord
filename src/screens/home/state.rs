@@ -291,6 +291,14 @@ pub struct HomeScreen {
     /// Whether shift is currently held, tracked so the message toolbar can
     /// expand its hidden actions inline the way Discord's does.
     pub(super) shift_held: bool,
+    /// The message row under the pointer and the message whose toolbar is,
+    /// tracked apart because the toolbar overhangs the row above: moving onto
+    /// it leaves its own row, which mustn't take the toolbar away.
+    pub(super) hovered_message: Option<Id<MessageMarker>>,
+    pub(super) hovered_toolbar: Option<Id<MessageMarker>>,
+    /// The message whose toolbar "More" menu is open, which keeps the message
+    /// lit while the pointer is off on the menu.
+    pub(super) message_menu: Option<Id<MessageMarker>>,
     /// Focus for the screen as a whole, held by an empty element inside it and
     /// focused on startup: key and modifier events only travel the focus path,
     /// so without it the root's listeners never run.
@@ -412,6 +420,9 @@ impl HomeScreen {
             gateway: None,
             self_user_id: None,
             shift_held: false,
+            hovered_message: None,
+            hovered_toolbar: None,
+            message_menu: None,
             focus_handle: cx.focus_handle(),
             profile_popup: None,
             profile_cache: HashMap::new(),
