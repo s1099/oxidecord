@@ -52,8 +52,8 @@ pub fn save_token(token: &str) -> keyring::Result<()> {
     Ok(())
 }
 
-/// Forgets `expired` after Discord rejected it, so the next launch goes
-/// straight to login. Only if it's still the stored token: a request sent with
+/// Forgets `expired` after Discord rejected it or the user logged out, so the
+/// next launch goes straight to login. Only if it's still the stored token: a request sent with
 /// an old token can come back after the user has already logged in again.
 pub(super) fn forget_token(expired: &str) {
     if load_token().as_deref() != Some(expired) {

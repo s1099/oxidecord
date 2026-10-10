@@ -1,4 +1,5 @@
-//! Loading the signed-in user, their guilds, and a guild's channels.
+//! Loading the signed-in user, their guilds, and a guild's channels, and
+//! logging them out.
 
 use gpui::*;
 use twilight_model::id::{
@@ -10,9 +11,20 @@ use crate::discord::{self, Channel};
 use crate::platform::prefs;
 use crate::screens::home::channels::build_channel_groups;
 use crate::screens::home::folders::build_rail_entries;
-use crate::screens::home::{HomeScreen, SessionExpired, View};
+use crate::screens::home::{HomeScreen, SessionEnded, View};
 
 impl HomeScreen {
+    /// Logs out and hands back to login. A call is left properly first, so
+    /// Discord doesn't keep showing the user in the channel until the dropped
+    /// connection times out.
+    pub(in crate::screens::home) fn log_out(&mut self, cx: &mut Context<Self>) {
+        if self.voice.is_some() {
+            self.leave_voice(cx);
+        }
+        discord::log_out();
+        cx.emit(SessionEnded);
+    }
+
     pub(in crate::screens::home) fn load_guilds(
         &mut self,
         window: &mut Window,
@@ -33,7 +45,7 @@ impl HomeScreen {
                     }
                     // A rejected token is forgotten by the request itself.
                     Err(_) if discord::load_token().is_none() => {
-                        cx.emit(SessionExpired);
+                        cx.emit(SessionEnded);
                         return;
                     }
                     Err(err) => this.error = Some(err),

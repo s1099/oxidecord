@@ -143,7 +143,17 @@ impl HomeScreen {
                     .ghost()
                     .small()
                     .tooltip("User Settings")
-                    .on_click(|_, window, cx| settings::open(window, cx)),
+                    .on_click({
+                        let home = cx.weak_entity();
+                        move |_, window, cx| {
+                            let home = home.clone();
+                            settings::open(window, cx, move |_, cx| {
+                                // Gone already if the session ended while the
+                                // popup was open.
+                                let _ = home.update(cx, |home, cx| home.log_out(cx));
+                            })
+                        }
+                    }),
             )
     }
 }

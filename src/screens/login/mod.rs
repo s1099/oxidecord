@@ -127,7 +127,7 @@ impl LoginScreen {
                                 ..Default::default()
                             }),
                             window_bounds: Some(WindowBounds::centered(
-                                size(px(500.), px(650.)),
+                                size(px(875.), px(665.)),
                                 cx,
                             )),
                             window_min_size: Some(size(px(400.), px(520.))),

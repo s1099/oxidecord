@@ -4,14 +4,15 @@
 //!
 //! Both pages are real: themes picks a preset, and updates drives the
 //! self-updater in [`crate::platform::updater`]. Typing [`DEBUG_CODE`] into the
-//! search adds a third, [`gallery`], for the rest of the session.
+//! search adds a third, [`gallery`], for the rest of the session. A logout
+//! button sits under the page list.
 
 use std::rc::Rc;
 
 use gpui::prelude::FluentBuilder as _;
 use gpui::*;
 use gpui_component::{
-    ActiveTheme as _, Disableable as _, Sizable as _, ThemeConfig, WindowExt as _,
+    ActiveTheme as _, Disableable as _, Icon, Sizable as _, ThemeConfig, WindowExt as _,
     group_box::GroupBoxVariant,
     h_flex,
     input::{InputEvent, InputState},
@@ -41,26 +42,37 @@ const DIALOG_BORDER: f32 = 2.;
 const CARD_WIDTH: f32 = 148.;
 const PREVIEW_HEIGHT: f32 = 84.;
 
+/// What the logout button calls, supplied by whoever opens the popup.
+type LogOutHandler = dyn Fn(&mut Window, &mut App);
+
 /// Typed into the settings search, reveals the debug page.
 const DEBUG_CODE: &str = "debug";
 
 /// Opens the settings popup. Closed by the dialog's own close button, Escape,
-/// or a click on the overlay.
-pub fn open(window: &mut Window, cx: &mut App) {
+/// or a click on the overlay. `on_log_out` runs, after the popup closes, when
+/// the logout button is clicked.
+pub fn open(
+    window: &mut Window,
+    cx: &mut App,
+    on_log_out: impl Fn(&mut Window, &mut App) + 'static,
+) {
     arm_debug_code(cx);
+    let on_log_out: Rc<LogOutHandler> = Rc::new(on_log_out);
 
-    window.open_dialog(cx, |dialog, window, cx| {
+    window.open_dialog(cx, move |dialog, window, cx| {
         let debug = cx
             .try_global::<DebugCode>()
             .is_some_and(|code| code.unlocked);
         let viewport = window.viewport_size();
         let width = px(WIDTH).min(viewport.width - px(WINDOW_MARGIN));
         let height = px(HEIGHT).min(viewport.height - px(WINDOW_MARGIN));
+        let inner_radius = dialog_inner_radius(cx);
 
         dialog
             // The component brings its own sidebar, header, and scrolling, so
-            // the dialog is only the frame around it: no padding, no title, and
-            // clipped so the sidebar doesn't square off the rounded corners.
+            // the dialog is only the frame around it: no padding and no title.
+            // `overflow_hidden` clips to the rectangle, not the rounded corners,
+            // so the sidebar and footer round their own corners to match.
             .p_0()
             .border_color(depth::ring(cx))
             .w(width)
@@ -74,17 +86,59 @@ pub fn open(window: &mut Window, cx: &mut App) {
                 // height is the dialog's content box: what it was given, less
                 // the border sitting inside it. Overshoot by even a pixel and
                 // the dialog scrolls the popup — sidebar and all.
-                div().w_full().h(height - px(DIALOG_BORDER)).child(
-                    Settings::new("app-settings")
-                        .small()
-                        .with_group_variant(GroupBoxVariant::Outline)
-                        .sidebar_width(px(SIDEBAR_WIDTH))
-                        .page(themes_page())
-                        .page(updates_page())
-                        .when(debug, |this| this.page(gallery::page())),
-                ),
+                div()
+                    .relative()
+                    .w_full()
+                    .h(height - px(DIALOG_BORDER))
+                    .child(
+                        Settings::new("app-settings")
+                            .small()
+                            .with_group_variant(GroupBoxVariant::Outline)
+                            .sidebar_width(px(SIDEBAR_WIDTH))
+                            .sidebar_style(&StyleRefinement::default().rounded_l(inner_radius))
+                            .page(themes_page())
+                            .page(updates_page())
+                            .when(debug, |this| this.page(gallery::page())),
+                    )
+                    .child(log_out_footer(on_log_out.clone(), cx)),
             )
     });
+}
+
+/// The logout button, pinned under the sidebar's page list. The component's
+/// sidebar has a footer slot but [`Settings`] doesn't expose it, so this is
+/// laid over the sidebar's bottom edge instead, at the width it opens at. The
+/// page list scrolls under it, and is far too short to reach it anyway.
+fn log_out_footer(on_log_out: Rc<LogOutHandler>, cx: &App) -> Div {
+    div()
+        .absolute()
+        .bottom_0()
+        .left_0()
+        // Clear of the sidebar's right border, so the divider stays unbroken.
+        .w(px(SIDEBAR_WIDTH) - px(1.))
+        .p_3()
+        .rounded_bl(dialog_inner_radius(cx))
+        .bg(cx.theme().sidebar)
+        .border_t_1()
+        .border_color(cx.theme().sidebar_border)
+        .child(
+            Button::new("log-out")
+                .w_full()
+                .small()
+                .danger()
+                .icon(Icon::default().path("icons/log-out.svg"))
+                .label("Log Out")
+                .on_click(move |_, window, cx| {
+                    window.close_dialog(cx);
+                    on_log_out(window, cx);
+                }),
+        )
+}
+
+/// The radius of the dialog's corners inside its one-pixel border, for content
+/// that paints right up to them.
+fn dialog_inner_radius(cx: &App) -> Pixels {
+    (cx.theme().radius_lg - px(1.)).max(px(0.))
 }
 
 /// Watches the settings search for [`DEBUG_CODE`]. The unlock is never saved,
@@ -180,6 +234,9 @@ fn theme_card(preset: Rc<ThemeConfig>, selected: bool, cx: &mut App) -> Stateful
     let title_bar = color(&colors.title_bar, sidebar);
     let primary = color(&colors.primary, foreground);
     let outline = color(&colors.border, foreground.alpha(0.2));
+    // `overflow_hidden` clips to the rectangle, not the rounded corners, so the
+    // children that reach the corners round themselves to sit inside the border.
+    let inner_radius = (cx.theme().radius - px(1.)).max(px(0.));
 
     card_frame(name.clone(), selected, cx)
         .child(
@@ -195,12 +252,24 @@ fn theme_card(preset: Rc<ThemeConfig>, selected: bool, cx: &mut App) -> Stateful
                 .bg(background)
                 .flex()
                 .flex_col()
-                .child(div().w_full().h(px(12.)).bg(title_bar))
+                .child(
+                    div()
+                        .w_full()
+                        .h(px(12.))
+                        .rounded_t(inner_radius)
+                        .bg(title_bar),
+                )
                 .child(
                     div()
                         .flex_1()
                         .flex()
-                        .child(div().w(px(34.)).h_full().bg(sidebar))
+                        .child(
+                            div()
+                                .w(px(34.))
+                                .h_full()
+                                .rounded_bl(inner_radius)
+                                .bg(sidebar),
+                        )
                         .child(
                             div()
                                 .flex_1()

@@ -4,7 +4,7 @@ use gpui::*;
 use gpui_component::Root;
 
 use crate::discord;
-use crate::screens::home::{HomeScreen, SessionExpired};
+use crate::screens::home::{HomeScreen, SessionEnded};
 use crate::screens::login::LoginScreen;
 use crate::ui::{dialogs, update_notice};
 
@@ -15,11 +15,11 @@ const NOTIFICATION_TOP: f32 = 52.;
 /// Which screen the app is currently showing.
 enum Route {
     Login(Entity<LoginScreen>),
-    /// Holds the subscription that sends the user back to login if the
-    /// session turns out to have expired.
+    /// Holds the subscription that sends the user back to login when the
+    /// session ends.
     Home {
         screen: Entity<HomeScreen>,
-        _expired: Subscription,
+        _ended: Subscription,
     },
 }
 
@@ -56,14 +56,14 @@ impl AppScreen {
         let subscription = cx.subscribe_in(
             &home,
             window,
-            |this, _home, _: &SessionExpired, window, cx| {
+            |this, _home, _: &SessionEnded, window, cx| {
                 this.route = Self::login_route(window, cx);
                 cx.notify();
             },
         );
         Route::Home {
             screen: home,
-            _expired: subscription,
+            _ended: subscription,
         }
     }
 
