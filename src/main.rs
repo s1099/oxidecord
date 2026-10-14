@@ -77,7 +77,8 @@ fn main() {
                 // controls into the conversation header instead.
                 title: Some("Oxidecord".into()),
                 appears_transparent: true,
-                ..Default::default()
+                // Ignored off macOS.
+                traffic_light_position: Some(ui::window_controls::traffic_light_position()),
             }),
             // Open maximized; the bounds are the size to restore to when unmaximized.
             window_bounds: Some(WindowBounds::Maximized(Bounds::centered(

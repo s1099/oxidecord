@@ -10,6 +10,12 @@ pub struct CaptureSource {
     _private: (),
 }
 
+impl CaptureSource {
+    pub fn name(&self) -> String {
+        unreachable!("CaptureSource is never constructed on this platform")
+    }
+}
+
 pub(super) fn is_supported() -> bool {
     false
 }

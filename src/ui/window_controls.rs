@@ -5,10 +5,24 @@
 //! [`WindowControls`] is dropped into the right end of a header that's already
 //! there, and the space beside it drags the window (see
 //! [`crate::screens::home::view::content::header`]).
+//!
+//! macOS keeps its own traffic lights instead, in a strip of
+//! [`MAC_TITLE_BAR_HEIGHT`] along the top of the window, so these render
+//! nothing there.
 
 use gpui::prelude::FluentBuilder as _;
 use gpui::*;
 use gpui_component::{ActiveTheme as _, Icon, IconName, Sizable as _, h_flex};
+
+/// Height of the strip the traffic lights sit in on macOS. AppKit still drags
+/// the window from it, as it does any transparent title bar.
+pub const MAC_TITLE_BAR_HEIGHT: f32 = 32.;
+
+/// Where the traffic lights go: centered in the strip (the buttons are 14pt
+/// tall) and inset from the left edge the way Discord's are.
+pub fn traffic_light_position() -> Point<Pixels> {
+    point(px(12.), px((MAC_TITLE_BAR_HEIGHT - 14.) / 2.))
+}
 
 /// Width of a single control. Matches the Windows shell's own caption buttons,
 /// so the cluster reads as a title bar even though it sits in the app's header.
@@ -41,6 +55,10 @@ impl WindowControls {
 
 impl RenderOnce for WindowControls {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+        if cfg!(target_os = "macos") {
+            return Empty.into_any_element();
+        }
+
         let control = |control: Control, window: &mut Window, cx: &mut App| {
             // Per strip, since moving between them reports enter and leave in
             // no particular order.
@@ -74,6 +92,7 @@ impl RenderOnce for WindowControls {
             .child(control(Control::Minimize, window, cx))
             .child(control(middle, window, cx))
             .child(control(Control::Close, window, cx).rounded_tr(self.corner))
+            .into_any_element()
     }
 }
 
