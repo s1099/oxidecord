@@ -1,0 +1,53 @@
+{
+  "status": "DRAFT — NOT TESTED YET in the running app",
+  "retrievedAtUtc": "2026-10-17T04:12:10.1476913Z",
+  "discoveryUrl": "https://discord.com/app",
+  "sourceBundleUrl": "https://discord.com/assets/web.4d4b2f75fdea5470.js",
+  "sourceBundleSha256": "667a771c61ff709e2f0400d395a324f0a5b1b5aa89e11e263289144a12d084ae",
+  "method": "Anonymous retrieval as data; JavaScript was not executed. MP3 files are unmodified.",
+  "attribution": "Original Discord UI sound recordings served by Discord. No redistribution license grant was verified; attribution is not a license. Review redistribution rights before publication.",
+  "gain": {
+    "hookDefault": 0.4,
+    "source": "b3 (useSound) calls module 400492 Ak with i ?? .4; hooks b4 and Mn supply no override. Module 946261 WebAudioSound applies min(outputVolume / 100 * hookGain, 1).",
+    "scope": "Oxidecord applies 0.4; Discord user-specific output volume and device processing are not recovered."
+  },
+  "assets": [
+    {
+      "file": "user_join.mp3",
+      "registryKey": "./user_join.mp3",
+      "module": 191972,
+      "url": "https://discord.com/assets/b135ff6c8e091b43.mp3",
+      "bytes": 47179,
+      "sha256": "d30746caf3e4675ae0d822d51461a9ad24832afa1e20179c3c2fc7b50b911a26",
+      "events": ["own confirmed join", "peer join"],
+      "sampleRate": 44100,
+      "channels": 2,
+      "decodedFrames": 47913
+    },
+    {
+      "file": "user_leave.mp3",
+      "registryKey": "./user_leave.mp3",
+      "module": 99997,
+      "url": "https://discord.com/assets/7b9a183742515fc2.mp3",
+      "bytes": 41955,
+      "sha256": "9fd71c2d8112c82a7fb316602bb1645bc65f5edfa260110bbaae80090fbe9df0",
+      "events": ["peer leave"],
+      "sampleRate": 44100,
+      "channels": 2,
+      "decodedFrames": 42536
+    },
+    {
+      "file": "disconnect.mp3",
+      "registryKey": "./disconnect.mp3",
+      "module": 898998,
+      "url": "https://discord.com/assets/dd0911025fe00b2e.mp3",
+      "bytes": 41951,
+      "sha256": "c06c7e58099969eacc5f8eb925fb381f445250b9f37acf959b11df72aabb44ca",
+      "events": ["own disconnect after a confirmed connection"],
+      "sampleRate": 44100,
+      "channels": 2,
+      "decodedFrames": 53615
+    }
+  ],
+  "decodedFrameReference": "Offline FFmpeg 8.1.1, pcm_f32le stereo at the source rate, with encoder delay/padding removed; no audio playback."
+}
