@@ -22,6 +22,10 @@ pub struct Prefs {
     /// the system calls the default.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub input_device: Option<String>,
+    /// Id of the speaker calls should play through. `None` follows whichever
+    /// device the system calls the default.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_device: Option<String>,
     /// Channel categories the user has collapsed, keyed by guild id. Raw ids
     /// keep this module free of Discord types.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
@@ -88,4 +92,38 @@ fn file_path() -> Option<PathBuf> {
     };
 
     Some(dir.join(APP_DIR).join(FILE_NAME))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// What a preference stores survives the trip to disk's format: both
+    /// device ids come back, and unset ones stay unset so an older file
+    /// without them still reads.
+    #[test]
+    fn device_choices_round_trip() {
+        let prefs = Prefs {
+            input_device: Some("{0.0.1.00000000}.{guid}".into()),
+            output_device: Some("{0.0.0.00000000}.{other-guid}".into()),
+            ..Prefs::default()
+        };
+        let read: Prefs = serde_json::from_str(&serde_json::to_string(&prefs).expect("serialize"))
+            .expect("valid");
+
+        assert_eq!(
+            read.input_device.as_deref(),
+            Some("{0.0.1.00000000}.{guid}")
+        );
+        assert_eq!(
+            read.output_device.as_deref(),
+            Some("{0.0.0.00000000}.{other-guid}")
+        );
+        let legacy: Prefs =
+            serde_json::from_str(r#"{"input_device":"wasapi:legacy","theme":"dark"}"#)
+                .expect("existing preferences without an output choice remain readable");
+        assert_eq!(legacy.output_device, None);
+        assert_eq!(legacy.input_device.as_deref(), Some("wasapi:legacy"));
+        assert_eq!(legacy.theme.as_deref(), Some("dark"));
+    }
 }

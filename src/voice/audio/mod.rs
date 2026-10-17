@@ -42,13 +42,12 @@ use std::io::{Read, Result as IoResult, Seek, SeekFrom};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
 
-use cpal::traits::HostTrait as _;
 use songbird::constants::SAMPLE_RATE;
 use songbird::input::core::io::MediaSource;
 use songbird::input::{Input, RawAdapter};
 
-pub use devices::{InputDevice, input_devices};
-use devices::{chosen_input, input_config, output_config, ring_channels, run_devices};
+pub use devices::{AudioDevice, input_devices, output_devices};
+use devices::{chosen_input, chosen_output, ring_channels, run_devices};
 use incoming::Incoming;
 use playback::Mixer;
 use ring::SampleRing;
@@ -120,21 +119,22 @@ pub struct AudioIo {
 }
 
 impl AudioIo {
-    /// Opens the microphone and the speakers. `input_device` names the
-    /// microphone to use, as [`input_devices`] reported its id; `None`, or one
-    /// that isn't plugged in any more, falls back to the system default.
+    /// Opens the microphone and the speakers. Either name is a device id, as
+    /// [`input_devices`] or [`output_devices`] reported it; `None`, or one
+    /// without a supported configuration in its direction, falls back to
+    /// the system default before streams are built.
     ///
     /// Either device may fail to open — no microphone, no output device, a
     /// driver that refuses the format — and the call carries on with the half
     /// that worked.
-    pub fn start(input_device: Option<&str>) -> Self {
+    pub fn start(input_device: Option<&str>, output_device: Option<&str>) -> Self {
         let host = cpal::default_host();
         // The devices are picked here, on the caller's thread, because the
         // capture format has to be known before the mixer is handed the
         // microphone — and before the capture ring can be sized in it. Only
         // the streams themselves are `!Send`.
-        let input = chosen_input(&host, input_device).and_then(input_config);
-        let output = host.default_output_device().and_then(output_config);
+        let input = chosen_input(&host, input_device);
+        let output = chosen_output(&host, output_device);
 
         let capture_format =
             input

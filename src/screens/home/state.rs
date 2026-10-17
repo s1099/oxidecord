@@ -322,6 +322,9 @@ pub struct HomeScreen {
     /// Id of the chosen microphone, remembered between runs. `None` follows
     /// the system default.
     pub(super) voice_input_device: Option<String>,
+    /// Id of the chosen speaker, remembered between runs. `None` follows the
+    /// system default.
+    pub(super) voice_output_device: Option<String>,
     /// Everyone the gateway has reported in a voice channel, by user. This is
     /// what fills every participant list: the tiles on the call stage, and the
     /// names under each voice channel in the sidebar.
@@ -441,6 +444,7 @@ impl HomeScreen {
         // Bottom-aligned like a chat log; items are measured lazily, and
         // splicing older items in at the front keeps the scroll position.
         let messages_list = ListState::new(0, ListAlignment::Bottom, px(512.));
+        let remembered = prefs::load();
         let weak = cx.entity().downgrade();
         messages_list.set_scroll_handler(move |event, _window, cx| {
             let _ = weak.update(cx, |this, cx| {
@@ -505,7 +509,8 @@ impl HomeScreen {
             voice_muted: false,
             voice_deafened: false,
             voice_mute_before_deafen: false,
-            voice_input_device: prefs::load().input_device,
+            voice_input_device: remembered.input_device,
+            voice_output_device: remembered.output_device,
             voice_states: HashMap::new(),
             voice_speaking: HashSet::new(),
             pending_voice: None,
