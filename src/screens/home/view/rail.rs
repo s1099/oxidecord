@@ -1,6 +1,7 @@
 //! The left-hand server rail: the DMs button, the guild icons, and the folders
 //! grouping them.
 
+use std::collections::HashSet;
 use std::sync::{Arc, LazyLock};
 
 use gpui::prelude::FluentBuilder as _;
@@ -8,12 +9,14 @@ use gpui::*;
 use gpui_component::{
     ActiveTheme as _, Icon, IconName, avatar::Avatar, divider::Divider, h_flex, v_flex,
 };
+use twilight_model::id::{Id, marker::GuildMarker};
 
 use crate::assets::icons::DISCORD_ICON;
 use crate::discord::Guild;
 use crate::screens::home::folders::{RailEntry, RailFolder};
+use crate::screens::home::voice::VoiceParticipant;
 use crate::screens::home::{HomeScreen, View};
-use crate::ui::depth::{Finish, Level, Lit as _};
+use crate::ui::depth::{Finish, Level, Lit as _, radius};
 use crate::ui::tooltip;
 
 use super::unread_pill;
@@ -41,6 +44,21 @@ impl HomeScreen {
         let theme = cx.theme();
         let rail_bg = theme.sidebar;
         let logo_bg = rgb(0x313338);
+
+        // The rail renders every frame of a scroll glide, so the badges ask
+        // only which guilds have anyone in voice, in one pass without clones;
+        // the tooltip reads the participants themselves, and only while open.
+        let voice_guilds: HashSet<Id<GuildMarker>> = self
+            .voice_states
+            .values()
+            .filter_map(|state| {
+                state
+                    .channel_id
+                    .is_some()
+                    .then_some(state.guild_id)
+                    .flatten()
+            })
+            .collect();
 
         // The whole rail — the DMs icon, its separator, and the guild list —
         // scrolls as one column, so the icon isn't pinned above the list.
@@ -76,13 +94,26 @@ impl HomeScreen {
                     })),
             )
             .child(Divider::horizontal().w(px(32.)))
-            .children(self.rail_entries.iter().map(|entry| match entry {
-                RailEntry::Guild(guild) => self.render_rail_guild(guild, cx).into_any_element(),
-                RailEntry::Folder(folder) => self.render_rail_folder(folder, cx).into_any_element(),
+            .children(self.rail_entries.iter().map(|entry| {
+                match entry {
+                    RailEntry::Guild(guild) => {
+                        let in_voice = voice_guilds.contains(&guild.id);
+                        self.render_rail_guild(guild, in_voice, cx)
+                            .into_any_element()
+                    }
+                    RailEntry::Folder(folder) => self
+                        .render_rail_folder(folder, &voice_guilds, cx)
+                        .into_any_element(),
+                }
             }))
     }
 
-    fn render_rail_guild(&self, guild: &Guild, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+    fn render_rail_guild(
+        &self,
+        guild: &Guild,
+        in_voice: bool,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement + use<> {
         let guild_id = guild.id;
         let guild_name = SharedString::from(guild.name.clone());
         let is_selected = self.view == View::Guild && self.selected_guild == Some(guild_id);
@@ -90,8 +121,12 @@ impl HomeScreen {
 
         selection_pill(div().id(("guild", guild_id.get())), is_selected, cx)
             .child(guild_avatar(guild, px(48.)))
+            .when(in_voice, |this| this.child(voice_badge(cx)))
             .when(unread, |this| this.child(unread_pill(RAIL_GUTTER, cx)))
-            .tooltip(tooltip::text(guild_name))
+            .when(in_voice, |this| {
+                this.tooltip(voice_tooltip(guild_id, guild_name.clone(), cx))
+            })
+            .when(!in_voice, |this| this.tooltip(tooltip::text(guild_name)))
             .on_click(cx.listener(move |this, _, window, cx| {
                 this.select_guild(guild_id, window, cx);
             }))
@@ -102,6 +137,7 @@ impl HomeScreen {
     fn render_rail_folder(
         &self,
         folder: &RailFolder,
+        voice_guilds: &HashSet<Id<GuildMarker>>,
         cx: &mut Context<Self>,
     ) -> impl IntoElement + use<> {
         let theme = cx.theme();
@@ -168,13 +204,14 @@ impl HomeScreen {
                         cx.notify();
                     })),
             )
+            // Open, the folder's guilds carry their own marks, voice badges
+            // included. Collapsed, it stands for them without one: folding
+            // several servers' presence into one icon reads as the folder's
+            // own call, and Discord doesn't badge folders either.
             .when(expanded, |this| {
-                this.children(
-                    folder
-                        .guilds
-                        .iter()
-                        .map(|guild| self.render_rail_guild(guild, cx)),
-                )
+                this.children(folder.guilds.iter().map(|guild| {
+                    self.render_rail_guild(guild, voice_guilds.contains(&guild.id), cx)
+                }))
             })
     }
 }
@@ -219,4 +256,173 @@ fn folder_preview(guilds: &[Guild]) -> impl IntoElement + use<> {
 /// third of the side, so 48px gets its 16px radius and previews scale down.
 fn guild_avatar(guild: &Guild, size: Pixels) -> Avatar {
     super::avatar(guild.name.clone(), guild.icon_url.clone(), size).rounded(size / 3.)
+}
+
+/// The speaker mark in a guild icon's upper-right corner while anyone is in voice.
+fn voice_badge(cx: &App) -> impl IntoElement + use<> {
+    let theme = cx.theme();
+    div()
+        .absolute()
+        .top_0()
+        .right_0()
+        .size(px(18.))
+        .flex()
+        .items_center()
+        .justify_center()
+        .rounded_full()
+        .bg(theme.background)
+        .text_color(theme.foreground)
+        .child(Icon::default().path("icons/volume-2.svg").size(px(12.)))
+}
+
+/// The tooltip builder for a guild with people in voice, in place of the
+/// plain name one. The view reads the screen's voice states as it renders,
+/// so one left open through a join or a move re-renders rather than going
+/// stale.
+fn voice_tooltip(
+    guild_id: Id<GuildMarker>,
+    guild_name: SharedString,
+    cx: &Context<HomeScreen>,
+) -> impl Fn(&mut Window, &mut App) -> AnyView + use<> {
+    let screen = cx.entity();
+    move |_, cx| {
+        let (screen, guild_name) = (screen.clone(), guild_name.clone());
+        cx.new(|cx| GuildVoiceTooltip::new(screen, guild_id, guild_name, cx))
+            .into()
+    }
+}
+
+/// How many participants the tooltip previews before the rest fold into the
+/// "+N" bubble, as in Discord.
+const TOOLTIP_AVATARS: usize = 5;
+
+/// Roughly how tall the voice tooltip is, for its lighting.
+const TOOLTIP_HEIGHT: f32 = 56.;
+
+/// The avatar row's disc size, ring included.
+const TOOLTIP_AVATAR_SIZE: f32 = 22.;
+
+struct GuildVoiceTooltip {
+    screen: Entity<HomeScreen>,
+    guild_id: Id<GuildMarker>,
+    guild_name: SharedString,
+    _screen_changed: Subscription,
+}
+
+impl GuildVoiceTooltip {
+    fn new(
+        screen: Entity<HomeScreen>,
+        guild_id: Id<GuildMarker>,
+        guild_name: SharedString,
+        cx: &mut Context<Self>,
+    ) -> Self {
+        let _screen_changed = cx.observe(&screen, |_, _, cx| cx.notify());
+        Self {
+            screen,
+            guild_id,
+            guild_name,
+            _screen_changed,
+        }
+    }
+}
+
+impl Render for GuildVoiceTooltip {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let theme = cx.theme();
+        let (participants, total) = self
+            .screen
+            .read(cx)
+            .guild_voice_presence(self.guild_id, TOOLTIP_AVATARS);
+        let extra = total - participants.len();
+        // The avatars' text alternative: this gpui carries no accessibility
+        // API to label them with, so the tooltip says who's shown and how
+        // many there are.
+        let names = participants
+            .iter()
+            .map(|participant| participant.name.as_str())
+            .collect::<Vec<_>>()
+            .join(", ");
+
+        // Wrapped, so the margin that keeps it clear of the cursor isn't part
+        // of the lit box — as `ui::tooltip` does.
+        div().child(
+            v_flex()
+                .m_3()
+                .max_w(px(240.))
+                .gap_1p5()
+                .bg(theme.foreground)
+                .lit(
+                    Level::RaisedStrong,
+                    Finish::Matte,
+                    px(TOOLTIP_HEIGHT),
+                    radius::ITEM,
+                    cx,
+                )
+                .px_3()
+                .py_2()
+                .font_family(theme.font_family.clone())
+                .text_xs()
+                .text_color(theme.background)
+                .child(
+                    div()
+                        .font_weight(FontWeight::MEDIUM)
+                        .truncate()
+                        .child(self.guild_name.clone()),
+                )
+                .when(!participants.is_empty(), |this| {
+                    this.child(
+                        h_flex()
+                            .gap_1p5()
+                            .items_center()
+                            .child(
+                                Icon::default()
+                                    .path("icons/volume-2.svg")
+                                    .size(px(12.))
+                                    .flex_shrink_0(),
+                            )
+                            .child(voice_avatar_row(&participants, theme.foreground))
+                            .when(extra > 0, |this| {
+                                this.child(overflow_bubble(extra, theme.background))
+                            }),
+                    )
+                })
+                .when(!names.is_empty(), |this| {
+                    this.child(
+                        div()
+                            .truncate()
+                            .opacity(0.7)
+                            .child(format!("{total} in voice: {names}")),
+                    )
+                }),
+        )
+    }
+}
+
+/// The tooltip's overlapping avatars, cut out of each other by a ring of the
+/// tooltip's own fill.
+fn voice_avatar_row(participants: &[VoiceParticipant], ring: Hsla) -> impl IntoElement + use<> {
+    h_flex().children(participants.iter().enumerate().map(|(ix, participant)| {
+        super::avatar(
+            participant.name.clone(),
+            participant.avatar_url.clone(),
+            px(TOOLTIP_AVATAR_SIZE),
+        )
+        .rounded_full()
+        .border_2()
+        .border_color(ring)
+        .when(ix > 0, |this| this.ml(px(-6.)))
+    }))
+}
+
+/// The "+N" disc folding the participants past the preview into the row.
+fn overflow_bubble(extra: usize, text: Hsla) -> impl IntoElement + use<> {
+    div()
+        .flex()
+        .items_center()
+        .justify_center()
+        .size(px(TOOLTIP_AVATAR_SIZE))
+        .flex_shrink_0()
+        .rounded_full()
+        .bg(text.opacity(0.2))
+        .child(format!("+{extra}"))
 }
