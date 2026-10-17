@@ -34,6 +34,17 @@ pub(super) fn small_avatar_url(user_id: u64, hash: &str) -> String {
     format!("https://cdn.discordapp.com/avatars/{user_id}/{hash}.webp?size=80")
 }
 
+/// Discord's default face: migrated usernames use the snowflake, legacy ones
+/// retain their discriminator-based color. The CDN ignores size for these.
+pub(super) fn default_avatar_url(user_id: u64, discriminator: u16) -> String {
+    let index = if discriminator == 0 {
+        (user_id >> 22) % 6
+    } else {
+        u64::from(discriminator % 5)
+    };
+    format!("https://cdn.discordapp.com/embed/avatars/{index}.png")
+}
+
 pub(super) fn guild_icon_url(guild_id: Id<GuildMarker>, hash: &str) -> String {
     format!("https://cdn.discordapp.com/icons/{guild_id}/{hash}.webp?size=100&quality=lossless")
 }
@@ -78,4 +89,24 @@ pub(super) fn scaled_url(
     // A proxy URL already carries a signed query string, so append with `&`.
     let separator = if url.contains('?') { '&' } else { '?' };
     format!("{url}{separator}width={target_w}&height={target_h}")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::default_avatar_url;
+
+    #[test]
+    fn default_avatar_uses_migrated_snowflake_or_legacy_discriminator() {
+        for index in 0..6 {
+            let id = ((index + 6) << 22) | 0x3fffff;
+            assert_eq!(
+                default_avatar_url(id, 0),
+                format!("https://cdn.discordapp.com/embed/avatars/{index}.png")
+            );
+        }
+        assert_eq!(
+            default_avatar_url(5 << 22, 1234),
+            "https://cdn.discordapp.com/embed/avatars/4.png"
+        );
+    }
 }

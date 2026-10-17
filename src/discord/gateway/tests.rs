@@ -185,6 +185,46 @@ fn voice_state_update_reads_its_own_member() {
 }
 
 #[test]
+fn voice_default_faces_survive_snapshot_and_live_conversion_without_inventing_missing_users() {
+    let events = dispatch_json(
+        "GUILD_CREATE",
+        r#"{
+            "id": "10",
+            "voice_states": [
+                {"user_id": "20971520", "channel_id": "100"},
+                {"user_id": "2", "channel_id": "100"}
+            ],
+            "members": [{
+                "user": {"id": "20971520", "username": "test", "avatar": null, "discriminator": "1234"}
+            }]
+        }"#,
+    );
+    let Some(GatewayEvent::GuildVoiceStates { states, .. }) = events.first() else {
+        panic!("GUILD_CREATE should yield voice states");
+    };
+    assert_eq!(
+        states[0].avatar_url.as_deref(),
+        Some("https://cdn.discordapp.com/embed/avatars/4.png")
+    );
+    assert_eq!(states[1].avatar_url, None);
+
+    let events = dispatch_json(
+        "VOICE_STATE_UPDATE",
+        r#"{
+            "user_id": "20971520", "guild_id": "10", "channel_id": "100",
+            "member": {"user": {"id": "20971520", "username": "test", "avatar": null, "discriminator": "0"}}
+        }"#,
+    );
+    let [GatewayEvent::VoiceState(state)] = events.as_slice() else {
+        panic!("VOICE_STATE_UPDATE should yield one voice state");
+    };
+    assert_eq!(
+        state.avatar_url.as_deref(),
+        Some("https://cdn.discordapp.com/embed/avatars/5.png")
+    );
+}
+
+#[test]
 fn ready_carries_read_states_and_the_channels_the_user_can_see() {
     let events = dispatch_json(
         "READY",

@@ -73,6 +73,8 @@ struct RawProfileUser {
     #[serde(default)]
     avatar: Option<String>,
     #[serde(default)]
+    discriminator: Option<String>,
+    #[serde(default)]
     banner: Option<String>,
     #[serde(default)]
     accent_color: Option<u32>,
@@ -117,10 +119,18 @@ impl RawProfile {
         UserProfile {
             name: user.global_name.unwrap_or_else(|| user.username.clone()),
             username: user.username,
-            avatar_url: user
-                .avatar
-                .as_deref()
-                .map(|hash| cdn::avatar_url(user.id.get(), hash, PROFILE_AVATAR_SIZE)),
+            avatar_url: Some(user.avatar.as_deref().map_or_else(
+                || {
+                    cdn::default_avatar_url(
+                        user.id.get(),
+                        user.discriminator
+                            .as_deref()
+                            .and_then(|value| value.parse().ok())
+                            .unwrap_or(0),
+                    )
+                },
+                |hash| cdn::avatar_url(user.id.get(), hash, PROFILE_AVATAR_SIZE),
+            )),
             banner_url: banner
                 .as_deref()
                 .map(|hash| cdn::banner_url(user.id.get(), hash, PROFILE_BANNER_SIZE)),
@@ -145,9 +155,10 @@ pub(in crate::discord) fn convert_user_profile(user: twilight_model::user::User)
             .clone()
             .unwrap_or_else(|| user.name.clone()),
         username: user.name,
-        avatar_url: user
-            .avatar
-            .map(|hash| cdn::avatar_url(user.id.get(), &hash.to_string(), PROFILE_AVATAR_SIZE)),
+        avatar_url: Some(user.avatar.map_or_else(
+            || cdn::default_avatar_url(user.id.get(), user.discriminator),
+            |hash| cdn::avatar_url(user.id.get(), &hash.to_string(), PROFILE_AVATAR_SIZE),
+        )),
         banner_url: user
             .banner
             .map(|hash| cdn::banner_url(user.id.get(), &hash.to_string(), PROFILE_BANNER_SIZE)),
@@ -168,9 +179,10 @@ pub(in crate::discord) fn convert_current_user(
             .global_name
             .clone()
             .unwrap_or_else(|| user.name.clone()),
-        avatar_url: user
-            .avatar
-            .map(|hash| cdn::small_avatar_url(user.id.get(), &hash.to_string())),
+        avatar_url: Some(user.avatar.map_or_else(
+            || cdn::default_avatar_url(user.id.get(), user.discriminator),
+            |hash| cdn::small_avatar_url(user.id.get(), &hash.to_string()),
+        )),
         premium: user
             .premium_type
             .is_some_and(|tier| tier != twilight_model::user::PremiumType::None),
@@ -192,6 +204,24 @@ pub(in crate::discord) fn convert_reactor(user: twilight_model::user::User) -> R
 
 /// The small avatar shown beside a user's name in a message or a DM row.
 pub(super) fn small_avatar_url(user: &twilight_model::user::User) -> Option<String> {
-    user.avatar
-        .map(|hash| cdn::small_avatar_url(user.id.get(), &hash.to_string()))
+    Some(user.avatar.map_or_else(
+        || cdn::default_avatar_url(user.id.get(), user.discriminator),
+        |hash| cdn::small_avatar_url(user.id.get(), &hash.to_string()),
+    ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{RawProfile, convert_user_profile, small_avatar_url};
+
+    #[test]
+    fn cached_profile_and_small_user_avatar_agree_on_default_face() {
+        let user = r#"{"id":"20971520","username":"test","discriminator":"1234","avatar":null}"#;
+        let raw: RawProfile = serde_json::from_str(&format!(r#"{{"user":{user}}}"#)).unwrap();
+        let user = serde_json::from_str(user).unwrap();
+        let expected = Some("https://cdn.discordapp.com/embed/avatars/4.png");
+        assert_eq!(raw.into_profile().avatar_url.as_deref(), expected);
+        assert_eq!(small_avatar_url(&user).as_deref(), expected);
+        assert_eq!(convert_user_profile(user).avatar_url.as_deref(), expected);
+    }
 }

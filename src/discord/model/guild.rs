@@ -89,6 +89,8 @@ struct RawMemberUser {
     #[serde(default)]
     avatar: Option<String>,
     #[serde(default)]
+    discriminator: Option<String>,
+    #[serde(default)]
     bot: bool,
 }
 
@@ -115,8 +117,18 @@ impl RawMember {
 
     pub(in crate::discord) fn avatar_url(&self) -> Option<String> {
         let user = self.user.as_ref()?;
-        let hash = user.avatar.as_ref()?;
-        Some(cdn::small_avatar_url(user.id.get(), hash))
+        Some(user.avatar.as_deref().map_or_else(
+            || {
+                cdn::default_avatar_url(
+                    user.id.get(),
+                    user.discriminator
+                        .as_deref()
+                        .and_then(|value| value.parse().ok())
+                        .unwrap_or(0),
+                )
+            },
+            |hash| cdn::small_avatar_url(user.id.get(), hash),
+        ))
     }
 
     pub(in crate::discord) fn is_bot(&self) -> bool {
@@ -130,5 +142,33 @@ pub(in crate::discord) fn convert_role(role: RawRole) -> Role {
         name: role.name,
         color: (role.color != 0).then_some(role.color),
         position: role.position,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::RawMember;
+
+    #[test]
+    fn member_avatar_distinguishes_custom_default_and_missing_user() {
+        let avatar = |json| {
+            serde_json::from_str::<RawMember>(json)
+                .unwrap()
+                .avatar_url()
+        };
+        assert_eq!(
+            avatar(r#"{"user":{"id":"20971520","avatar":null,"discriminator":"0"}}"#).as_deref(),
+            Some("https://cdn.discordapp.com/embed/avatars/5.png")
+        );
+        assert_eq!(
+            avatar(r#"{"user":{"id":"20971520","avatar":null,"discriminator":"1234"}}"#).as_deref(),
+            Some("https://cdn.discordapp.com/embed/avatars/4.png")
+        );
+        assert_eq!(
+            avatar(r#"{"user":{"id":"20971520","avatar":"custom","discriminator":"1234"}}"#)
+                .as_deref(),
+            Some("https://cdn.discordapp.com/avatars/20971520/custom.webp?size=80")
+        );
+        assert_eq!(avatar(r#"{"user_id":"20971520"}"#), None);
     }
 }
