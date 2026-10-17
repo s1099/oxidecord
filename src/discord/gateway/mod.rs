@@ -6,13 +6,16 @@
 //! model at all. The shard still handles the session itself — heartbeats,
 //! identify, resume — since that happens as messages are polled.
 
+mod connection;
 mod dispatch;
 mod payloads;
 mod sender;
 #[cfg(test)]
 mod tests;
 
-use futures::StreamExt as _;
+use std::{pin::Pin, task::Poll};
+
+use futures::{Stream as _, StreamExt as _, channel::mpsc::UnboundedReceiver, future::poll_fn};
 use serde::Deserialize;
 use serde_json::value::RawValue;
 use twilight_gateway::{Intents, Message as ShardMessage, Shard, ShardId};
@@ -29,6 +32,7 @@ use super::model::{
     VoiceUserState,
 };
 
+pub use connection::GatewayConnectionStatus;
 pub use sender::GatewaySender;
 
 /// A message received live over the gateway, tagged with the channel it
@@ -44,6 +48,7 @@ pub struct IncomingMessage {
 }
 
 pub enum GatewayEvent {
+    ConnectionStatus(GatewayConnectionStatus),
     /// A new session is up. Carries the signed-in user, which voice
     /// connections need to identify themselves, and everyone in voice across
     /// its guilds — the whole of it, replacing whatever an earlier session
@@ -178,18 +183,32 @@ pub enum ReactionChange {
 /// most of a user account's firehose is dropped unread.
 #[derive(Deserialize)]
 struct Envelope<'a> {
+    op: u8,
     #[serde(default, borrow)]
     t: Option<&'a str>,
     #[serde(default, borrow)]
     d: Option<&'a RawValue>,
 }
 
-/// Opens a gateway websocket connection and invokes `on_event` for every
-/// dispatch the app acts on. Returning `false` from it (the receiving end went
-/// away) ends the shard loop and drops the socket.
+pub async fn receive_gateway_events(
+    mut events: UnboundedReceiver<GatewayEvent>,
+    mut on_event: impl FnMut(GatewayEvent) -> bool,
+) {
+    while let Some(event) = events.next().await {
+        if !on_event(event) {
+            return;
+        }
+    }
+    // Incluye el cierre inesperado de la tarea productora, no solo el del shard.
+    on_event(GatewayEvent::ConnectionStatus(
+        GatewayConnectionStatus::Disconnected,
+    ));
+}
+
+/// Abre el websocket y entrega cambios de conexión y los dispatches utilizados.
+/// Si `on_event` devuelve `false`, termina el shard y libera el socket.
 ///
-/// The shard reconnects and resumes on its own, so transient errors are
-/// skipped rather than treated as fatal.
+/// Twilight conserva la responsabilidad de reconectar, reanudar y enviar heartbeats.
 pub fn connect_gateway(
     token: String,
     mut on_event: impl FnMut(GatewayEvent) -> bool + Send + 'static,
@@ -210,16 +229,39 @@ pub fn connect_gateway(
 
     runtime::handle().spawn(async move {
         let mut self_id = None;
-        while let Some(item) = shard.next().await {
-            // Reconnects and resumes are handled by the shard internally; a
-            // receive error just means skip this one and keep listening.
+        let mut status = GatewayConnectionStatus::Connecting;
+        loop {
+            let item = poll_fn(|cx| {
+                let poll = Pin::new(&mut shard).poll_next(cx);
+                // Twilight puede cerrar el transporte y empezar a reconectar
+                // dentro de un mismo poll sin entregar un frame al consumidor.
+                if let Some(status) = status.observe_poll(shard.state(), &poll)
+                    && !on_event(GatewayEvent::ConnectionStatus(status))
+                {
+                    return Poll::Ready(None);
+                }
+                poll
+            })
+            .await;
+            let Some(item) = item else {
+                break;
+            };
             let Ok(ShardMessage::Text(json)) = item else {
                 continue;
             };
-            let Ok(Envelope {
+            let Ok(envelope) = serde_json::from_str::<Envelope>(&json) else {
+                continue;
+            };
+            if let Some(status) = status.confirm_session(shard.state(), &envelope)
+                && !on_event(GatewayEvent::ConnectionStatus(status))
+            {
+                return;
+            }
+            let Envelope {
+                op: 0,
                 t: Some(name),
                 d: Some(data),
-            }) = serde_json::from_str::<Envelope>(&json)
+            } = envelope
             else {
                 continue;
             };

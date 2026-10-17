@@ -5,6 +5,239 @@ use super::dispatch::dispatch;
 use super::*;
 use crate::discord::{MemberGroupKind, MemberListGroup, MemberListItem, MemberListOp};
 
+const READY_FRAME: &str = r#"{"op":0,"s":1,"t":"READY","d":{"user":{"id":"1"},"guilds":[],"session_id":"synthetic","resume_gateway_url":"wss://gateway.invalid"}}"#;
+const RESUMED_FRAME: &str = r#"{"op":0,"s":2,"t":"RESUMED","d":{"_trace":[]}}"#;
+
+fn confirm_frame(
+    status: &mut GatewayConnectionStatus,
+    state: twilight_gateway::ShardState,
+    json: &str,
+) -> Option<GatewayConnectionStatus> {
+    status.confirm_session(state, &serde_json::from_str::<Envelope>(json).unwrap())
+}
+
+#[test]
+fn connection_requires_ready_or_resumed_and_suppresses_duplicates() {
+    use GatewayConnectionStatus::*;
+    use twilight_gateway::ShardState;
+
+    let mut status = Connecting;
+    let hello = r#"{"op":10,"t":null,"d":{"heartbeat_interval":41250}}"#;
+    let ack = r#"{"op":11,"t":null,"d":null}"#;
+    let unrelated_dispatch = r#"{"op":0,"s":3,"t":"MESSAGE_CREATE","d":{}}"#;
+    let misleading_control = r#"{"op":7,"t":"READY","d":null}"#;
+    for json in [hello, ack, unrelated_dispatch, misleading_control] {
+        assert_eq!(confirm_frame(&mut status, ShardState::Active, json), None);
+        assert_eq!(status, Connecting);
+    }
+    assert_eq!(
+        status.observe_poll(ShardState::Active, &Poll::Pending),
+        None
+    );
+    assert_eq!(status, Connecting);
+    assert_eq!(
+        confirm_frame(&mut status, ShardState::Identifying, READY_FRAME),
+        None
+    );
+    assert_eq!(
+        confirm_frame(&mut status, ShardState::Active, READY_FRAME),
+        Some(Connected)
+    );
+    assert_eq!(
+        confirm_frame(&mut status, ShardState::Active, READY_FRAME),
+        None
+    );
+    assert_eq!(
+        confirm_frame(&mut status, ShardState::Active, RESUMED_FRAME),
+        None
+    );
+
+    let envelope = serde_json::from_str::<Envelope>(READY_FRAME).unwrap();
+    let mut self_id = None;
+    let events = dispatch("READY", envelope.d.unwrap(), &mut self_id);
+    assert_eq!(self_id, Some(Id::new(1)));
+    assert!(matches!(events.first(), Some(GatewayEvent::Ready { .. })));
+}
+
+#[test]
+fn connection_clears_online_even_when_twilight_reconnects_within_pending_poll() {
+    use GatewayConnectionStatus::*;
+    use twilight_gateway::ShardState;
+
+    for state in [
+        ShardState::Disconnected {
+            reconnect_attempts: 0,
+        },
+        ShardState::Identifying,
+        ShardState::Resuming,
+    ] {
+        let mut status = Connected;
+        assert_eq!(
+            status.observe_poll(state, &Poll::Pending),
+            Some(Reconnecting)
+        );
+        assert_eq!(status.observe_poll(state, &Poll::Pending), None);
+        assert_eq!(confirm_frame(&mut status, state, RESUMED_FRAME), None);
+        assert_eq!(
+            confirm_frame(&mut status, ShardState::Active, RESUMED_FRAME),
+            Some(Connected)
+        );
+    }
+}
+
+#[test]
+fn connection_tracks_reconnect_and_invalid_session_frames_without_replaying_ready() {
+    use GatewayConnectionStatus::*;
+    use twilight_gateway::ShardState;
+
+    for frame in [
+        r#"{"op":7,"d":null,"s":null,"t":null}"#,
+        r#"{"op":9,"d":false,"s":null,"t":null}"#,
+        r#"{"op":9,"d":true,"s":null,"t":null}"#,
+    ] {
+        let mut status = Connected;
+        let state = ShardState::Disconnected {
+            reconnect_attempts: 0,
+        };
+        let poll = Poll::Ready(Some(Ok(ShardMessage::Text(frame.to_owned()))));
+        assert_eq!(status.observe_poll(state, &poll), Some(Reconnecting));
+        assert_eq!(confirm_frame(&mut status, state, frame), None);
+        assert_eq!(status, Reconnecting);
+        assert_eq!(
+            confirm_frame(&mut status, ShardState::Active, READY_FRAME),
+            Some(Connected)
+        );
+    }
+}
+
+#[test]
+fn connection_preserves_confirmed_session_on_data_error_but_not_transport_failure() {
+    use GatewayConnectionStatus::*;
+    use twilight_gateway::{CloseFrame, EventTypeFlags, ShardState};
+
+    let error = twilight_gateway::parse("{}".into(), EventTypeFlags::all()).unwrap_err();
+    let poll = Poll::Ready(Some(Err(error)));
+    let mut status = Connected;
+    assert_eq!(status.observe_poll(ShardState::Active, &poll), None);
+    assert_eq!(status, Connected);
+
+    let state = ShardState::Disconnected {
+        reconnect_attempts: 0,
+    };
+    let transport_failure = Poll::Ready(Some(Ok(ShardMessage::Close(Some(CloseFrame::new(
+        1006, "",
+    ))))));
+    assert_eq!(
+        status.observe_poll(state, &transport_failure),
+        Some(Reconnecting)
+    );
+    assert_eq!(status, Reconnecting);
+    assert_eq!(status.observe_poll(ShardState::Active, &poll), None);
+    assert_eq!(status, Reconnecting);
+}
+
+#[test]
+fn connection_clears_online_on_close_error_fatal_close_and_stream_end() {
+    use GatewayConnectionStatus::*;
+    use twilight_gateway::{EventTypeFlags, ShardState};
+
+    let error = twilight_gateway::parse("{}".into(), EventTypeFlags::all()).unwrap_err();
+    let mut status = Connected;
+    assert_eq!(
+        status.observe_poll(
+            ShardState::Disconnected {
+                reconnect_attempts: 1
+            },
+            &Poll::Ready(Some(Err(error)))
+        ),
+        Some(Reconnecting)
+    );
+    assert_eq!(
+        status.observe_poll(ShardState::Active, &Poll::Pending),
+        None
+    );
+    assert_eq!(status, Reconnecting);
+    assert_eq!(
+        confirm_frame(&mut status, ShardState::Active, RESUMED_FRAME),
+        Some(Connected)
+    );
+    assert_eq!(
+        status.observe_poll(
+            ShardState::Active,
+            &Poll::Ready(Some(Ok(ShardMessage::Close(None))))
+        ),
+        Some(Reconnecting)
+    );
+    assert_eq!(
+        status.observe_poll(ShardState::FatallyClosed, &Poll::Pending),
+        Some(Disconnected)
+    );
+    assert_eq!(
+        status.observe_poll(ShardState::FatallyClosed, &Poll::Ready(None)),
+        None
+    );
+
+    for mut status in [Connecting, Connected, Reconnecting] {
+        assert_eq!(
+            status.observe_poll(ShardState::Active, &Poll::Ready(None)),
+            Some(Disconnected)
+        );
+    }
+}
+
+#[test]
+fn connection_event_channel_closure_reports_disconnected_after_buffered_events() {
+    use GatewayConnectionStatus::*;
+
+    futures::executor::block_on(async {
+        for initial in [Connecting, Connected, Reconnecting] {
+            let (tx, rx) = futures::channel::mpsc::unbounded();
+            tx.unbounded_send(GatewayEvent::ConnectionStatus(initial))
+                .unwrap();
+            drop(tx);
+            let mut statuses = Vec::new();
+            receive_gateway_events(rx, |event| {
+                if let GatewayEvent::ConnectionStatus(status) = event {
+                    statuses.push(status);
+                }
+                true
+            })
+            .await;
+            assert_eq!(statuses, [initial, Disconnected]);
+        }
+        let (tx, rx) = futures::channel::mpsc::unbounded();
+        drop(tx);
+        let mut statuses = Vec::new();
+        receive_gateway_events(rx, |event| {
+            if let GatewayEvent::ConnectionStatus(status) = event {
+                statuses.push(status);
+            }
+            true
+        })
+        .await;
+        assert_eq!(statuses, [Disconnected]);
+    });
+}
+
+#[test]
+fn connection_event_consumer_stops_when_screen_is_gone() {
+    futures::executor::block_on(async {
+        let (tx, rx) = futures::channel::mpsc::unbounded();
+        tx.unbounded_send(GatewayEvent::ConnectionStatus(
+            GatewayConnectionStatus::Connected,
+        ))
+        .unwrap();
+        let mut delivered = 0;
+        receive_gateway_events(rx, |_| {
+            delivered += 1;
+            false
+        })
+        .await;
+        assert_eq!(delivered, 1);
+        assert!(tx.is_closed());
+    });
+}
+
 fn dispatch_json(name: &str, json: &str) -> Vec<GatewayEvent> {
     dispatch(
         name,
