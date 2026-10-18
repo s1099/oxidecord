@@ -31,6 +31,7 @@
 //! cpal streams are not `Send` on every platform, so both live on a thread of
 //! their own that does nothing but hold them open until the call ends.
 
+mod activity;
 mod devices;
 mod incoming;
 mod playback;
@@ -47,6 +48,7 @@ use songbird::constants::SAMPLE_RATE;
 use songbird::input::core::io::MediaSource;
 use songbird::input::{Input, RawAdapter};
 
+use activity::CaptureActivity;
 pub use devices::{InputDevice, input_devices};
 use devices::{chosen_input, input_config, output_config, ring_channels, run_devices};
 use incoming::Incoming;
@@ -102,6 +104,8 @@ impl Shutdown {
 
 pub struct AudioIo {
     capture: Arc<SampleRing>,
+    activity: Arc<CaptureActivity>,
+    muted: AtomicBool,
     /// What the speakers play: every sender's ring.
     mixer: Arc<Mixer>,
     /// Every sender's decoder, keyed by SSRC. Only the call's event handlers
@@ -153,6 +157,8 @@ impl AudioIo {
                 CAPTURE_PRIME_MS,
             )),
             mixer: Arc::default(),
+            activity: Arc::default(),
+            muted: AtomicBool::new(false),
             incoming: Mutex::default(),
             shutdown: Arc::default(),
             deafened: Arc::new(AtomicBool::new(false)),
@@ -162,9 +168,10 @@ impl AudioIo {
         let capture = this.capture.clone();
         let mixer = this.mixer.clone();
         let shutdown = this.shutdown.clone();
+        let activity = this.activity.clone();
         std::thread::Builder::new()
             .name("voice-audio".into())
-            .spawn(move || run_devices(input, output, &capture, &mixer, &shutdown))
+            .spawn(move || run_devices(input, output, &capture, &mixer, &shutdown, &activity))
             .ok();
 
         this
@@ -226,11 +233,24 @@ impl AudioIo {
 
     pub fn set_deafened(&self, deafened: bool) {
         self.deafened.store(deafened, Ordering::Relaxed);
+        self.activity.clear();
         if deafened {
             // Drop what's already queued, so undeafening doesn't replay a
             // burst of stale audio.
             self.forget_all();
         }
+    }
+
+    pub fn set_muted(&self, muted: bool) {
+        self.muted.store(muted, Ordering::Relaxed);
+        self.activity.clear();
+    }
+
+    pub fn is_speaking(&self) -> bool {
+        !self.muted.load(Ordering::Relaxed)
+            && !self.deafened.load(Ordering::Relaxed)
+            && !self.shutdown.is_stopped()
+            && self.activity.active(std::time::Instant::now())
     }
 
     /// Closes both devices and ends the thread holding them open.
