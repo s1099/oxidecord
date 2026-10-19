@@ -353,6 +353,7 @@ pub struct HomeScreen {
     /// Sends commands up the gateway — joining and leaving voice channels is
     /// done with a gateway command, not a REST call.
     pub(super) gateway: Option<discord::GatewaySender>,
+    pub(super) gateway_status: discord::GatewayConnectionStatus,
     /// The signed-in user's id, from whichever of `READY` or `GET /users/@me`
     /// lands first. The voice connection can't identify itself without it.
     pub(super) self_user_id: Option<Id<UserMarker>>,
@@ -516,6 +517,7 @@ impl HomeScreen {
             retired_stream_frames: Vec::new(),
             voice_stage_size: Size::default(),
             gateway: None,
+            gateway_status: discord::GatewayConnectionStatus::Connecting,
             self_user_id: None,
             shift_held: false,
             hovered_message: None,

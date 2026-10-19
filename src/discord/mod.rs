@@ -10,7 +10,10 @@ mod model;
 mod rest;
 mod token;
 
-pub use gateway::{GatewayEvent, GatewaySender, IncomingMessage, ReactionChange, connect_gateway};
+pub use gateway::{
+    GatewayConnectionStatus, GatewayEvent, GatewaySender, IncomingMessage, ReactionChange,
+    connect_gateway, receive_gateway_events,
+};
 pub use model::{
     Block, Channel, ChannelKind, ChannelLatest, CurrentUser, Delivery, DirectMessage, Embed,
     EmbedAuthor, EmbedField, EmbedFooter, EmbedLayout, EmbedMedia, ForwardedMessage, Guild,
