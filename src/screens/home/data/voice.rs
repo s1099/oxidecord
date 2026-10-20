@@ -540,42 +540,92 @@ impl HomeScreen {
             .voice_states
             .values()
             .filter(|state| state.channel_id == Some(channel_id))
-            .map(|state| {
-                let is_self = Some(state.user_id) == self.self_user_id;
-                // The state's own name is the guild's nickname for them, so it
-                // comes first, the user's own included. A DM call's states, and
-                // guild states whose member wasn't sent, carry none: the user's
-                // own is already loaded, and anyone whose profile was opened is
-                // cached.
-                let current = self.current_user.as_ref().filter(|_| is_self);
-                let profile = self.profile_cache.get(&state.user_id);
-
-                VoiceParticipant {
-                    user_id: state.user_id,
-                    name: state
-                        .name
-                        .clone()
-                        .or_else(|| current.map(|user| user.name.clone()))
-                        .or_else(|| profile.map(|profile| profile.name.clone()))
-                        .unwrap_or_else(|| "Unknown".into()),
-                    avatar_url: state
-                        .avatar_url
-                        .clone()
-                        .or_else(|| current.and_then(|user| user.avatar_url.clone()))
-                        .or_else(|| profile.and_then(|profile| profile.avatar_url.clone())),
-                    accent_color: profile.and_then(|profile| profile.accent_color),
-                    muted: state.self_mute || state.mute,
-                    deafened: state.self_deaf || state.deaf,
-                    speaking: self.voice_speaking.contains(&state.user_id),
-                    streaming: state.self_stream,
-                    is_self,
-                }
-            })
+            .map(|state| self.voice_participant(state))
             .collect();
 
         participants.sort_by_cached_key(|p| (!p.is_self, p.name.to_lowercase()));
         participants
     }
+
+    /// A guild's voice presence for the rail's badge and tooltip: at most
+    /// `max` participants previewed, and how many are in voice overall.
+    pub(in crate::screens::home) fn guild_voice_presence(
+        &self,
+        guild_id: Id<GuildMarker>,
+        max: usize,
+    ) -> (Vec<VoiceParticipant>, usize) {
+        let (selected, total) =
+            preview_guild_voice(self.voice_states.values(), guild_id, self.self_user_id, max);
+        let participants = selected
+            .into_iter()
+            .map(|state| self.voice_participant(state))
+            .collect();
+        (participants, total)
+    }
+
+    /// The state's own name is the guild's nickname for them, so it comes
+    /// first, the user's own included. A DM call's states, and guild states
+    /// whose member wasn't sent, carry none: the user's own is already loaded,
+    /// and anyone whose profile was opened is cached.
+    fn voice_display_name(&self, state: &discord::VoiceUserState) -> String {
+        let is_self = Some(state.user_id) == self.self_user_id;
+        let current = self.current_user.as_ref().filter(|_| is_self);
+        let profile = self.profile_cache.get(&state.user_id);
+
+        state
+            .name
+            .clone()
+            .or_else(|| current.map(|user| user.name.clone()))
+            .or_else(|| profile.map(|profile| profile.name.clone()))
+            .unwrap_or_else(|| "Unknown".into())
+    }
+
+    fn voice_participant(&self, state: &discord::VoiceUserState) -> VoiceParticipant {
+        let is_self = Some(state.user_id) == self.self_user_id;
+        let profile = self.profile_cache.get(&state.user_id);
+
+        VoiceParticipant {
+            user_id: state.user_id,
+            name: self.voice_display_name(state),
+            avatar_url: state
+                .avatar_url
+                .clone()
+                .or_else(|| {
+                    self.current_user
+                        .as_ref()
+                        .filter(|_| is_self)
+                        .and_then(|user| user.avatar_url.clone())
+                })
+                .or_else(|| profile.and_then(|profile| profile.avatar_url.clone())),
+            accent_color: profile.and_then(|profile| profile.accent_color),
+            muted: state.self_mute || state.mute,
+            deafened: state.self_deaf || state.deaf,
+            speaking: self.voice_speaking.contains(&state.user_id),
+            streaming: state.self_stream,
+            is_self,
+        }
+    }
+}
+
+/// One guild's voice states, ordered and capped for the rail's tooltip: the
+/// signed-in user first, then by user id, so the preview holds still while
+/// the tooltip is open. States without a channel have left voice, and other
+/// guilds' states aren't theirs to show. Returns at most `max` references
+/// plus the total, and only those are resolved into participants.
+fn preview_guild_voice<'a>(
+    states: impl IntoIterator<Item = &'a discord::VoiceUserState>,
+    guild_id: Id<GuildMarker>,
+    self_user_id: Option<Id<UserMarker>>,
+    max: usize,
+) -> (Vec<&'a discord::VoiceUserState>, usize) {
+    let mut matched: Vec<_> = states
+        .into_iter()
+        .filter(|state| state.channel_id.is_some() && state.guild_id == Some(guild_id))
+        .collect();
+    let total = matched.len();
+    matched.sort_unstable_by_key(|state| (Some(state.user_id) != self_user_id, state.user_id));
+    matched.truncate(max);
+    (matched, total)
 }
 
 /// Gateway dispatches don't always repeat the member, so a state that arrives
@@ -592,5 +642,97 @@ fn with_known_profile(
             .avatar_url
             .or_else(|| known.and_then(|known| known.avatar_url.clone())),
         ..state
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::preview_guild_voice;
+    use crate::discord::VoiceUserState;
+    use twilight_model::id::{Id, marker::GuildMarker};
+
+    fn state(
+        user: u64,
+        guild: Option<u64>,
+        channel: Option<u64>,
+        name: Option<&str>,
+    ) -> VoiceUserState {
+        VoiceUserState {
+            user_id: Id::new(user),
+            guild_id: guild.map(Id::new),
+            channel_id: channel.map(Id::new),
+            session_id: String::new(),
+            self_mute: false,
+            self_deaf: false,
+            mute: false,
+            deaf: false,
+            self_stream: false,
+            name: name.map(str::to_owned),
+            avatar_url: None,
+        }
+    }
+
+    /// The tooltip's preview as user ids, in the order it shows them.
+    fn preview(
+        states: &[VoiceUserState],
+        guild: u64,
+        self_user: Option<u64>,
+        max: usize,
+    ) -> (Vec<u64>, usize) {
+        let (selected, total) = preview_guild_voice(
+            states,
+            Id::<GuildMarker>::new(guild),
+            self_user.map(Id::new),
+            max,
+        );
+        (
+            selected.iter().map(|state| state.user_id.get()).collect(),
+            total,
+        )
+    }
+
+    #[test]
+    fn previews_connected_users_of_one_guild_only() {
+        let states = [
+            state(4, Some(10), Some(100), Some("Cid")),
+            state(1, Some(10), Some(100), Some("Zed")),
+            state(2, Some(10), Some(100), Some("Amy")),
+            // Another guild's member, and one who left voice entirely.
+            state(3, Some(11), Some(101), Some("Bea")),
+            state(5, Some(10), None, Some("Eve")),
+        ];
+
+        let (ids, total) = preview(&states, 10, None, 5);
+        assert_eq!(ids, vec![1, 2, 4]);
+        assert_eq!(total, 3);
+
+        // A guild with no one in voice previews nothing.
+        let (ids, total) = preview(&states, 12, None, 5);
+        assert!(ids.is_empty());
+        assert_eq!(total, 0);
+    }
+
+    #[test]
+    fn puts_self_first_then_users_by_id() {
+        let states = [
+            state(3, Some(10), Some(100), Some("Bea")),
+            state(1, Some(10), Some(100), Some("Zed")),
+            state(2, Some(10), Some(100), Some("Amy")),
+        ];
+
+        let (ids, total) = preview(&states, 10, Some(2), 5);
+        assert_eq!(ids, vec![2, 1, 3]);
+        assert_eq!(total, 3);
+    }
+
+    #[test]
+    fn folds_everything_past_the_cap_into_the_overflow() {
+        let states: Vec<_> = (1..=7)
+            .map(|user| state(user, Some(10), Some(100), Some(&user.to_string())))
+            .collect();
+
+        let (ids, total) = preview(&states, 10, None, 5);
+        assert_eq!(ids, vec![1, 2, 3, 4, 5]);
+        assert_eq!(total, 7);
     }
 }
