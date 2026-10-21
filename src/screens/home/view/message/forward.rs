@@ -22,8 +22,10 @@ impl HomeScreen {
         cx: &Context<Self>,
     ) -> impl IntoElement {
         let theme = cx.theme();
-        let has_media =
-            !forward.images.is_empty() || !forward.videos.is_empty() || !forward.embeds.is_empty();
+        let has_media = !forward.images.is_empty()
+            || !forward.videos.is_empty()
+            || !forward.files.is_empty()
+            || !forward.embeds.is_empty();
 
         let label = h_flex()
             .gap_1()
@@ -80,6 +82,7 @@ impl HomeScreen {
                     message_id,
                     &forward.images,
                     &forward.videos,
+                    &forward.files,
                     &forward.embeds,
                     &forward.mentions,
                     cx,

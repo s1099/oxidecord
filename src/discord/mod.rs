@@ -13,12 +13,13 @@ mod token;
 pub use gateway::{GatewayEvent, GatewaySender, IncomingMessage, ReactionChange, connect_gateway};
 pub use model::{
     Block, Channel, ChannelKind, ChannelLatest, CurrentUser, Delivery, DirectMessage, Embed,
-    EmbedAuthor, EmbedField, EmbedFooter, EmbedLayout, EmbedMedia, ForwardedMessage, Guild,
-    GuildEmoji, GuildFolders, GuildMember, GuildUnreads, ImageAttachment, Inline, List, ListMember,
-    Markdown, MemberGroupKind, MemberListGroup, MemberListItem, MemberListOp, MemberListUpdate,
-    Mention, MentionedUser, Message, MessageReference, MuteSettings, PresenceStatus, Reaction,
-    ReactionEmoji, Reactor, ReadState, Role, SPOILER_PREFIX, SpoilerCover, StreamServerInfo,
-    UnreadChannel, UserProfile, VideoAttachment, VoiceServerInfo, VoiceUserState, stream_key,
+    EmbedAuthor, EmbedField, EmbedFooter, EmbedLayout, EmbedMedia, FileAttachment,
+    ForwardedMessage, Guild, GuildEmoji, GuildFolders, GuildMember, GuildUnreads, ImageAttachment,
+    Inline, List, ListMember, Markdown, MemberGroupKind, MemberListGroup, MemberListItem,
+    MemberListOp, MemberListUpdate, Mention, MentionedUser, Message, MessageReference,
+    MuteSettings, PresenceStatus, Reaction, ReactionEmoji, Reactor, ReadState, Role,
+    SPOILER_PREFIX, SpoilerCover, StreamServerInfo, UnreadChannel, UserProfile, VideoAttachment,
+    VoiceServerInfo, VoiceUserState, stream_key,
 };
 pub use rest::{
     MAX_ATTACHMENT_SIZE, MESSAGE_PAGE_SIZE, MessagePage, REACTORS_PAGE_SIZE, ack_message,

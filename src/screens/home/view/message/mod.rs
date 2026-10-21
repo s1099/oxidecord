@@ -78,6 +78,7 @@ impl HomeScreen {
         let mentioned = self.mentions_me(message);
         let has_images = !message.images.is_empty();
         let has_videos = !message.videos.is_empty();
+        let has_files = !message.files.is_empty();
         let has_embeds = !message.embeds.is_empty();
         let uploads = match &message.delivery {
             discord::Delivery::Sending { uploads } => uploads.as_slice(),
@@ -112,6 +113,7 @@ impl HomeScreen {
                     && message.forward.is_none()
                     && !has_images
                     && !has_videos
+                    && !has_files
                     && !has_embeds,
                 |this| {
                     this.child(
@@ -122,16 +124,20 @@ impl HomeScreen {
                     )
                 },
             )
-            .when(has_images || has_videos || has_embeds, |this| {
-                this.child(self.render_media(
-                    message.id.get(),
-                    &message.images,
-                    &message.videos,
-                    &message.embeds,
-                    &message.mentions,
-                    cx,
-                ))
-            })
+            .when(
+                has_images || has_videos || has_files || has_embeds,
+                |this| {
+                    this.child(self.render_media(
+                        message.id.get(),
+                        &message.images,
+                        &message.videos,
+                        &message.files,
+                        &message.embeds,
+                        &message.mentions,
+                        cx,
+                    ))
+                },
+            )
             .children(uploads.iter().map(|filename| {
                 div()
                     .text_sm()
@@ -237,7 +243,7 @@ impl HomeScreen {
             .into_any_element()
     }
 
-    /// A message's images, videos, and embeds, stacked under its text.
+    /// A message's images, videos, files, and embeds, stacked under its text.
     ///
     /// `message_id` keys the media's element ids and playback. A forward's
     /// media borrows its forwarding message's id: Discord sends any comment
@@ -248,6 +254,7 @@ impl HomeScreen {
         message_id: u64,
         images: &[discord::ImageAttachment],
         videos: &[discord::VideoAttachment],
+        files: &[discord::FileAttachment],
         embeds: &[discord::Embed],
         mentions: &[discord::MentionedUser],
         cx: &Context<Self>,
@@ -264,6 +271,11 @@ impl HomeScreen {
             .when(!videos.is_empty(), |this| {
                 this.child(v_flex().gap_1().children(videos.iter().enumerate().map(
                     |(index, video)| self.render_video(video, MediaKey { message_id, index }, cx),
+                )))
+            })
+            .when(!files.is_empty(), |this| {
+                this.child(v_flex().gap_1().children(files.iter().enumerate().map(
+                    |(index, file)| self.render_file(file, MediaKey { message_id, index }, cx),
                 )))
             })
             .when(!embeds.is_empty(), |this| {
