@@ -3,7 +3,7 @@
 use serde_json::value::RawValue;
 use twilight_model::id::{
     Id,
-    marker::{GuildMarker, UserMarker},
+    marker::{ChannelMarker, GuildMarker, UserMarker},
 };
 use twilight_model::util::Timestamp;
 
@@ -38,6 +38,11 @@ pub(super) fn dispatch(
                 let mut roles = Vec::new();
                 let mut unreads = vec![
                     GatewayEvent::ReadStates(convert_read_states(ready.read_state)),
+                    // The mention counts ride the same read_state list the
+                    // conversion above parses for acks, which keeps none of
+                    // them; one more scan of READY per session is nothing
+                    // next to the fan-out it feeds.
+                    GatewayEvent::MentionCounts(mention_counts(data)),
                     GatewayEvent::MuteSettings(
                         ready
                             .user_guild_settings
@@ -377,6 +382,16 @@ pub(super) fn dispatch(
             .unwrap_or_default(),
         _ => Vec::new(),
     }
+}
+
+/// `READY`'s read states, of which only channels' unread mention counts are
+/// kept. A payload that doesn't fit means no badges, like any other dispatch
+/// the app reads leniently.
+fn mention_counts(data: &str) -> Vec<(Id<ChannelMarker>, u32)> {
+    serde_json::from_str::<MentionStatesPayload>(data)
+        .ok()
+        .map(MentionStatesPayload::into_mention_counts)
+        .unwrap_or_default()
 }
 
 /// A guild's channels as events — the sidebar's list and its unread mark —

@@ -12,6 +12,7 @@ pub(super) mod emoji;
 pub(super) mod guilds;
 pub(super) mod member_list;
 pub(super) mod members;
+pub(super) mod mentions;
 pub(super) mod messages;
 pub(super) mod pins;
 pub(super) mod presence;

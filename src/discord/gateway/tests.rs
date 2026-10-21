@@ -584,3 +584,23 @@ fn members_chunk_names_the_members_it_carries() {
     // A cleared nickname falls back to the global name.
     assert_eq!(names, [("Two", Some("two")), ("Trey", Some("three"))]);
 }
+
+#[test]
+fn ready_read_states_carry_channel_mention_counts() {
+    let events = dispatch_json(
+        "READY",
+        r#"{"user":{"id":"1"},"guilds":[],"read_state":[
+            {"id":"7","last_message_id":"9","mention_count":3},
+            {"id":"8","last_message_id":"2"},
+            {"id":"9","last_message_id":"4","mention_count":0},
+            {"id":"10","last_acked_id":"1","read_state_type":2,"mention_count":5}
+        ]}"#,
+    );
+    // Only channel read states with a positive count become badges: the
+    // channel without one, the zero, and the type-2 guild-event state (whose
+    // id isn't a channel) all drop out.
+    assert!(events.iter().any(|event| matches!(
+        event,
+        GatewayEvent::MentionCounts(counts) if *counts == [(Id::new(7), 3)]
+    )));
+}

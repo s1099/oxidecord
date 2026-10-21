@@ -157,6 +157,7 @@ impl HomeScreen {
                 if incoming.guild_id.is_none() {
                     self.note_dm_activity(incoming.channel_id, incoming.message.id, cx);
                 }
+                self.mentions_on_message(&incoming, cx);
                 self.stop_typing(incoming.channel_id, incoming.message.author_id, cx);
                 self.history_cache
                     .push(incoming.channel_id, incoming.message.clone());
@@ -257,13 +258,19 @@ impl HomeScreen {
                     self.unreads.set_acked(channel_id, message_id);
                 } else {
                     self.unreads.ack(channel_id, message_id);
+                    // Reading a channel here or on another client takes its
+                    // mentions with it. A manual one went backwards — mark
+                    // unread — and what its mentions were isn't known.
+                    self.mentions_clear(channel_id, cx);
                 }
                 cx.notify();
             }
             discord::GatewayEvent::GuildUnreads(guild) => {
+                self.mentions_on_guild_unreads(&guild);
                 self.unreads.set_guild(guild);
                 cx.notify();
             }
+            discord::GatewayEvent::MentionCounts(counts) => self.mentions_on_ready(counts, cx),
             discord::GatewayEvent::GuildChannels { guild_id, channels } => {
                 self.set_guild_channels(guild_id, channels, window, cx);
             }

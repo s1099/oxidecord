@@ -171,6 +171,12 @@ impl Unreads {
         })
     }
 
+    /// Whether a whole guild is muted, which silences its unread mark and,
+    /// with it, its mention badges.
+    pub(super) fn is_guild_muted(&self, guild_id: GuildId) -> bool {
+        self.muted_guilds.contains(&guild_id)
+    }
+
     /// Whether a guild has a channel with something unread in it, leaving out
     /// what's muted — a muted guild never shows its mark at all.
     pub(super) fn is_guild_unread(&self, guild_id: GuildId) -> bool {

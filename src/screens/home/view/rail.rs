@@ -87,10 +87,18 @@ impl HomeScreen {
         let guild_name = SharedString::from(guild.name.clone());
         let is_selected = self.view == View::Guild && self.selected_guild == Some(guild_id);
         let unread = !is_selected && self.unreads.is_guild_unread(guild_id);
+        // A muted server never badges, mentions included — its unread mark
+        // already keeps quiet about it.
+        let mentions = if self.unreads.is_guild_muted(guild_id) {
+            0
+        } else {
+            self.mentions.guild_count(guild_id)
+        };
 
         selection_pill(div().id(("guild", guild_id.get())), is_selected, cx)
             .child(guild_avatar(guild, px(48.)))
             .when(unread, |this| this.child(unread_pill(RAIL_GUTTER, cx)))
+            .when(mentions > 0, |this| this.child(mention_pill(mentions, cx)))
             .tooltip(tooltip::text(guild_name))
             .on_click(cx.listener(move |this, _, window, cx| {
                 this.select_guild(guild_id, window, cx);
@@ -219,4 +227,14 @@ fn folder_preview(guilds: &[Guild]) -> impl IntoElement + use<> {
 /// third of the side, so 48px gets its 16px radius and previews scale down.
 fn guild_avatar(guild: &Guild, size: Pixels) -> Avatar {
     super::avatar(guild.name.clone(), guild.icon_url.clone(), size).rounded(size / 3.)
+}
+
+/// The unread-mention pill in a guild icon's lower-right corner, as Discord's
+/// sits on its own.
+fn mention_pill(count: u32, cx: &App) -> impl IntoElement + use<> {
+    div()
+        .absolute()
+        .bottom_0()
+        .right_0()
+        .child(super::content::mention_badge(count, cx))
 }

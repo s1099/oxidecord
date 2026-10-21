@@ -15,6 +15,47 @@ use crate::discord::model::{
     RawReadState, RawRole, RawVoiceState, versioned_list,
 };
 
+/// One entry of `READY`'s `read_state`, of which only the unread mention
+/// count is read. The same list is parsed for acks by the model's
+/// `RawReadState`, which keeps nothing else, so the two read it apart rather
+/// than the model growing a field only the badges use.
+#[derive(Deserialize)]
+pub(super) struct RawMentionState {
+    id: Id<ChannelMarker>,
+    #[serde(default)]
+    read_state_type: u8,
+    /// Docs mark it optional and only meaningful for channel read states,
+    /// which a negative count would break — treated as none, like an absent
+    /// one.
+    #[serde(default)]
+    mention_count: i64,
+}
+
+/// The `read_state` list of `READY`, plain or versioned like the model's.
+#[derive(Deserialize)]
+pub(super) struct MentionStatesPayload {
+    #[serde(default, deserialize_with = "versioned_list")]
+    read_state: Vec<RawMentionState>,
+}
+
+impl MentionStatesPayload {
+    /// The channels holding unread mentions. Guild-event read states (whose
+    /// id isn't a channel) and channels without any are dropped.
+    pub(super) fn into_mention_counts(self) -> Vec<(Id<ChannelMarker>, u32)> {
+        self.read_state
+            .into_iter()
+            .filter(|state| state.read_state_type == 0)
+            .map(|state| {
+                (
+                    state.id,
+                    u32::try_from(state.mention_count.max(0)).unwrap_or(u32::MAX),
+                )
+            })
+            .filter(|&(_, count)| count > 0)
+            .collect()
+    }
+}
+
 /// `STREAM_CREATE`, of which only what a connection needs is read.
 #[derive(Deserialize)]
 pub(super) struct StreamCreatePayload {

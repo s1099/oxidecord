@@ -167,6 +167,10 @@ pub enum GatewayEvent {
         message_id: Id<MessageMarker>,
         manual: bool,
     },
+    /// Channels holding unread mentions, with how many, from `READY`'s read
+    /// states. Follows [`GatewayEvent::ReadStates`], which reports the same
+    /// channels' acks; together they replace what an earlier session knew.
+    MentionCounts(Vec<(Id<ChannelMarker>, u32)>),
     /// A guild's channels that count toward its unread mark, from `READY` or
     /// `GUILD_CREATE`. Replaces what was known of the guild.
     GuildUnreads(GuildUnreads),

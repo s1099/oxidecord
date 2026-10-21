@@ -318,6 +318,9 @@ pub struct HomeScreen {
     /// Acks waiting to be sent, by channel, and the timer that sends them.
     pub(super) pending_acks: HashMap<Id<ChannelMarker>, Id<MessageMarker>>,
     pub(super) ack_flush: Option<Task<()>>,
+    /// Which channels hold unread mentions, and how many: the red badges on
+    /// servers, channels, and DMs. See [`super::data::mentions`].
+    pub(super) mentions: super::data::mentions::Mentions,
     pub(super) channels_loading: bool,
     pub(super) channels_error: Option<String>,
     pub(super) messages: Vec<discord::Message>,
@@ -553,6 +556,7 @@ impl HomeScreen {
             dms_refreshing: false,
             collapsed_categories: HashSet::new(),
             unreads: Unreads::default(),
+            mentions: super::data::mentions::Mentions::default(),
             unread_marker: None,
             marked_unread: false,
             pending_acks: HashMap::new(),

@@ -23,6 +23,8 @@ impl HomeScreen {
         }
         self.save_collapsed_categories();
         self.selected_channel = Some(channel_id);
+        // Opening the conversation is reading it, as far as its badge goes.
+        self.mentions_clear(channel_id, cx);
         if self.view == View::Guild
             && let Some(guild_id) = self.selected_guild
         {

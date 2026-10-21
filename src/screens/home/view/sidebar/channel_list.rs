@@ -9,6 +9,7 @@ use twilight_model::id::{Id, marker::ChannelMarker};
 use crate::discord::Channel;
 use crate::screens::home::HomeScreen;
 use crate::screens::home::channels::{ChannelGroup, channel_icon_path};
+use crate::screens::home::view::content::mention_badge;
 use crate::screens::home::view::{avatar, unread_pill};
 use crate::ui::depth::{Finish, Level, Lit as _, radius};
 use crate::ui::theme;
@@ -42,6 +43,14 @@ impl HomeScreen {
         };
         let unread = self.shows_unread(channel);
         let muted = self.unreads.is_muted(channel_id, channel.parent_id);
+        // Mention pills show on muted channels too — what's muted there is
+        // the new-messages mark, not the pings. Voice channels' text chats
+        // have no row to read them from, so they carry none.
+        let mentions = if is_voice {
+            0
+        } else {
+            self.mentions.count(channel_id)
+        };
 
         h_flex()
             .id(("channel", channel_id.get()))
@@ -80,6 +89,7 @@ impl HomeScreen {
                     .size_4(),
             )
             .child(div().flex_1().truncate().child(channel.name.clone()))
+            .when(mentions > 0, |this| this.child(mention_badge(mentions, cx)))
             .on_click(cx.listener(move |this, _, window, cx| {
                 if is_voice {
                     this.join_voice_channel(channel_id, cx);

@@ -147,3 +147,35 @@ pub(super) fn pane(body: AnyElement, cx: &App) -> AnyElement {
         .child(body)
         .into_any_element()
 }
+
+/// The red pill a server, channel, or DM row carries for its unread
+/// mentions, capped the way Discord's is. Hidden rows show nothing; the
+/// caller decides when to add it.
+///
+/// Hand-rolled like the row pill it sits beside (`unread_pill`): the widget
+/// `Badge` pins its count to a child's corner, while these rows want it in
+/// the flow at their right edge.
+pub(super) fn mention_badge(count: u32, cx: &App) -> Div {
+    let theme = cx.theme();
+    div()
+        .flex_shrink_0()
+        .h(px(16.))
+        .min_w(px(16.))
+        .px(px(4.))
+        .flex()
+        .items_center()
+        .justify_center()
+        .rounded_full()
+        .bg(theme.danger)
+        .text_color(white())
+        .text_size(px(11.))
+        .font_weight(FontWeight::BOLD)
+        .child(if count > MENTION_BADGE_CAP {
+            format!("{MENTION_BADGE_CAP}+")
+        } else {
+            count.to_string()
+        })
+}
+
+/// Where a mention pill stops counting and reads "99+".
+const MENTION_BADGE_CAP: u32 = 99;

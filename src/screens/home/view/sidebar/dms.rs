@@ -6,6 +6,7 @@ use gpui_component::{ActiveTheme as _, h_flex, skeleton::Skeleton, v_flex};
 
 use crate::discord::DirectMessage;
 use crate::screens::home::HomeScreen;
+use crate::screens::home::view::content::mention_badge;
 use crate::screens::home::view::user_panel::status_indicator;
 use crate::screens::home::view::{avatar, unread_pill};
 use crate::ui::depth::{Finish, Level, Lit as _, radius};
@@ -25,6 +26,9 @@ impl HomeScreen {
         let channel_id = dm.id;
         let is_selected = self.selected_channel == Some(channel_id);
         let unread = self.unreads.is_unread(channel_id);
+        // Every message in a conversation the user is part of pings them,
+        // which is what the count is of.
+        let mentions = self.mentions.count(channel_id);
 
         // Only a 1:1 conversation has one person whose status to show.
         let status = dm.recipient_id.map(|user_id| self.user_status(user_id));
@@ -82,6 +86,7 @@ impl HomeScreen {
             })
             .child(avatar)
             .child(div().flex_1().truncate().child(dm.name.clone()))
+            .when(mentions > 0, |this| this.child(mention_badge(mentions, cx)))
             .on_click(cx.listener(move |this, _, window, cx| {
                 this.select_channel(channel_id, window, cx);
             }))
