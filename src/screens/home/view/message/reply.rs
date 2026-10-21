@@ -5,9 +5,9 @@ use gpui::*;
 use gpui_component::{ActiveTheme as _, h_flex};
 
 use crate::discord;
-use crate::screens::home::HomeScreen;
 use crate::screens::home::view::avatar;
 use crate::screens::home::view::markdown::MarkdownOptions;
+use crate::screens::home::{HomeScreen, MessageTarget, View};
 
 use super::{AVATAR_SIZE, CONTENT_INDENT, REPLY_GAP};
 
@@ -51,6 +51,7 @@ impl HomeScreen {
             .border_color(theme.border)
             .rounded_tl(px(6.));
 
+        let quote_jump = reference.message_id;
         h_flex()
             .relative()
             .w_full()
@@ -81,8 +82,8 @@ impl HomeScreen {
                     .child("Click to see attachment")
             } else {
                 // Formatted like the message itself, but squeezed onto one
-                // line and not clickable: the whole line will be what jumps
-                // to the original.
+                // line and with its own links inert: the whole line is one
+                // click target, jumping to the original.
                 div().flex_1().min_w_0().truncate().child(
                     self.render_inline_markdown(
                         &reference.preview,
@@ -92,5 +93,29 @@ impl HomeScreen {
                     ),
                 )
             })
+            // Clicking the quote anywhere opens the original. The channel is
+            // read at click time — it's the conversation this row was
+            // rendered into — and the guild follows the open view.
+            .id(("reply-quote", message_id))
+            .cursor_pointer()
+            .hover(|this| this.opacity(0.8))
+            .on_click(cx.listener(move |this, _, window, cx| {
+                cx.stop_propagation();
+                let Some(channel_id) = this.selected_channel else {
+                    return;
+                };
+                let guild_id = (this.view == View::Guild)
+                    .then_some(this.selected_guild)
+                    .flatten();
+                this.jump_to_message(
+                    MessageTarget {
+                        guild_id,
+                        channel_id,
+                        message_id: quote_jump,
+                    },
+                    window,
+                    cx,
+                );
+            }))
     }
 }

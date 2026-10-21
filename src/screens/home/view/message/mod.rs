@@ -200,8 +200,11 @@ impl HomeScreen {
                                 .bg(mention_tint),
                         )
                 } else {
-                    this.when(lit, |this| this.bg(theme.accent.opacity(0.4)))
-                        .hover(|this| this.bg(theme.accent.opacity(0.4)))
+                    this.when(
+                        lit || self.highlighted_message == Some(message_id),
+                        |this| this.bg(theme.accent.opacity(0.4)),
+                    )
+                    .hover(|this| this.bg(theme.accent.opacity(0.4)))
                 }
             })
             // A message open for editing stays lit while the pointer is

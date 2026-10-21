@@ -30,6 +30,9 @@ pub const MAX_ATTACHMENT_SIZE: u64 = 10 * 1024 * 1024;
 pub enum MessagePage {
     Latest,
     Before(Id<MessageMarker>),
+    /// A page centred on this message, which needn't be among the results —
+    /// a jump then reports it unavailable rather than showing the wrong spot.
+    Around(Id<MessageMarker>),
     /// The messages just newer than this one, which needn't be real — any
     /// snowflake does, an ack's included.
     After(Id<MessageMarker>),
@@ -48,6 +51,7 @@ pub async fn fetch_messages(
         let response = match page {
             MessagePage::Latest => request.await,
             MessagePage::Before(before) => request.before(before).await,
+            MessagePage::Around(around) => request.around(around).await,
             MessagePage::After(after) => request.after(after).await,
         }?;
         let mut messages = response.models().await?;

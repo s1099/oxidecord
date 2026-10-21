@@ -19,7 +19,7 @@ use gpui_component::{ActiveTheme as _, h_flex, v_flex};
 use twilight_model::id::{Id, marker::UserMarker};
 
 use crate::discord::{self, Block, Inline};
-use crate::screens::home::{HomeScreen, View};
+use crate::screens::home::{HomeScreen, MessageTarget, View};
 use crate::ui::{dialogs, tooltip};
 
 use inline::{Action, Flattener, ResolvedUser};
@@ -131,8 +131,28 @@ impl<'a> Renderer<'a> {
         let on_action =
             Rc::new(
                 move |action: &Action, window: &mut Window, cx: &mut App| match action {
-                    Action::Url(url) => cx.open_url(url),
-                    Action::MaskedUrl(url) => dialogs::confirm_open_link(url.clone(), window, cx),
+                    Action::Url(url) => {
+                        // A Discord message link is this client's own deep
+                        // link, so it opens here rather than in a browser.
+                        if let Some(target) = message_link_target(url) {
+                            let _ = weak
+                                .update(cx, |this, cx| this.jump_to_message(target, window, cx));
+                        } else {
+                            cx.open_url(url);
+                        }
+                    }
+                    Action::MaskedUrl(url) => {
+                        // A masked link's label can claim anything, so the
+                        // external ones ask first — but a message link's
+                        // destination is this client, not the web, and
+                        // jumping there shows exactly what the link promised.
+                        if let Some(target) = message_link_target(url) {
+                            let _ = weak
+                                .update(cx, |this, cx| this.jump_to_message(target, window, cx));
+                        } else {
+                            dialogs::confirm_open_link(url.clone(), window, cx);
+                        }
+                    }
                     Action::User {
                         id,
                         name,
@@ -395,6 +415,38 @@ impl<'a> Renderer<'a> {
     }
 }
 
+/// The message a `discord.com/channels/{guild}/{channel}/{message}` link
+/// points at — the form Discord's copy-link produces, with the `@me` variant
+/// for DMs and the canary/ptb and legacy `discordapp.com` hosts. Anything
+/// else stays an ordinary external link.
+fn message_link_target(url: &str) -> Option<MessageTarget> {
+    let rest = url
+        .strip_prefix("https://")
+        .or_else(|| url.strip_prefix("http://"))?;
+    let (host, path) = rest.split_once('/')?;
+    let host = host
+        .strip_prefix("canary.")
+        .or_else(|| host.strip_prefix("ptb."))
+        .unwrap_or(host);
+    if !host.eq_ignore_ascii_case("discord.com") && !host.eq_ignore_ascii_case("discordapp.com") {
+        return None;
+    }
+    let mut segments = path.split('/');
+    if segments.next() != Some("channels") {
+        return None;
+    }
+    // Ids must be non-zero snowflakes; `new_checked` refuses the rest.
+    let guild_id = match segments.next()? {
+        "@me" => None,
+        guild => Some(Id::new_checked(guild.parse().ok()?)?),
+    };
+    Some(MessageTarget {
+        guild_id,
+        channel_id: Id::new_checked(segments.next()?.parse().ok()?)?,
+        message_id: Id::new_checked(segments.next()?.parse().ok()?)?,
+    })
+}
+
 impl HomeScreen {
     /// Draws a whole piece of markdown: message content, or an embed's
     /// description or field value.
@@ -425,5 +477,46 @@ impl HomeScreen {
         let mut flattener = Flattener::new(&renderer);
         flattener.inlines(inlines);
         flattener.finish().into_any_element()
+    }
+}
+
+// `use super::*` would also glob the parent's `gpui::*` imports, and gpui
+// exports a `test` macro that shadows the built-in `#[test]` — recursing
+// rustc into a stack overflow during expansion. Import precisely instead.
+#[cfg(test)]
+mod tests {
+    use super::message_link_target;
+    use twilight_model::id::Id;
+
+    #[test]
+    fn message_links_parse_to_targets() {
+        let guild = message_link_target("https://discord.com/channels/1/2/3").unwrap();
+        assert_eq!(guild.guild_id, Some(Id::new(1)));
+        assert_eq!(guild.channel_id, Id::new(2));
+        assert_eq!(guild.message_id, Id::new(3));
+
+        let dm = message_link_target("https://ptb.discord.com/channels/@me/9/8").unwrap();
+        assert_eq!(dm.guild_id, None);
+        assert_eq!(dm.channel_id, Id::new(9));
+        assert_eq!(dm.message_id, Id::new(8));
+
+        assert!(
+            message_link_target("http://canary.discordapp.com/channels/1/2/3").is_some(),
+            "the legacy discordapp.com host"
+        );
+    }
+
+    #[test]
+    fn anything_else_stays_an_external_link() {
+        for url in [
+            "https://example.com/channels/1/2/3",
+            "https://discord.com/api/v9/channels/1/2/3",
+            "https://discord.com/channels/@me/2",
+            "https://discord.com/channels/0/2/3",
+            "https://discord.com/channels/1/2/not-a-snowflake",
+            "discord.com/channels/1/2/3",
+        ] {
+            assert!(message_link_target(url).is_none(), "{url}");
+        }
     }
 }

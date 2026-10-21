@@ -318,6 +318,20 @@ pub struct HomeScreen {
     /// Acks waiting to be sent, by channel, and the timer that sends them.
     pub(super) pending_acks: HashMap<Id<ChannelMarker>, Id<MessageMarker>>,
     pub(super) ack_flush: Option<Task<()>>,
+    /// A jump whose channel isn't open yet, held until its messages load.
+    /// Cleared by any other selection, which cancels the jump.
+    pub(super) pending_message_target: Option<super::MessageTarget>,
+    /// Bumped whenever the conversation's messages are replaced wholesale, so
+    /// a response to a superseded load — an opening page, an older or newer
+    /// page, or a jump's fetch-around — lands on nothing.
+    pub(super) message_load_generation: u64,
+    /// The message a jump landed on, tinted until the flash clears itself.
+    pub(super) highlighted_message: Option<Id<MessageMarker>>,
+    /// Bumped each time a highlight flash starts, so the timer scheduled to
+    /// clear one flash doesn't take down a newer flash of the same message.
+    pub(super) highlight_serial: u64,
+    /// A channel to select in a guild whose channels are still loading.
+    pub(super) pending_channel_selection: Option<Id<ChannelMarker>>,
     pub(super) channels_loading: bool,
     pub(super) channels_error: Option<String>,
     pub(super) messages: Vec<discord::Message>,
@@ -557,6 +571,11 @@ impl HomeScreen {
             marked_unread: false,
             pending_acks: HashMap::new(),
             ack_flush: None,
+            pending_message_target: None,
+            message_load_generation: 0,
+            highlighted_message: None,
+            highlight_serial: 0,
+            pending_channel_selection: None,
             channels_loading: false,
             channels_error: None,
             messages: Vec::new(),

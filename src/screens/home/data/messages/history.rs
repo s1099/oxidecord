@@ -1,6 +1,8 @@
 //! Opening a conversation, at the first unread message when there is one, and
 //! paging through its history either way from there.
 
+use std::time::Duration;
+
 use gpui::*;
 use twilight_model::id::{
     Id,
@@ -9,10 +11,27 @@ use twilight_model::id::{
 
 use crate::discord::{self, MessagePage};
 use crate::screens::home::history_cache::merge_latest;
-use crate::screens::home::{HomeScreen, View};
+use crate::screens::home::{HomeScreen, MessageTarget, View};
+
+/// How long the tint marking where a jump landed stays on before clearing
+/// itself, like Discord's does.
+const HIGHLIGHT_FLASH: Duration = Duration::from_secs(3);
 
 impl HomeScreen {
     pub(in crate::screens::home) fn select_channel(
+        &mut self,
+        channel_id: Id<ChannelMarker>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        // A click on another conversation cancels a jump still in flight.
+        self.pending_message_target = None;
+        self.apply_channel_selection(channel_id, window, cx);
+    }
+
+    /// Selects `channel_id` and loads its messages, leaving any pending jump
+    /// alone: a jump sets its target first and comes through here.
+    pub(in crate::screens::home) fn apply_channel_selection(
         &mut self,
         channel_id: Id<ChannelMarker>,
         window: &mut Window,
@@ -38,6 +57,84 @@ impl HomeScreen {
         self.load_messages(window, cx);
     }
 
+    /// Opens the conversation a reply quote, forward header, or message link
+    /// points at, scrolled to that message and with it flashed to mark the
+    /// landing. When the conversation is already open and holds the message,
+    /// the history is kept and only the scroll moves.
+    pub(in crate::screens::home) fn jump_to_message(
+        &mut self,
+        target: MessageTarget,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        // The conversation is already open and holds the message: scrolling to
+        // it keeps the history the user has around it, which a fetch-around
+        // would throw away for a fresh page.
+        let same_conversation = match self.view {
+            View::DirectMessages => target.guild_id.is_none(),
+            View::Guild => target.guild_id == self.selected_guild,
+        };
+        if !self.messages_loading
+            && self.selected_channel == Some(target.channel_id)
+            && same_conversation
+            && let Some(index) = self
+                .messages
+                .iter()
+                .position(|message| message.id == target.message_id)
+        {
+            self.messages_list.scroll_to(ListOffset {
+                item_ix: index,
+                offset_in_item: px(0.),
+            });
+            // Landed on the newest message, the list sits pinned to the bottom
+            // and should keep following the conversation.
+            self.at_bottom = index + 1 == self.messages.len() && self.reached_newest;
+            self.flash_highlight(target.message_id, cx);
+            cx.notify();
+            return;
+        }
+        match target.guild_id {
+            Some(guild_id) => {
+                self.pending_message_target = Some(target);
+                self.open_guild_channel_at(guild_id, Some(target.channel_id), window, cx);
+            }
+            None => {
+                if self.view != View::DirectMessages {
+                    self.open_direct_messages(window, cx);
+                }
+                self.pending_message_target = Some(target);
+                self.apply_channel_selection(target.channel_id, window, cx);
+            }
+        }
+        // The channel was open already, so opening it did nothing: load for
+        // the pending target here, and let `load_messages` take it from there.
+        if self.selected_channel == Some(target.channel_id)
+            && self.pending_message_target == Some(target)
+        {
+            self.load_messages(window, cx);
+        }
+    }
+
+    /// Tints the message a jump landed on, clearing itself a moment later so
+    /// the mark doesn't outlive the jump that made it. The serial tells a
+    /// late clear of an older flash apart from a newer flash of the same
+    /// message, which restarted the timer.
+    fn flash_highlight(&mut self, message_id: Id<MessageMarker>, cx: &mut Context<Self>) {
+        self.highlighted_message = Some(message_id);
+        self.highlight_serial = self.highlight_serial.wrapping_add(1);
+        let serial = self.highlight_serial;
+        cx.spawn(async move |this, cx| {
+            cx.background_executor().timer(HIGHLIGHT_FLASH).await;
+            let _ = this.update(cx, |this, cx| {
+                if this.highlight_serial == serial {
+                    this.highlighted_message = None;
+                    cx.notify();
+                }
+            });
+        })
+        .detach();
+    }
+
     fn load_messages(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some(channel_id) = self.selected_channel else {
             return;
@@ -58,19 +155,34 @@ impl HomeScreen {
             .flatten();
         self.reset_conversation(placeholder, window, cx);
         self.unread_marker = marker;
-        // Opened before, it's drawn from what was there then while the
-        // newest page is fetched, which is merged in when it lands.
-        match self.history_cache.take(channel_id) {
-            Some(cached) => {
-                self.messages = cached.messages;
-                self.reached_oldest = cached.reached_oldest;
-                self.messages_channel = Some(channel_id);
-                self.request_author_members();
-                self.messages_list.reset(self.messages.len());
-            }
-            None => self.messages_loading = true,
+        // Opened before, it's drawn from the cache while the newest page is
+        // fetched, which is merged in when it lands. A jump skips the cache:
+        // its fetch-around replaces the list wholesale.
+        let target = self.pending_message_target.take().filter(|target| {
+            target.channel_id == channel_id
+                && match self.view {
+                    View::DirectMessages => target.guild_id.is_none(),
+                    View::Guild => target.guild_id == self.selected_guild,
+                }
+        });
+        match target {
+            Some(_) => self.messages_loading = true,
+            None => match self.history_cache.take(channel_id) {
+                Some(cached) => {
+                    self.messages = cached.messages;
+                    self.reached_oldest = cached.reached_oldest;
+                    self.messages_channel = Some(channel_id);
+                    self.request_author_members();
+                    self.messages_list.reset(self.messages.len());
+                }
+                None => self.messages_loading = true,
+            },
         }
-        self.fetch_opening_page(channel_id, marker, window, cx);
+        if let Some(target) = target {
+            self.fetch_message_target(target, window, cx);
+        } else {
+            self.fetch_opening_page(channel_id, marker, window, cx);
+        }
     }
 
     /// Leaves history opened further back for the newest page, as Discord's
@@ -86,6 +198,8 @@ impl HomeScreen {
         if self.messages_loading {
             return;
         }
+        self.message_load_generation = self.message_load_generation.wrapping_add(1);
+        self.highlighted_message = None;
         self.messages.clear();
         self.messages_channel = None;
         self.messages_list.reset(0);
@@ -110,6 +224,7 @@ impl HomeScreen {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        let generation = self.message_load_generation;
         cx.spawn_in(window, async move |this, cx| {
             let page_size = discord::MESSAGE_PAGE_SIZE;
             let mut result = discord::fetch_messages(channel_id, MessagePage::Latest)
@@ -126,7 +241,9 @@ impl HomeScreen {
             let _ = this.update_in(cx, |this, window, cx| {
                 // The user may have clicked another channel while this request
                 // was in flight; drop the stale response.
-                if this.selected_channel != Some(channel_id) {
+                if this.selected_channel != Some(channel_id)
+                    || this.message_load_generation != generation
+                {
                     return;
                 }
                 // Drawn from the cache meanwhile, the newest page is merged
@@ -172,6 +289,63 @@ impl HomeScreen {
                     Err(err) => this.messages_error = Some(err),
                 }
                 this.ack_open_conversation(cx);
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
+    /// Fetches a page centred on a jump's target and opens the conversation
+    /// scrolled to it, replacing whatever the cache showed wholesale.
+    fn fetch_message_target(
+        &mut self,
+        target: MessageTarget,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let generation = self.message_load_generation;
+        cx.spawn_in(window, async move |this, cx| {
+            let result =
+                discord::fetch_messages(target.channel_id, MessagePage::Around(target.message_id))
+                    .await;
+            let _ = this.update_in(cx, |this, _, cx| {
+                if this.selected_channel != Some(target.channel_id)
+                    || this.message_load_generation != generation
+                {
+                    return;
+                }
+                this.messages_loading = false;
+                match result {
+                    Ok(messages) => {
+                        if let Some(index) = messages
+                            .iter()
+                            .position(|message| message.id == target.message_id)
+                        {
+                            let complete = messages.len() < discord::MESSAGE_PAGE_SIZE;
+                            this.reached_oldest = complete;
+                            this.reached_newest = complete;
+                            // The jumped-to message may itself be the newest,
+                            // in which case the list has landed back on the
+                            // bottom and should keep following.
+                            this.at_bottom = index + 1 == messages.len() && complete;
+                            this.messages = messages;
+                            this.messages_channel = Some(target.channel_id);
+                            this.request_author_members();
+                            this.messages_list.reset(this.messages.len());
+                            this.messages_list.scroll_to(ListOffset {
+                                item_ix: index,
+                                offset_in_item: px(0.),
+                            });
+                            this.flash_highlight(target.message_id, cx);
+                        } else {
+                            this.messages_error = Some(
+                                "That message is unavailable, or you cannot read its history."
+                                    .into(),
+                            );
+                        }
+                    }
+                    Err(error) => this.messages_error = Some(error),
+                }
                 cx.notify();
             });
         })
@@ -228,9 +402,13 @@ impl HomeScreen {
         self.at_bottom = false;
 
         let screen = cx.entity().downgrade();
+        let generation = self.message_load_generation;
         window.on_next_frame(move |window, _| {
             window.on_next_frame(move |_, cx| {
                 let _ = screen.update(cx, |this, cx| {
+                    if this.message_load_generation != generation {
+                        return;
+                    }
                     let list = &this.messages_list;
                     // Pinned to the bottom, the list reports its top as past
                     // the last item.
@@ -251,6 +429,8 @@ impl HomeScreen {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        self.message_load_generation = self.message_load_generation.wrapping_add(1);
+        self.highlighted_message = None;
         if let Some(channel_id) = self.messages_channel.take()
             && self.messages_error.is_none()
             && self.reached_newest
@@ -305,6 +485,7 @@ impl HomeScreen {
             return;
         };
         self.older_loading = true;
+        let generation = self.message_load_generation;
         cx.notify();
 
         cx.spawn(async move |this, cx| {
@@ -313,6 +494,7 @@ impl HomeScreen {
                 // Drop the response if the channel changed or the messages
                 // were reloaded while this request was in flight.
                 if this.selected_channel != Some(channel_id)
+                    || this.message_load_generation != generation
                     || this.messages.first().map(|message| message.id) != Some(oldest_id)
                 {
                     return;
@@ -355,12 +537,14 @@ impl HomeScreen {
             return;
         };
         self.newer_loading = true;
+        let generation = self.message_load_generation;
         cx.notify();
 
         cx.spawn(async move |this, cx| {
             let result = discord::fetch_messages(channel_id, MessagePage::After(newest_id)).await;
             let _ = this.update(cx, |this, cx| {
                 if this.selected_channel != Some(channel_id)
+                    || this.message_load_generation != generation
                     || this.messages.last().map(|message| message.id) != Some(newest_id)
                 {
                     return;

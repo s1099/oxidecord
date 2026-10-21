@@ -6,9 +6,9 @@ use gpui::*;
 use gpui_component::{ActiveTheme as _, Icon, Sizable as _, h_flex, v_flex};
 
 use crate::discord;
-use crate::screens::home::HomeScreen;
 use crate::screens::home::view::avatar;
 use crate::screens::home::view::markdown::MarkdownOptions;
+use crate::screens::home::{HomeScreen, MessageTarget};
 
 const BAR_WIDTH: f32 = 4.;
 /// The source guild's icon in the footer.
@@ -25,7 +25,13 @@ impl HomeScreen {
         let has_media =
             !forward.images.is_empty() || !forward.videos.is_empty() || !forward.embeds.is_empty();
 
-        let label = h_flex()
+        // Clicking the header opens the original, when Discord said where it
+        // went; forwards whose reference lacked the ids stay inert. A forward
+        // out of a DM names no guild, which `jump_to_message` reads as a DM
+        // channel.
+        let origin = forward.message_id.zip(forward.channel_id);
+        let forward_guild = forward.guild_id;
+        let label_content = h_flex()
             .gap_1()
             .items_center()
             .italic()
@@ -33,6 +39,29 @@ impl HomeScreen {
             .text_color(theme.muted_foreground)
             .child(Icon::default().path("icons/redo-2.svg").small())
             .child("Forwarded");
+        // `id` changes the element's type (`Div` -> `Stateful<Div>`), so the
+        // clickable and inert shapes meet in `AnyElement`.
+        let label = if let Some((message_id, channel_id)) = origin {
+            label_content
+                .id(("forward-source", message_id.get()))
+                .cursor_pointer()
+                .hover(|this| this.opacity(0.8))
+                .on_click(cx.listener(move |this, _, window, cx| {
+                    cx.stop_propagation();
+                    this.jump_to_message(
+                        MessageTarget {
+                            guild_id: forward_guild,
+                            channel_id,
+                            message_id,
+                        },
+                        window,
+                        cx,
+                    );
+                }))
+                .into_any_element()
+        } else {
+            label_content.into_any_element()
+        };
 
         // Discord names the guild a forward came from. A forward out of a DM,
         // or out of a guild the user has since left, has no name to show, so

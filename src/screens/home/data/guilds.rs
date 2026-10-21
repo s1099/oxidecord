@@ -112,17 +112,44 @@ impl HomeScreen {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        // A click on another guild cancels a jump still in flight.
+        self.pending_message_target = None;
+        self.open_guild_channel_at(guild_id, None, window, cx);
+    }
+
+    /// Opens `guild_id` and selects `target_channel` — or the guild's first
+    /// text channel when `None` — as a jump's landing spot. When the guild's
+    /// channels are still loading, the selection is held until they land.
+    pub(in crate::screens::home) fn open_guild_channel_at(
+        &mut self,
+        guild_id: Id<GuildMarker>,
+        target_channel: Option<Id<ChannelMarker>>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let same_guild = self.selected_guild == Some(guild_id);
         if self.view == View::Guild && same_guild {
+            if self.channels_loading {
+                self.pending_channel_selection = target_channel;
+                return;
+            }
+            if let Some(channel_id) = target_channel.filter(|&id| self.is_selectable_channel(id)) {
+                self.apply_channel_selection(channel_id, window, cx);
+            }
             return;
         }
         self.save_collapsed_categories();
         self.view = View::Guild;
         // Returning from the DM view to the guild that's already loaded:
-        // switch back to its channels, reopening the channel that was open
-        // since the DM view cleared the selection.
+        // switch back to its channels, reopening the jumped-to one instead of
+        // the channel that was open, since the DM view cleared the selection.
         if same_guild && !self.channel_groups.is_empty() {
-            self.open_guild_channel(window, cx);
+            let chosen = target_channel
+                .filter(|&id| self.is_selectable_channel(id))
+                .or_else(|| self.first_text_channel());
+            if let Some(channel_id) = chosen {
+                self.apply_channel_selection(channel_id, window, cx);
+            }
             cx.notify();
             return;
         }
@@ -136,7 +163,12 @@ impl HomeScreen {
         match self.guild_channels.get(&guild_id).cloned() {
             Some(channels) => {
                 self.channel_groups = build_channel_groups(channels);
-                self.open_guild_channel(window, cx);
+                let chosen = target_channel
+                    .filter(|&id| self.is_selectable_channel(id))
+                    .or_else(|| self.first_text_channel());
+                if let Some(channel_id) = chosen {
+                    self.apply_channel_selection(channel_id, window, cx);
+                }
                 if self.stale_guild_channels.contains(&guild_id) {
                     self.fetch_guild_channels(guild_id, window, cx);
                 }
@@ -145,10 +177,18 @@ impl HomeScreen {
             // as unavailable.
             None => {
                 self.channels_loading = true;
+                self.pending_channel_selection = target_channel;
                 self.fetch_guild_channels(guild_id, window, cx);
             }
         }
         cx.notify();
+    }
+
+    /// Whether a channel can be selected in the sidebar: it is in the open
+    /// guild's list and isn't a voice channel.
+    fn is_selectable_channel(&self, channel_id: Id<ChannelMarker>) -> bool {
+        self.channel_info(channel_id)
+            .is_some_and(|channel| !channel.kind.is_voice())
     }
 
     /// Fetches a guild's channels over REST: when the gateway hasn't sent
@@ -217,7 +257,8 @@ impl HomeScreen {
             return;
         }
         // The list was loading with nothing open, or the open channel is
-        // gone from it.
+        // gone from it. A selection requested while loading — a jump's —
+        // wins over the remembered one.
         if self.channels_loading
             || self
                 .selected_channel
@@ -226,7 +267,14 @@ impl HomeScreen {
             self.channels_loading = false;
             self.channels_error = None;
             self.selected_channel = None;
-            self.open_guild_channel(window, cx);
+            match self
+                .pending_channel_selection
+                .take()
+                .filter(|&id| self.is_selectable_channel(id))
+            {
+                Some(channel_id) => self.apply_channel_selection(channel_id, window, cx),
+                None => self.open_guild_channel(window, cx),
+            }
         }
         cx.notify();
     }

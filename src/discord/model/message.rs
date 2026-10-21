@@ -6,7 +6,7 @@ use serde::Deserialize;
 use twilight_model::channel::message::{MessageReferenceType, MessageSnapshot};
 use twilight_model::id::{
     Id,
-    marker::{EmojiMarker, GuildMarker, MessageMarker, RoleMarker, UserMarker},
+    marker::{ChannelMarker, EmojiMarker, GuildMarker, MessageMarker, RoleMarker, UserMarker},
 };
 
 use super::cdn;
@@ -201,6 +201,10 @@ impl ReactionEmoji {
 /// quoted preview line atop the reply.
 #[derive(Clone)]
 pub struct MessageReference {
+    /// The referenced message's id, which a click on the quote jumps to.
+    /// Replies reference a message in their own channel, so no channel id is
+    /// kept alongside it.
+    pub message_id: Id<MessageMarker>,
     pub author_id: Id<UserMarker>,
     pub author_name: String,
     pub author_avatar_url: Option<String>,
@@ -221,6 +225,7 @@ impl MessageReference {
             _ => message.content.as_str(),
         };
         Self {
+            message_id: message.id,
             author_id: message.author_id,
             author_name: message.author_name.clone(),
             author_avatar_url: message.author_avatar_url.clone(),
@@ -246,6 +251,11 @@ pub struct ForwardedMessage {
     pub embeds: Vec<Embed>,
     /// The guild the original was sent in; `None` for a direct message.
     pub guild_id: Option<Id<GuildMarker>>,
+    /// Where the original lives, so a click on the forward's header can open
+    /// it. A snapshot itself carries no ids — these come from the forwarding
+    /// message's reference to it, and are `None` when Discord didn't say.
+    pub channel_id: Option<Id<ChannelMarker>>,
+    pub message_id: Option<Id<MessageMarker>>,
 }
 
 impl ForwardedMessage {
@@ -362,10 +372,16 @@ pub(in crate::discord) fn convert_message(message: twilight_model::channel::Mess
         .reference
         .as_ref()
         .is_some_and(|reference| reference.kind == MessageReferenceType::Forward);
+    // The snapshot has no ids of its own, so the original's channel and
+    // message come off the forwarding message's reference to it.
+    let forward_source = is_forward
+        .then_some(message.reference.as_ref())
+        .flatten()
+        .and_then(|reference| Some((reference.channel_id?, reference.message_id?)));
     let forward = is_forward
         .then(|| message.message_snapshots.into_iter().next())
         .flatten()
-        .map(convert_snapshot);
+        .map(|snapshot| convert_snapshot(snapshot, forward_source));
 
     Message {
         id: message.id,
@@ -447,7 +463,10 @@ fn convert_attachments(
     (images, videos)
 }
 
-fn convert_snapshot(snapshot: MessageSnapshot) -> ForwardedMessage {
+fn convert_snapshot(
+    snapshot: MessageSnapshot,
+    source: Option<(Id<ChannelMarker>, Id<MessageMarker>)>,
+) -> ForwardedMessage {
     let message = snapshot.message;
     let (images, videos) = convert_attachments(&message.attachments);
     ForwardedMessage {
@@ -460,6 +479,8 @@ fn convert_snapshot(snapshot: MessageSnapshot) -> ForwardedMessage {
         videos,
         embeds: message.embeds.into_iter().map(convert_embed).collect(),
         guild_id: snapshot.guild_id,
+        channel_id: source.map(|(channel_id, _)| channel_id),
+        message_id: source.map(|(_, message_id)| message_id),
     }
 }
 
@@ -509,6 +530,7 @@ fn convert_reference(referenced: twilight_model::channel::Message) -> MessageRef
         _ => referenced.content.as_str(),
     };
     MessageReference {
+        message_id: referenced.id,
         author_id: referenced.author.id,
         author_name: referenced
             .author

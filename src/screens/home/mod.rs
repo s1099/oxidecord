@@ -19,8 +19,21 @@ mod view;
 mod voice;
 
 use gpui::{EventEmitter, actions};
+use twilight_model::id::{
+    Id,
+    marker::{ChannelMarker, GuildMarker, MessageMarker},
+};
 
 pub use state::HomeScreen;
+
+/// A message to open, wherever it lives: a guild channel, or a DM when the
+/// guild is `None`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(in crate::screens::home) struct MessageTarget {
+    pub guild_id: Option<Id<GuildMarker>>,
+    pub channel_id: Id<ChannelMarker>,
+    pub message_id: Id<MessageMarker>,
+}
 
 /// Emitted when the user logs out or Discord rejects the stored token, so the
 /// app can send the user back to login instead of leaving them on a screen

@@ -21,6 +21,8 @@ impl HomeScreen {
         if self.view == View::DirectMessages {
             return;
         }
+        // Leaving the guild view cancels a jump still in flight.
+        self.pending_message_target = None;
         self.view = View::DirectMessages;
 
         // No conversation is open yet; reset the message pane to its empty
