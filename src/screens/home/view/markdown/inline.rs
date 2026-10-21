@@ -139,7 +139,8 @@ impl<'a, 'b> Flattener<'a, 'b> {
             renderer.mono_family.clone(),
             &renderer.screen.image_cache,
         )
-        .emoji(self.emoji);
+        .emoji(self.emoji)
+        .selectable(renderer.palette.selection);
         if let Some(mut marker) = self.marker {
             if !renderer.options.interactive {
                 marker.tooltip = None;

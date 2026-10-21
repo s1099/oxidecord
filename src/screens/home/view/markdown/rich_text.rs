@@ -15,6 +15,7 @@ use std::rc::Rc;
 
 use gpui::*;
 
+use super::selection::{self, paint_highlight, selected_range};
 use crate::ui::tooltip;
 
 /// The blank an emoji is drawn into: an em space and a quarter-em space, so
@@ -68,6 +69,9 @@ pub(super) struct RichText {
     emoji: Vec<(Range<usize>, SharedString)>,
     marker: Option<Marker>,
     shaped_marker: Option<ShapedMarker>,
+    /// Whether the mouse can select this text, and the highlight it draws.
+    selectable: bool,
+    selection_color: Hsla,
     image_cache: Entity<RetainAllImageCache>,
     inner: Option<Inner>,
     layout: TextLayout,
@@ -106,6 +110,8 @@ impl RichText {
             emoji: Vec::new(),
             marker: None,
             shaped_marker: None,
+            selectable: false,
+            selection_color: transparent_black(),
             image_cache: image_cache.clone(),
             inner: None,
             layout: TextLayout::default(),
@@ -137,6 +143,13 @@ impl RichText {
 
     pub fn marker(mut self, marker: Marker) -> Self {
         self.marker = Some(marker);
+        self
+    }
+
+    /// Lets the mouse select this text, highlighted in `color`.
+    pub fn selectable(mut self, color: Hsla) -> Self {
+        self.selectable = true;
+        self.selection_color = color;
         self
     }
 }
@@ -233,7 +246,7 @@ impl Element for RichText {
         window: &mut Window,
         cx: &mut App,
     ) -> Self::PrepaintState {
-        let hitbox = match self.inner.as_mut()? {
+        let inner_hitbox = match self.inner.as_mut()? {
             Inner::Plain(text) => {
                 text.prepaint(None, inspector_id, bounds, &mut (), window, cx);
                 None
@@ -242,6 +255,12 @@ impl Element for RichText {
                 Some(text.prepaint(id, inspector_id, bounds, &mut (), window, cx))
             }
         };
+        // Selection press-testing and the text cursor want a hitbox; the
+        // interactive text already made one.
+        let hitbox = inner_hitbox.or_else(|| {
+            self.selectable
+                .then(|| window.insert_hitbox(bounds, HitboxBehavior::Normal))
+        });
 
         // Each emoji is centred in its gap, as tall as it is wide but never
         // taller than the line. A gap split by a wrap has no one width, so
@@ -288,7 +307,26 @@ impl Element for RichText {
         window: &mut Window,
         cx: &mut App,
     ) {
-        match (self.inner.as_mut(), hitbox) {
+        // The selection's highlight goes down first, so the glyphs and the
+        // runs' own backgrounds land on top of it.
+        if self.selectable
+            && let Some(mut range) = selected_range(&self.id, cx)
+        {
+            range.end = range.end.min(self.layout.len());
+            if range.start < range.end {
+                paint_highlight(&self.layout, range, self.selection_color, bounds, window);
+            }
+        }
+        // The text cursor over the text; a link's pointing hand, set by the
+        // inner text's own paint below, wins over it.
+        if self.selectable
+            && let Some(hitbox) = hitbox.as_ref()
+        {
+            window.set_cursor_style(CursorStyle::IBeam, hitbox);
+        }
+        // Borrow, not move: the selection handlers below re-read the same
+        // hitbox after the inner paint consumes the interactive variant's.
+        match (self.inner.as_mut(), hitbox.as_mut()) {
             (Some(Inner::Plain(text)), _) => {
                 text.paint(None, inspector_id, bounds, &mut (), &mut (), window, cx)
             }
@@ -308,6 +346,20 @@ impl Element for RichText {
                 self.layout.line_height(),
                 TextAlign::Left,
                 None,
+                window,
+                cx,
+            );
+        }
+        // The mouse handlers live for this frame only, so they re-attach on
+        // every paint.
+        if self.selectable
+            && let Some(hitbox) = hitbox.as_ref()
+        {
+            selection::attach(
+                self.id.clone(),
+                self.text.clone(),
+                &self.layout,
+                hitbox,
                 window,
                 cx,
             );

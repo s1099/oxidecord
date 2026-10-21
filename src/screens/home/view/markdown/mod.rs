@@ -8,6 +8,7 @@
 
 mod inline;
 mod rich_text;
+mod selection;
 
 use std::cell::Cell;
 use std::rc::Rc;
@@ -84,6 +85,8 @@ struct Palette {
     mention: Hsla,
     mention_background: Hsla,
     code_background: Hsla,
+    /// Behind text the mouse has dragged over.
+    selection: Hsla,
     /// Opaque, since the text under a hidden spoiler is set in the same
     /// colour as its bar — anything see-through would show the glyphs.
     spoiler_hidden: Hsla,
@@ -101,6 +104,7 @@ impl Palette {
             mention: theme.link,
             mention_background: theme.link.opacity(0.15),
             code_background: theme.muted,
+            selection: theme.selection,
             spoiler_hidden: theme.background.blend(theme.muted_foreground.opacity(0.6)),
             spoiler_revealed: theme.foreground.opacity(0.08),
             timestamp_background: theme.foreground.opacity(0.08),
