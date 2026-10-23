@@ -16,6 +16,8 @@ use crate::screens::home::view::avatar;
 use crate::ui::button::Button;
 use crate::ui::settings;
 
+use super::voice::DeviceMenu;
+
 impl HomeScreen {
     pub(super) fn render_user_panel(&self, cx: &Context<Self>) -> impl IntoElement {
         let theme = cx.theme();
@@ -111,8 +113,9 @@ impl HomeScreen {
             .items_center()
             .child(account)
             .child(
-                self.with_mic_menu(
+                self.with_device_menu(
                     "panel-mic-menu",
+                    "Input Device",
                     Button::new("self-mute")
                         .icon(Icon::default().path(if self.voice_muted {
                             "icons/mic-off.svg"
@@ -124,25 +127,32 @@ impl HomeScreen {
                         .selected(self.voice_muted)
                         .tooltip(if self.voice_muted { "Unmute" } else { "Mute" })
                         .on_click(cx.listener(|this, _, _, cx| this.toggle_voice_mute(cx))),
+                    DeviceMenu::input(),
                     cx,
                 ),
             )
             .child(
-                Button::new("self-deafen")
-                    .icon(Icon::default().path(if self.voice_deafened {
-                        "icons/headphone-off.svg"
-                    } else {
-                        "icons/headphones.svg"
-                    }))
-                    .ghost()
-                    .small()
-                    .selected(self.voice_deafened)
-                    .tooltip(if self.voice_deafened {
-                        "Undeafen"
-                    } else {
-                        "Deafen"
-                    })
-                    .on_click(cx.listener(|this, _, _, cx| this.toggle_voice_deafen(cx))),
+                self.with_device_menu(
+                    "panel-speaker-menu",
+                    "Output Device",
+                    Button::new("self-deafen")
+                        .icon(Icon::default().path(if self.voice_deafened {
+                            "icons/headphone-off.svg"
+                        } else {
+                            "icons/headphones.svg"
+                        }))
+                        .ghost()
+                        .small()
+                        .selected(self.voice_deafened)
+                        .tooltip(if self.voice_deafened {
+                            "Undeafen"
+                        } else {
+                            "Deafen"
+                        })
+                        .on_click(cx.listener(|this, _, _, cx| this.toggle_voice_deafen(cx))),
+                    DeviceMenu::output(),
+                    cx,
+                ),
             )
             .child(
                 Button::new("user-settings")

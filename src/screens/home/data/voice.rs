@@ -177,12 +177,49 @@ impl HomeScreen {
         device: Option<String>,
         cx: &mut Context<Self>,
     ) {
+        if self.voice_input_device == device {
+            return;
+        }
         self.voice_input_device = device.clone();
         prefs::update(|prefs| prefs.input_device = device.clone());
         if let Some(engine) = &self.voice_engine {
             engine.set_input_device(device);
         }
         cx.notify();
+    }
+
+    /// Picks the speaker to play through, for this call and every later one.
+    ///
+    /// `None` means whichever device the system calls the default, which is
+    /// also where an unplugged or unusable choice falls back to. On a live
+    /// call the switch reopens the call's streams — playback is interrupted
+    /// locally while they restart and the senders' decoders drop what they
+    /// had buffered — but mute, deafen and the connection itself are
+    /// untouched.
+    pub(in crate::screens::home) fn set_output_device(
+        &mut self,
+        device: Option<String>,
+        cx: &mut Context<Self>,
+    ) {
+        if self.voice_output_device == device {
+            return;
+        }
+        self.voice_output_device = device.clone();
+        prefs::update(|prefs| prefs.output_device = device.clone());
+        if let Some(engine) = &self.voice_engine {
+            engine.set_output_device(device);
+        }
+        cx.notify();
+    }
+
+    /// The microphone id stored for the picker to tick, if any.
+    pub(in crate::screens::home) fn chosen_input_device(&self) -> Option<String> {
+        self.voice_input_device.clone()
+    }
+
+    /// The speaker id stored for the picker to tick, if any.
+    pub(in crate::screens::home) fn chosen_output_device(&self) -> Option<String> {
+        self.voice_output_device.clone()
     }
 
     /// Pushes mute and deafen to the call and to the gateway. The gateway half

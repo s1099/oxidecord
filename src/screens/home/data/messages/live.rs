@@ -55,8 +55,9 @@ impl HomeScreen {
 
         let (tx, rx) = futures::channel::mpsc::unbounded::<VoiceEvent>();
         let engine = VoiceEngine::start(tx);
-        // Hand over the remembered microphone before any call can be made.
+        // Hand over the remembered devices before any call can be made.
         engine.set_input_device(self.voice_input_device.clone());
+        engine.set_output_device(self.voice_output_device.clone());
         self.voice_engine = Some(engine);
 
         cx.spawn(async move |this, cx| {
