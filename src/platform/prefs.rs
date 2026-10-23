@@ -22,6 +22,9 @@ pub struct Prefs {
     /// the system calls the default.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub input_device: Option<String>,
+    /// Silence original voice membership cues (independent of microphone mute).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub voice_event_sounds_disabled: bool,
     /// Channel categories the user has collapsed, keyed by guild id. Raw ids
     /// keep this module free of Discord types.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]

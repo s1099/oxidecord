@@ -7,6 +7,8 @@
 
 use std::sync::Arc;
 
+pub(super) mod cues;
+
 use futures::channel::mpsc::UnboundedSender;
 use gpui::RenderImage;
 
