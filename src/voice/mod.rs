@@ -15,6 +15,7 @@
 //! directly.
 
 mod audio;
+pub mod cues;
 pub mod stream;
 
 use std::collections::{HashMap, HashSet};
@@ -41,6 +42,8 @@ pub use audio::{InputDevice, input_devices};
 /// Everything needed to open a voice connection, gathered from the pair of
 /// gateway dispatches that follow a join.
 pub struct VoiceConnection {
+    /// Identifies this local attempt, so late events cannot confirm a newer call.
+    pub attempt: u64,
     pub channel_id: Id<ChannelMarker>,
     /// The guild the channel is in. A DM call has none, and Discord expects
     /// the channel's own id in its place.
@@ -52,13 +55,20 @@ pub struct VoiceConnection {
 }
 
 pub enum VoiceEvent {
-    Connected,
+    Connected {
+        attempt: u64,
+    },
     /// The call ended on its own: the connection dropped, or the user was
     /// disconnected from the far end.
-    Disconnected,
+    Disconnected {
+        attempt: u64,
+    },
     /// Who is transmitting right now, sent whenever the set changes.
     Speaking(HashSet<Id<UserMarker>>),
-    Failed(String),
+    Failed {
+        attempt: u64,
+        error: String,
+    },
 }
 
 /// Drives one call at a time.
@@ -166,6 +176,7 @@ async fn run(mut commands: UnboundedReceiver<Command>, events: UnboundedSender<V
     while let Some(command) = commands.next().await {
         match command {
             Command::Connect(connection) => {
+                let attempt = connection.attempt;
                 // Only one call at a time: leaving the old one first stops its
                 // devices before the new one opens them.
                 call = None;
@@ -181,10 +192,13 @@ async fn run(mut commands: UnboundedReceiver<Command>, events: UnboundedSender<V
                 {
                     Ok(new) => {
                         call = Some(new);
-                        let _ = events.unbounded_send(VoiceEvent::Connected);
+                        let _ = events.unbounded_send(VoiceEvent::Connected { attempt });
                     }
                     Err(error) => {
-                        let _ = events.unbounded_send(VoiceEvent::Failed(error.to_string()));
+                        let _ = events.unbounded_send(VoiceEvent::Failed {
+                            attempt,
+                            error: error.to_string(),
+                        });
                     }
                 }
             }
@@ -266,6 +280,7 @@ async fn connect(
         Event::Core(CoreEvent::DriverDisconnect),
         DriverDisconnectHandler {
             events: events.clone(),
+            attempt: connection.attempt,
         },
     );
 
@@ -455,12 +470,15 @@ impl EventHandler for TickHandler {
 /// Reports a call that ended without the user asking.
 struct DriverDisconnectHandler {
     events: UnboundedSender<VoiceEvent>,
+    attempt: u64,
 }
 
 #[async_trait]
 impl EventHandler for DriverDisconnectHandler {
     async fn act(&self, _ctx: &EventContext<'_>) -> Option<Event> {
-        let _ = self.events.unbounded_send(VoiceEvent::Disconnected);
+        let _ = self.events.unbounded_send(VoiceEvent::Disconnected {
+            attempt: self.attempt,
+        });
         None
     }
 }

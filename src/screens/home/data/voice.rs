@@ -17,7 +17,9 @@ use twilight_model::id::{
 use crate::discord;
 use crate::platform::prefs;
 use crate::screens::home::HomeScreen;
+use crate::screens::home::voice::cues::CuePolicy;
 use crate::screens::home::voice::{PendingVoice, VoiceCall, VoiceParticipant, VoiceStatus};
+use crate::voice::cues::Cue;
 use crate::voice::{VoiceConnection, VoiceEvent};
 
 impl HomeScreen {
@@ -110,6 +112,8 @@ impl HomeScreen {
             self.voice_muted,
             self.voice_deafened,
         );
+        self.voice_cue_policy.request(call.channel_id);
+        self.voice_cues.settings().discard_pending();
         self.voice = Some(call);
         self.pending_voice = Some(PendingVoice::default());
         self.voice_speaking.clear();
@@ -133,6 +137,10 @@ impl HomeScreen {
     fn end_call_locally(&mut self) {
         if let Some(engine) = &self.voice_engine {
             engine.disconnect();
+        }
+        self.voice_cues.settings().discard_pending();
+        if let Some(cue) = self.voice_cue_policy.end() {
+            self.voice_cues.play(cue);
         }
         self.voice = None;
         self.pending_voice = None;
@@ -188,6 +196,7 @@ impl HomeScreen {
     /// Pushes mute and deafen to the call and to the gateway. The gateway half
     /// is what everyone else sees on the user's tile.
     fn apply_voice_flags(&mut self, cx: &mut Context<Self>) {
+        self.voice_cues.settings().set_deafened(self.voice_deafened);
         if let Some(engine) = &self.voice_engine {
             engine.set_muted(self.voice_muted);
             engine.set_deafened(self.voice_deafened);
@@ -217,17 +226,22 @@ impl HomeScreen {
         let is_self = Some(user_id) == self.self_user_id;
         let channel_id = state.channel_id;
 
-        let state = with_known_profile(state, self.voice_states.get(&user_id));
-        if channel_id.is_some() {
-            self.voice_states.insert(user_id, state.clone());
-        } else {
-            // No channel means they left voice entirely.
-            self.voice_states.remove(&user_id);
+        let (state, cue) = record_voice_state(
+            &mut self.voice_states,
+            state,
+            is_self,
+            Some(&self.voice_cue_policy),
+        );
+        if let Some(cue) = cue {
+            self.voice_cues.play_peer(cue);
         }
 
         if is_self && self.voice.is_some() {
             match channel_id {
                 Some(channel_id) => {
+                    self.voice_muted = state.self_mute;
+                    self.voice_deafened = state.self_deaf;
+                    self.voice_cues.settings().set_deafened(state.self_deaf);
                     // A moderator can move the user between channels. Follow
                     // them: the voice server for the new channel is on its way.
                     if self
@@ -245,11 +259,6 @@ impl HomeScreen {
                     let pending = self.pending_voice.get_or_insert_with(PendingVoice::default);
                     pending.session_id = Some(state.session_id.clone());
                     self.try_connect_voice(cx);
-
-                    // The far end can mute or deafen the user; mirror it so the
-                    // buttons match what everyone else sees.
-                    self.voice_muted = state.self_mute;
-                    self.voice_deafened = state.self_deaf;
                 }
                 // Disconnected from the far end: the call is already over, so
                 // only the local side is torn down.
@@ -285,7 +294,7 @@ impl HomeScreen {
             }
             let known = previous.remove(&state.user_id);
             let state = with_known_profile(state, known.as_ref());
-            self.voice_states.insert(state.user_id, state);
+            record_voice_state(&mut self.voice_states, state, false, None);
         }
         cx.notify();
     }
@@ -293,6 +302,8 @@ impl HomeScreen {
     /// Points the open call at a channel the user was moved to, and starts
     /// waiting for that channel's voice server.
     fn follow_move(&mut self, channel_id: Id<ChannelMarker>, guild_id: Option<Id<GuildMarker>>) {
+        self.voice_cue_policy.request(channel_id);
+        self.voice_cues.settings().discard_pending();
         // A move within the guild is the common case; a name the app hasn't
         // loaded keeps the one already on the call rather than blanking it.
         let name = self
@@ -481,6 +492,7 @@ impl HomeScreen {
         };
 
         let connection = VoiceConnection {
+            attempt: self.voice_cue_policy.connecting(),
             channel_id: call.channel_id,
             guild_id: call.guild_id,
             user_id,
@@ -488,6 +500,7 @@ impl HomeScreen {
             token,
             endpoint,
         };
+        self.voice_cues.settings().discard_pending();
         // Taken rather than kept: a later reconnect arrives as a fresh pair of
         // dispatches, and reusing a stale token would be rejected.
         self.pending_voice = None;
@@ -507,7 +520,13 @@ impl HomeScreen {
         cx: &mut Context<Self>,
     ) {
         match event {
-            VoiceEvent::Connected => {
+            VoiceEvent::Connected { attempt } => {
+                if !self.voice_cue_policy.accepts(attempt) {
+                    return;
+                }
+                if let Some(cue) = self.voice_cue_policy.connected(attempt) {
+                    self.voice_cues.play(cue);
+                }
                 if let Some(call) = &mut self.voice {
                     call.status = VoiceStatus::Connected;
                     call.error = None;
@@ -515,7 +534,10 @@ impl HomeScreen {
                     self.ring_if_placed(channel_id, cx);
                 }
             }
-            VoiceEvent::Disconnected => {
+            VoiceEvent::Disconnected { attempt } => {
+                if !self.voice_cue_policy.accepts(attempt) {
+                    return;
+                }
                 // The connection dropped on its own; tell the gateway so the
                 // user doesn't linger in the channel for everyone else.
                 if self.voice.is_some() {
@@ -525,7 +547,11 @@ impl HomeScreen {
             VoiceEvent::Speaking(speaking) => {
                 self.voice_speaking = speaking;
             }
-            VoiceEvent::Failed(error) => {
+            VoiceEvent::Failed { attempt, error } => {
+                if !self.voice_cue_policy.accepts(attempt) {
+                    return;
+                }
+                self.voice_cue_policy.failed(attempt);
                 if let Some(call) = &mut self.voice {
                     call.error = Some(error);
                 }
@@ -582,6 +608,31 @@ impl HomeScreen {
     }
 }
 
+/// Snapshots pass no live policy: they seed the next update's baseline without
+/// announcing arrivals or departures, including a snapshot's removals.
+fn record_voice_state(
+    states: &mut HashMap<Id<UserMarker>, discord::VoiceUserState>,
+    state: discord::VoiceUserState,
+    is_self: bool,
+    live_policy: Option<&CuePolicy>,
+) -> (discord::VoiceUserState, Option<Cue>) {
+    let known = states.get(&state.user_id);
+    let cue = if is_self {
+        None
+    } else {
+        live_policy.and_then(|policy| {
+            policy.peer(known.and_then(|state| state.channel_id), state.channel_id)
+        })
+    };
+    let state = with_known_profile(state, known);
+    if state.channel_id.is_some() {
+        states.insert(state.user_id, state.clone());
+    } else {
+        states.remove(&state.user_id);
+    }
+    (state, cue)
+}
+
 /// Gateway dispatches don't always repeat the member, so a state that arrives
 /// without one keeps the name and avatar already known for that user.
 fn with_known_profile(
@@ -596,5 +647,73 @@ fn with_known_profile(
             .avatar_url
             .or_else(|| known.and_then(|known| known.avatar_url.clone())),
         ..state
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap;
+    use twilight_model::id::Id;
+
+    use super::{Cue, CuePolicy, record_voice_state};
+    use crate::discord;
+
+    fn state(channel: Option<u64>) -> discord::VoiceUserState {
+        discord::VoiceUserState {
+            user_id: Id::new(10),
+            guild_id: Some(Id::new(20)),
+            channel_id: channel.map(Id::new),
+            session_id: "session".into(),
+            self_mute: false,
+            self_deaf: false,
+            mute: false,
+            deaf: false,
+            self_stream: false,
+            name: None,
+            avatar_url: None,
+        }
+    }
+
+    #[test]
+    fn snapshots_seed_quiet_baselines_and_live_updates_only_announce_membership() {
+        let mut states = HashMap::new();
+        let mut policy = CuePolicy::default();
+        policy.request(Id::new(1));
+        let attempt = policy.connecting();
+        policy.connected(attempt);
+
+        assert_eq!(
+            record_voice_state(&mut states, state(Some(1)), false, None).1,
+            None
+        );
+        let mut muted = state(Some(1));
+        muted.self_mute = true;
+        muted.self_deaf = true;
+        assert_eq!(
+            record_voice_state(&mut states, muted, false, Some(&policy)).1,
+            None
+        );
+        assert_eq!(
+            record_voice_state(&mut states, state(None), false, Some(&policy)).1,
+            Some(Cue::PeerLeave)
+        );
+        assert_eq!(
+            record_voice_state(&mut states, state(None), false, Some(&policy)).1,
+            None
+        );
+        assert_eq!(
+            record_voice_state(&mut states, state(Some(1)), false, Some(&policy)).1,
+            Some(Cue::PeerJoin)
+        );
+        // Snapshot removal/replacement is quiet even during a connected call.
+        assert_eq!(
+            record_voice_state(&mut states, state(None), false, None).1,
+            None
+        );
+        assert!(states.is_empty());
+        assert_eq!(
+            record_voice_state(&mut states, state(Some(1)), true, Some(&policy)).1,
+            None
+        );
     }
 }
