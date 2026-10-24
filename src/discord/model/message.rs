@@ -261,7 +261,11 @@ impl ForwardedMessage {
 
 #[derive(Clone)]
 pub struct ImageAttachment {
+    /// Scaled down to the inline preview's box.
     pub url: String,
+    /// The proxy's unscaled original, which the image viewer asks for at the
+    /// size of the window and opens in the browser.
+    pub source: String,
     /// Intrinsic pixel dimensions, when Discord reports them. Used to size the
     /// inline preview while preserving aspect ratio.
     pub width: Option<u32>,
@@ -416,6 +420,7 @@ fn convert_attachments(
                 PREVIEW_MAX_WIDTH,
                 PREVIEW_MAX_HEIGHT,
             ),
+            source: attachment.proxy_url.clone(),
             width: attachment.width.map(|w| w as u32),
             height: attachment.height.map(|h| h as u32),
             spoiler: is_spoiler(attachment).then(|| SpoilerCover {

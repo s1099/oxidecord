@@ -41,8 +41,8 @@ pub const EDIT_CONTEXT: &str = "MessageEdit";
 pub const COMPOSER_CONTEXT: &str = "MessageComposer";
 
 use state::{
-    Autocomplete, EditingMessage, EmojiPicker, EmojiTarget, PinsPopup, ProfilePopup, ReplyTarget,
-    View,
+    Autocomplete, EditingMessage, EmojiPicker, EmojiTarget, ImageViewer, PinsPopup, ProfilePopup,
+    ReplyTarget, View,
 };
 
 actions!(

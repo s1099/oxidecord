@@ -83,7 +83,11 @@ pub struct EmbedFooter {
 
 #[derive(Clone)]
 pub struct EmbedMedia {
+    /// Scaled down to the box it's drawn in.
     pub url: String,
+    /// The unscaled original, which the image viewer asks for at the size of
+    /// the window and opens in the browser.
+    pub source: String,
     /// Intrinsic pixel dimensions, when Discord reports them. Used to lay out
     /// the exact scaled box so the message doesn't reflow once it loads.
     pub width: Option<u32>,
@@ -132,6 +136,7 @@ pub(in crate::discord) fn convert_embed(embed: twilight_model::channel::message:
 
     let large = |url: &str, width, height| EmbedMedia {
         url: scaled_url(url, width, height, IMAGE_MAX_WIDTH, IMAGE_MAX_HEIGHT),
+        source: url.to_owned(),
         width: width.map(|w| w as u32),
         height: height.map(|h| h as u32),
     };
@@ -156,6 +161,7 @@ pub(in crate::discord) fn convert_embed(embed: twilight_model::channel::message:
                     THUMBNAIL_REQUEST_SIZE,
                     THUMBNAIL_REQUEST_SIZE,
                 ),
+                source: url.to_owned(),
                 width: raw.width.map(|w| w as u32),
                 height: raw.height.map(|h| h as u32),
             });

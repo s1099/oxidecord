@@ -15,6 +15,7 @@ use gpui_kit::*;
 
 use crate::discord;
 use crate::screens::home::HomeScreen;
+use crate::screens::home::data::image_viewer::ViewerImage;
 use crate::screens::home::selection::{EmbedPiece, TextPart};
 use crate::screens::home::state::MediaKey;
 use crate::ui::depth::media_shadow;
@@ -285,24 +286,28 @@ impl HomeScreen {
             None => media = media.max_h(px(MEDIA_MAX_HEIGHT)),
         }
 
-        // Clicking opens the source page for a video and the image itself
+        // Clicking opens the source page for a video and the image viewer
         // otherwise, so a YouTube preview lands on YouTube rather than on a
         // still frame.
-        let target = if embed.has_video {
-            embed.url.clone()
-        } else {
-            Some(image.url.clone())
-        };
+        let video_url = embed.url.clone().filter(|_| embed.has_video);
+        let viewed = (!embed.has_video).then(|| ViewerImage::from(image));
 
         div()
             .id(id.element_id("embed-image"))
             .relative()
             .flex()
             .mt(px(top_gap))
-            .when_some(target, |this, url| {
+            .when_some(video_url, |this, url| {
                 this.cursor_pointer()
                     .hover(|this| this.opacity(0.9))
                     .on_click(move |_, _, cx| cx.open_url(&url))
+            })
+            .when_some(viewed, |this, viewed| {
+                this.cursor_pointer()
+                    .hover(|this| this.opacity(0.9))
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        this.open_image_viewer(viewed.clone(), window, cx);
+                    }))
             })
             .child(media)
             .when(embed.has_video, |this| {

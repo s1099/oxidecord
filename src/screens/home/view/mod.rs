@@ -2,6 +2,7 @@
 
 mod composer;
 mod content;
+mod image_viewer;
 mod markdown;
 mod member_list;
 mod message;
@@ -72,6 +73,8 @@ impl Render for HomeScreen {
                 .then(|| self.render_channel_sidebar(cx).into_any_element()),
         };
 
+        let image_viewer = self.render_image_viewer(window, cx);
+
         h_flex()
             .size_full()
             // Anchors the profile popout's full-screen dismiss layer.
@@ -83,7 +86,11 @@ impl Render for HomeScreen {
             .on_action(cx.listener(Self::on_paste_attachment))
             .on_action(cx.listener(Self::on_edit_last_message))
             .on_action(cx.listener(|this, _: &MarkConversationRead, window, cx| {
-                this.mark_conversation_read(window, cx);
+                if this.image_viewer.is_some() {
+                    this.close_image_viewer(window, cx);
+                } else {
+                    this.mark_conversation_read(window, cx);
+                }
             }))
             .on_action(cx.listener(Self::on_copy_selection))
             .on_modifiers_changed(cx.listener(|this, event: &ModifiersChangedEvent, _, cx| {
@@ -103,6 +110,7 @@ impl Render for HomeScreen {
             .children(self.render_profile_popup(cx))
             .children(self.render_pins_popup(cx))
             .children(self.render_emoji_picker(cx))
+            .children(image_viewer)
     }
 }
 

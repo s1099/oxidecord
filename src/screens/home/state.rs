@@ -115,6 +115,30 @@ pub(super) struct PinsPopup {
     pub error: Option<String>,
 }
 
+/// The image open full size over the whole screen, as Discord's lightbox.
+pub(super) struct ImageViewer {
+    /// What's already on screen in the message, drawn stretched while the
+    /// larger copy loads so the viewer never opens empty.
+    pub preview_url: SharedString,
+    /// The copy scaled to the window. Dropped from the image cache when the
+    /// viewer closes, being far bigger than anything in the message list.
+    pub full_url: SharedString,
+    /// The original, for "Open in Browser".
+    pub source_url: String,
+    /// A copy at the original's resolution, fetched the first time the image
+    /// is zoomed past what the window-sized one holds. Dropped on close too.
+    pub zoomed_url: Option<SharedString>,
+    /// Intrinsic dimensions, when Discord reported them.
+    pub width: Option<u32>,
+    pub height: Option<u32>,
+    /// How far the image is zoomed past fitting the window: 1 fits it.
+    pub zoom: f32,
+    /// How far the image's centre is panned from the window's.
+    pub offset: Point<Pixels>,
+    /// The pan under way: where the pointer went down, and the offset then.
+    pub drag: Option<(Point<Pixels>, Point<Pixels>)>,
+}
+
 /// Where an emoji chosen from the picker goes.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(super) enum EmojiTarget {
@@ -466,6 +490,7 @@ pub struct HomeScreen {
     pub(super) guild_emojis: HashMap<Id<GuildMarker>, Vec<discord::GuildEmoji>>,
     pub(super) emoji_picker: Option<EmojiPicker>,
     pub(super) pins_popup: Option<PinsPopup>,
+    pub(super) image_viewer: Option<ImageViewer>,
     /// The roles each member holds, by guild, as far as the gateway has told
     /// us. The signed-in user's decide whether a role mention pings them;
     /// everyone's colour their names.
@@ -654,6 +679,7 @@ impl HomeScreen {
             guild_emojis: HashMap::new(),
             emoji_picker: None,
             pins_popup: None,
+            image_viewer: None,
             member_list: None,
             member_list_hidden: prefs::load().member_list_hidden,
             search_input,

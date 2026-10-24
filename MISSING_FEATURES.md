@@ -19,7 +19,6 @@
 | Uploads larger than 10 MB (Nitro and boosted-server limits) | Partial | Hard-coded 10 MB cap (`MAX_ATTACHMENT_SIZE`) |
 | Drag and drop of files onto the chat | Missing | Picker and paste only |
 | Attachment alt text and descriptions | Missing | |
-| Image lightbox and full-size viewer | Missing | |
 | System messages (joins, pins, boosts, calls, thread created, and so on) | Missing | |
 | Pinning and unpinning messages, and the pinned-messages panel | Partial | The header's pin button opens the pinned-messages popout; pinning, unpinning, and jumping to a pin aren't done yet |
 | Message search (with filters: from, in, has, before, after) | Missing | The header has a search box, but typing in it does nothing yet |

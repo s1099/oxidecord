@@ -18,7 +18,8 @@ pub use model::{
     Markdown, MemberGroupKind, MemberListGroup, MemberListItem, MemberListOp, MemberListUpdate,
     Mention, MentionedUser, Message, MessageReference, MuteSettings, PresenceStatus, Reaction,
     ReactionEmoji, Reactor, ReadState, Role, SPOILER_PREFIX, SpoilerCover, StreamServerInfo,
-    UnreadChannel, UserProfile, VideoAttachment, VoiceServerInfo, VoiceUserState, stream_key,
+    UnreadChannel, UserProfile, VideoAttachment, VoiceServerInfo, VoiceUserState, scaled_url,
+    stream_key,
 };
 pub use rest::{
     MAX_ATTACHMENT_SIZE, MESSAGE_PAGE_SIZE, MessagePage, REACTORS_PAGE_SIZE, ack_message,

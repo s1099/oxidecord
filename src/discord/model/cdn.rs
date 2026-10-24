@@ -51,7 +51,7 @@ pub(super) fn emoji_url(id: impl std::fmt::Display, animated: bool) -> String {
 
 /// Asks the CDN for an image already scaled to the box it will be drawn in,
 /// preserving its aspect ratio.
-pub(super) fn scaled_url(
+pub fn scaled_url(
     url: &str,
     width: Option<u64>,
     height: Option<u64>,

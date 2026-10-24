@@ -138,7 +138,10 @@ impl HomeScreen {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if let Some(autocomplete) = self.autocomplete.take() {
+        // The viewer covers the composer, so it's what escape is for.
+        if self.image_viewer.is_some() {
+            self.close_image_viewer(window, cx);
+        } else if let Some(autocomplete) = self.autocomplete.take() {
             self.autocomplete_dismissed = Some(autocomplete.range.start);
             cx.notify();
         } else if self.replying_to.take().is_some() {

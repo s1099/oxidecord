@@ -15,6 +15,7 @@ use crate::ui::button::Button;
 use crate::ui::depth::media_shadow;
 
 use super::super::super::data::attachments::format_size;
+use super::super::super::data::image_viewer::ViewerImage;
 use super::{MEDIA_MAX_HEIGHT, MEDIA_MAX_WIDTH, fit_within};
 
 /// What a video card falls back to when Discord reports no dimensions —
@@ -54,11 +55,21 @@ impl HomeScreen {
             .max_w(px(MEDIA_MAX_WIDTH));
         // With intrinsic dimensions we can lay out the exact scaled box, so the
         // message doesn't reflow once the image finishes loading.
-        match size {
+        let element = match size {
             Some((width, height)) => element.w(px(width)).h(px(height)),
             None => element.max_h(px(MEDIA_MAX_HEIGHT)),
-        }
-        .into_any_element()
+        };
+
+        let viewed = ViewerImage::from(image);
+        div()
+            .id(key.element_id("image"))
+            .flex()
+            .cursor_pointer()
+            .child(element)
+            .on_click(cx.listener(move |this, _, window, cx| {
+                this.open_image_viewer(viewed.clone(), window, cx);
+            }))
+            .into_any_element()
     }
 
     /// The cover an attachment marked as a spoiler shows, if it hasn't been
