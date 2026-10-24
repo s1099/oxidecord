@@ -1,15 +1,12 @@
 //! The left-hand server rail: the DMs button, the guild icons, and the folders
 //! grouping them.
 
-use std::sync::{Arc, LazyLock};
-
 use gpui_kit::component::{
     ActiveTheme as _, Icon, IconName, avatar::Avatar, h_flex, separator::Separator, v_flex,
 };
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
-use crate::assets::icons::DISCORD_ICON;
 use crate::discord::{DirectMessage, Guild};
 use crate::screens::home::folders::{RailEntry, RailFolder};
 use crate::screens::home::{HomeScreen, View};
@@ -25,15 +22,6 @@ const PILL_RADIUS: f32 = 20.;
 /// Space between an icon's frame and the rail's edge, which the unread mark
 /// hangs into: the 72px rail less the 56px frame, halved.
 const RAIL_GUTTER: Pixels = px(8.);
-
-/// Built once: `Image::from_bytes` hashes the whole buffer, and the rail
-/// renders on every frame of a scroll glide or a playing video.
-static DISCORD_LOGO: LazyLock<Arc<Image>> = LazyLock::new(|| {
-    Arc::new(Image::from_bytes(
-        ImageFormat::Svg,
-        DISCORD_ICON.as_bytes().to_vec(),
-    ))
-});
 
 impl HomeScreen {
     pub(super) fn render_server_rail(&self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -73,7 +61,16 @@ impl HomeScreen {
                             .justify_center()
                             .rounded(px(16.))
                             .bg(logo_bg)
-                            .child(img(DISCORD_LOGO.clone()).size(px(28.))),
+                            // `svg` rather than `img`: an image is rasterized
+                            // once at twice the SVG's own size and shrunk on the
+                            // GPU, which has no mipmaps, so it came out jagged.
+                            // `svg` rasterizes at the size it's drawn.
+                            .child(
+                                svg()
+                                    .path("icons/discord.svg")
+                                    .size(px(28.))
+                                    .text_color(white()),
+                            ),
                     )
                     .children(rail_badge(dm_mentions, cx))
                     .tooltip(tooltip::text("Direct Messages"))
