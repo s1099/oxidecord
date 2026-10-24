@@ -8,6 +8,9 @@
 //! a gap of blank space in the text, and the image is painted into wherever
 //! that gap lands once the text has wrapped. A trailing [`Marker`] works the
 //! same way, since a run can't change the font size either.
+//!
+//! A selectable text also reports where it was laid out, for the message
+//! list's selection to hit-test, and paints its share of that selection.
 
 use std::mem;
 use std::ops::Range;
@@ -15,6 +18,7 @@ use std::rc::Rc;
 
 use gpui_kit::*;
 
+use crate::screens::home::selection::{TextKey, TextRegion, TextRegions};
 use crate::ui::tooltip;
 
 /// The blank an emoji is drawn into: an em space and a quarter-em space, so
@@ -55,6 +59,15 @@ pub(super) struct Segment {
 
 type ClickListener = Rc<dyn Fn(usize, &mut Window, &mut App)>;
 
+/// What a text in the message list's selection needs.
+pub(super) struct Selectable {
+    pub key: TextKey,
+    pub regions: TextRegions,
+    /// Its share of the selection, if any.
+    pub selected: Option<Range<usize>>,
+    pub color: Hsla,
+}
+
 pub(super) struct RichText {
     id: ElementId,
     text: SharedString,
@@ -68,6 +81,7 @@ pub(super) struct RichText {
     emoji: Vec<(Range<usize>, SharedString)>,
     marker: Option<Marker>,
     shaped_marker: Option<ShapedMarker>,
+    selectable: Option<Selectable>,
     image_cache: Entity<RetainAllImageCache>,
     inner: Option<Inner>,
     layout: TextLayout,
@@ -86,18 +100,19 @@ enum Inner {
 impl RichText {
     pub fn new(
         id: impl Into<ElementId>,
-        text: String,
+        text: impl Into<SharedString>,
         segments: Vec<Segment>,
         mono_family: SharedString,
         image_cache: &Entity<RetainAllImageCache>,
     ) -> Self {
+        let text = text.into();
         debug_assert_eq!(
             segments.iter().map(|segment| segment.len).sum::<usize>(),
             text.len()
         );
         Self {
             id: id.into(),
-            text: text.into(),
+            text,
             segments,
             mono_family,
             clickable: Vec::new(),
@@ -106,6 +121,7 @@ impl RichText {
             emoji: Vec::new(),
             marker: None,
             shaped_marker: None,
+            selectable: None,
             image_cache: image_cache.clone(),
             inner: None,
             layout: TextLayout::default(),
@@ -137,6 +153,11 @@ impl RichText {
 
     pub fn marker(mut self, marker: Marker) -> Self {
         self.marker = Some(marker);
+        self
+    }
+
+    pub fn selectable(mut self, selectable: Selectable) -> Self {
+        self.selectable = Some(selectable);
         self
     }
 }
@@ -233,7 +254,7 @@ impl Element for RichText {
         window: &mut Window,
         cx: &mut App,
     ) -> Self::PrepaintState {
-        let hitbox = match self.inner.as_mut()? {
+        let mut hitbox = match self.inner.as_mut()? {
             Inner::Plain(text) => {
                 text.prepaint(None, inspector_id, bounds, &mut (), window, cx);
                 None
@@ -242,6 +263,20 @@ impl Element for RichText {
                 Some(text.prepaint(id, inspector_id, bounds, &mut (), window, cx))
             }
         };
+        if let Some(selectable) = &self.selectable {
+            // Plain text has no hitbox of its own, and the selection needs one
+            // to tell a press on the text from one on whatever covers it.
+            let hitbox = hitbox
+                .get_or_insert_with(|| window.insert_hitbox(bounds, HitboxBehavior::Normal))
+                .clone();
+            selectable.regions.borrow_mut().push(TextRegion {
+                key: selectable.key,
+                text: self.text.clone(),
+                layout: self.layout.clone(),
+                bounds,
+                hitbox,
+            });
+        }
 
         // Each emoji is centred in its gap, as tall as it is wide but never
         // taller than the line. A gap split by a wrap has no one width, so
@@ -288,6 +323,17 @@ impl Element for RichText {
         window: &mut Window,
         cx: &mut App,
     ) {
+        if let Some(selectable) = &self.selectable {
+            // Under the glyphs and the runs' own backgrounds, so a mention's
+            // pill and inline code stay legible inside it.
+            if let Some(range) = selectable.selected.clone() {
+                paint_selection(&self.layout, bounds, range, selectable.color, window);
+            }
+            // Before the inner text's paint, so a link's pointing hand wins.
+            if let Some(hitbox) = hitbox.as_ref() {
+                window.set_cursor_style(CursorStyle::IBeam, hitbox);
+            }
+        }
         match (self.inner.as_mut(), hitbox) {
             (Some(Inner::Plain(text)), _) => {
                 text.paint(None, inspector_id, bounds, &mut (), &mut (), window, cx)
@@ -320,6 +366,59 @@ impl IntoElement for RichText {
 
     fn into_element(self) -> Self::Element {
         self
+    }
+}
+
+/// Fills in a selected range one wrapped row at a time, each from where the
+/// range enters the row to where it leaves; a row it runs on past the end of
+/// gets a sliver more, standing for the line break it takes in.
+fn paint_selection(
+    layout: &TextLayout,
+    bounds: Bounds<Pixels>,
+    range: Range<usize>,
+    color: Hsla,
+    window: &mut Window,
+) {
+    let line_height = layout.line_height();
+    let line_break = line_height / 4.;
+    let mut top = bounds.top();
+    let mut line_start = 0;
+    for line in layout.line_layouts() {
+        let line_end = line_start + line.len();
+        if line_start >= range.end {
+            break;
+        }
+        if line_end >= range.start {
+            let unwrapped = &line.unwrapped_layout;
+            let wraps = line
+                .wrap_boundaries()
+                .iter()
+                .map(|boundary| unwrapped.runs[boundary.run_ix].glyphs[boundary.glyph_ix].index);
+            let mut row_start = 0;
+            for (row, row_end) in wraps.chain([line.len()]).enumerate() {
+                let from = range.start.saturating_sub(line_start).max(row_start);
+                let to = (range.end - line_start).min(row_end);
+                let runs_on = range.end > line_start + row_end;
+                if from < to || (from == to && runs_on && from == row_end) {
+                    let origin_x = unwrapped.x_for_index(row_start);
+                    let left = unwrapped.x_for_index(from) - origin_x;
+                    let mut right = unwrapped.x_for_index(to) - origin_x;
+                    if runs_on && row_end == line.len() {
+                        right += line_break;
+                    }
+                    window.paint_quad(fill(
+                        Bounds::from_corners(
+                            point(bounds.left() + left, top + line_height * row as f32),
+                            point(bounds.left() + right, top + line_height * (row + 1) as f32),
+                        ),
+                        color,
+                    ));
+                }
+                row_start = row_end;
+            }
+        }
+        top += line.size(line_height).height;
+        line_start = line_end + 1;
     }
 }
 

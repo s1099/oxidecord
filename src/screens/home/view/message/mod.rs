@@ -16,6 +16,7 @@ use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
 use crate::discord;
+use crate::screens::home::selection::TextPart;
 use crate::screens::home::state::MediaKey;
 use crate::screens::home::view::avatar;
 use crate::screens::home::{HomeScreen, View};
@@ -101,7 +102,8 @@ impl HomeScreen {
                         &message.markdown,
                         MarkdownOptions::new(format!("message-{}", message.id), &message.mentions)
                             .edited(message.edited_label())
-                            .jumbo(),
+                            .jumbo()
+                            .selectable(message.id.get(), TextPart::Content),
                         cx,
                     ),
                 )

@@ -91,6 +91,8 @@ pub(super) struct Flattener<'a, 'b> {
     actions: Vec<(Range<usize>, Action)>,
     tooltips: Vec<(Range<usize>, SharedString)>,
     emoji: Vec<(Range<usize>, SharedString)>,
+    /// Each emoji's placeholder and the `:name:` it copies as.
+    emoji_names: Vec<(Range<usize>, SharedString)>,
     marker: Option<Marker>,
 }
 
@@ -103,6 +105,7 @@ impl<'a, 'b> Flattener<'a, 'b> {
             actions: Vec::new(),
             tooltips: Vec::new(),
             emoji: Vec::new(),
+            emoji_names: Vec::new(),
             marker: None,
         }
     }
@@ -132,9 +135,11 @@ impl<'a, 'b> Flattener<'a, 'b> {
 
     pub fn finish(self) -> RichText {
         let renderer = self.renderer;
+        let (id, key) = renderer.next_text();
+        let shown: SharedString = self.text.into();
         let mut text = RichText::new(
-            renderer.next_id(),
-            self.text,
+            id,
+            shown.clone(),
             self.segments,
             renderer.mono_family.clone(),
             &renderer.screen.image_cache,
@@ -157,7 +162,7 @@ impl<'a, 'b> Flattener<'a, 'b> {
                 })
                 .tooltips(self.tooltips);
         }
-        text
+        renderer.selectable(text, key, shown, self.emoji_names)
     }
 
     fn push(&mut self, text: &str, style: Style) -> Range<usize> {
@@ -266,6 +271,8 @@ impl<'a, 'b> Flattener<'a, 'b> {
             Inline::Mention(mention) => self.mention(mention, style),
             Inline::Emoji(emoji) => {
                 let range = self.push(EMOJI_PLACEHOLDER, style);
+                self.emoji_names
+                    .push((range.clone(), format!(":{}:", emoji.name).into()));
                 if !style.hidden {
                     self.emoji.push((range.clone(), emoji.url().into()));
                     self.tooltips

@@ -4,6 +4,7 @@
 //! modules — which extend the screen with inherent methods — can reach them,
 //! while nothing outside the home screen can.
 
+use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::ops::Range;
 use std::rc::Rc;
@@ -29,6 +30,7 @@ use super::data::attachments::PendingAttachment;
 use super::emoji::{PickerLayout, SectionKind};
 use super::folders::RailEntry;
 use super::history_cache::HistoryCache;
+use super::selection::{Selection, TextCopies, TextRegions};
 use super::unread::Unreads;
 use super::voice::{PendingVoice, ScreenShare, StreamWatch, VoiceCall};
 use crate::voice::VoiceEngine;
@@ -481,6 +483,15 @@ pub struct HomeScreen {
     /// gives each one. Cleared with the conversation, as Discord hides them
     /// again once you leave.
     pub(super) revealed_spoilers: HashSet<SharedString>,
+    /// The mouse selection over the message list's text. Cleared with the
+    /// conversation.
+    pub(super) text_selection: Option<Selection>,
+    /// Where the list's selectable texts were last laid out, for a press or a
+    /// drag to land on.
+    pub(super) text_regions: TextRegions,
+    /// What each selectable text drawn in the conversation copies as. In a
+    /// cell since drawing, which only borrows the screen, fills it.
+    pub(super) text_copies: RefCell<TextCopies>,
     pub(super) message_input: Entity<TextareaState>,
     /// The conversation the typing indicator was last sent to, and when.
     pub(super) typing_sent: Option<(Id<ChannelMarker>, Instant)>,
@@ -647,6 +658,9 @@ impl HomeScreen {
             member_list_hidden: prefs::load().member_list_hidden,
             search_input,
             revealed_spoilers: HashSet::new(),
+            text_selection: None,
+            text_regions: TextRegions::default(),
+            text_copies: RefCell::default(),
             video: None,
             message_input,
             typing_sent: None,

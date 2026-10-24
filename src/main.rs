@@ -16,8 +16,9 @@ use gpui_kit::*;
 
 use crate::screens::app::AppScreen;
 use crate::screens::home::{
-    AutocompleteAccept, AutocompleteNext, AutocompletePrevious, COMPOSER_CONTEXT, EDIT_CONTEXT,
-    EditLastMessage, HOME_CONTEXT, MarkConversationRead, PasteAttachment, SaveEdit, SendMessage,
+    AutocompleteAccept, AutocompleteNext, AutocompletePrevious, COMPOSER_CONTEXT, CopySelection,
+    EDIT_CONTEXT, EditLastMessage, HOME_CONTEXT, MarkConversationRead, PasteAttachment, SaveEdit,
+    SendMessage,
 };
 
 fn main() {
@@ -44,9 +45,13 @@ fn main() {
         // Bound with no context so it resolves ahead of the text input's own
         // paste binding; the handler consumes the event only when an image is
         // pasted into the composer and otherwise lets text paste through.
+        // Copy works the same way: a selection in the message list copies,
+        // and with none the input's own copy gets the keystroke.
         cx.bind_keys([
             KeyBinding::new("ctrl-v", PasteAttachment, None),
             KeyBinding::new("cmd-v", PasteAttachment, None),
+            KeyBinding::new("ctrl-c", CopySelection, None),
+            KeyBinding::new("cmd-c", CopySelection, None),
         ]);
 
         // These share the input's own context depth, where a later binding

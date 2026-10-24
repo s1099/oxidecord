@@ -17,6 +17,7 @@ pub(super) mod pins;
 pub(super) mod presence;
 pub(super) mod profile;
 pub(super) mod read_state;
+pub(super) mod selection;
 pub(super) mod stream;
 pub(super) mod video;
 pub(super) mod voice;

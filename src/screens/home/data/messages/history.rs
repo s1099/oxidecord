@@ -289,6 +289,8 @@ impl HomeScreen {
         self.editing = None;
         self.pins_popup = None;
         self.revealed_spoilers.clear();
+        self.text_selection = None;
+        self.text_copies.get_mut().clear();
         self.unread_marker = None;
         self.marked_unread = false;
         for attachment in self.pending_attachments.drain(..) {

@@ -15,6 +15,7 @@ use gpui_kit::*;
 
 use crate::discord;
 use crate::screens::home::HomeScreen;
+use crate::screens::home::selection::{EmbedPiece, TextPart};
 use crate::screens::home::state::MediaKey;
 use crate::ui::depth::media_shadow;
 
@@ -81,6 +82,10 @@ impl HomeScreen {
     ) -> AnyElement {
         let theme = cx.theme();
         let scope = |part: &str| format!("embed-{part}-{}-{}", id.message_id, id.index);
+        let part = |piece| TextPart::Embed {
+            embed: id.index,
+            piece,
+        };
 
         // Everything in the left column, in Discord's order. The thumbnail sits
         // beside it rather than in it, so text wraps around the corner square.
@@ -104,8 +109,9 @@ impl HomeScreen {
             .children(embed.title.as_ref().map(|title| {
                 // A linked title is clickable as a whole, so nothing inside it
                 // can take the click for itself.
-                let options =
-                    MarkdownOptions::new(scope("title"), mentions).interactive(embed.url.is_none());
+                let options = MarkdownOptions::new(scope("title"), mentions)
+                    .interactive(embed.url.is_none())
+                    .selectable(id.message_id, part(EmbedPiece::Title));
                 let styled = div()
                     .text_size(px(16.))
                     .line_height(px(LINE_HEIGHT_TITLE))
@@ -120,20 +126,25 @@ impl HomeScreen {
                         .text_color(theme.link)
                         .hover(|this| this.text_color(theme.link_hover))
                         .child(styled)
-                        .on_click(move |_, _, cx| cx.open_url(&url))
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            // A drag that selected the title wasn't a click.
+                            if !this.has_text_selection() {
+                                cx.open_url(&url);
+                            }
+                        }))
                         .into_any_element(),
                     None => styled.into_any_element(),
                 }
             }))
             .children(embed.description.as_ref().map(|description| {
-                div()
-                    .text_sm()
-                    .line_height(px(LINE_HEIGHT_BODY))
-                    .child(self.render_markdown(
+                div().text_sm().line_height(px(LINE_HEIGHT_BODY)).child(
+                    self.render_markdown(
                         description,
-                        MarkdownOptions::new(scope("description"), mentions),
+                        MarkdownOptions::new(scope("description"), mentions)
+                            .selectable(id.message_id, part(EmbedPiece::Description)),
                         cx,
-                    ))
+                    ),
+                )
             }))
             .when(!embed.fields.is_empty(), |this| {
                 this.child(self.render_fields(id, &embed.fields, mentions, cx))
@@ -396,6 +407,10 @@ impl HomeScreen {
         // is the only thing distinguishing them within an embed.
         let scope =
             |part: &str| format!("embed-field-{part}-{}-{}-{index}", id.message_id, id.index);
+        let part = |piece| TextPart::Embed {
+            embed: id.index,
+            piece,
+        };
 
         v_flex()
             .min_w_0()
@@ -405,21 +420,24 @@ impl HomeScreen {
                     .text_sm()
                     .line_height(px(LINE_HEIGHT_BODY))
                     .font_weight(FontWeight::SEMIBOLD)
-                    .child(self.render_inline_markdown(
-                        &field.name,
-                        MarkdownOptions::new(scope("name"), mentions),
-                        cx,
-                    )),
+                    .child(
+                        self.render_inline_markdown(
+                            &field.name,
+                            MarkdownOptions::new(scope("name"), mentions)
+                                .selectable(id.message_id, part(EmbedPiece::FieldName(index))),
+                            cx,
+                        ),
+                    ),
             )
             .child(
-                div()
-                    .text_sm()
-                    .line_height(px(LINE_HEIGHT_BODY))
-                    .child(self.render_markdown(
+                div().text_sm().line_height(px(LINE_HEIGHT_BODY)).child(
+                    self.render_markdown(
                         &field.value,
-                        MarkdownOptions::new(scope("value"), mentions),
+                        MarkdownOptions::new(scope("value"), mentions)
+                            .selectable(id.message_id, part(EmbedPiece::FieldValue(index))),
                         cx,
-                    )),
+                    ),
+                ),
             )
     }
 

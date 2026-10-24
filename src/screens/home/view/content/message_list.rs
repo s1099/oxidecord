@@ -75,13 +75,81 @@ impl Render for MessageListView {
         let Some(screen) = self.screen.upgrade() else {
             return div().into_any_element();
         };
-        let state = screen.read(cx).messages_list.clone();
-        list(state, move |ix, _window, cx| {
-            screen.update(cx, |this, cx| this.render_message_item(ix, cx))
-        })
-        .size_full()
-        .into_any_element()
+        let (state, regions) = {
+            let this = screen.read(cx);
+            (this.messages_list.clone(), this.text_regions.clone())
+        };
+        // Each selectable text adds itself back as the list lays it out.
+        regions.borrow_mut().clear();
+        let weak = self.screen.clone();
+        div()
+            .relative()
+            .size_full()
+            .child(
+                list(state, move |ix, _window, cx| {
+                    screen.update(cx, |this, cx| this.render_message_item(ix, cx))
+                })
+                .size_full(),
+            )
+            .child(
+                canvas(
+                    |_, _, _| {},
+                    move |viewport, (), window, _| listen_for_selection(weak, viewport, window),
+                )
+                // Pinned to the corner: left where it falls, an absolute
+                // element sits below the list, and every drag would read as
+                // one past the list's top.
+                .absolute()
+                .top_0()
+                .left_0()
+                .size_full(),
+            )
+            .into_any_element()
     }
+}
+
+/// Feeds the mouse to the text selection for a frame. The press and release
+/// listen in the capture phase, which sees every one wherever it lands: a
+/// press outside the list has to drop the selection, and a release has to
+/// settle it before a link under the pointer decides whether it was clicked.
+fn listen_for_selection(
+    screen: WeakEntity<HomeScreen>,
+    viewport: Bounds<Pixels>,
+    window: &mut Window,
+) {
+    window.on_mouse_event({
+        let screen = screen.clone();
+        move |event: &MouseDownEvent, phase, window, cx| {
+            if phase == DispatchPhase::Capture && event.button == MouseButton::Left {
+                let _ = screen.update(cx, |this, cx| this.press_text(event, viewport, window, cx));
+            }
+        }
+    });
+    window.on_mouse_event({
+        let screen = screen.clone();
+        move |event: &MouseMoveEvent, phase, _, cx| {
+            let dragging = phase == DispatchPhase::Bubble
+                && screen
+                    .read_with(cx, |this, _| this.is_dragging_text())
+                    .unwrap_or(false);
+            if !dragging {
+                return;
+            }
+            let _ = screen.update(cx, |this, cx| {
+                // Let go outside the window, where the release never came.
+                if event.pressed_button == Some(MouseButton::Left) {
+                    this.drag_text(event.position, cx);
+                } else {
+                    this.release_text();
+                }
+            });
+        }
+    });
+    window.on_mouse_event(move |event: &MouseUpEvent, phase, _, cx| {
+        if phase == DispatchPhase::Capture && event.button == MouseButton::Left {
+            let _ = screen.update(cx, |this, _| this.release_text());
+        }
+    });
 }
 
 impl HomeScreen {

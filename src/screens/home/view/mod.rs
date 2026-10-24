@@ -85,6 +85,7 @@ impl Render for HomeScreen {
             .on_action(cx.listener(|this, _: &MarkConversationRead, window, cx| {
                 this.mark_conversation_read(window, cx);
             }))
+            .on_action(cx.listener(Self::on_copy_selection))
             .on_modifiers_changed(cx.listener(|this, event: &ModifiersChangedEvent, _, cx| {
                 if this.shift_held != event.modifiers.shift {
                     cx.notify();

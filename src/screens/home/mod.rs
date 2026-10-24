@@ -13,6 +13,7 @@ mod data;
 mod emoji;
 mod folders;
 mod history_cache;
+mod selection;
 mod state;
 mod unread;
 mod view;
@@ -73,6 +74,10 @@ actions!(
         /// Read the open conversation through to its newest message and jump
         /// there. Bound to escape, as in Discord; in the composer the input's
         /// own escape does it, once there's nothing else for escape to close.
-        MarkConversationRead
+        MarkConversationRead,
+        /// Copy the text selected in the message list. Bound to the copy
+        /// shortcut ahead of the text inputs' own copy, and handed on to it
+        /// when nothing there is selected.
+        CopySelection
     ]
 );

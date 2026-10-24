@@ -7,6 +7,7 @@ use gpui_kit::*;
 
 use crate::discord;
 use crate::screens::home::HomeScreen;
+use crate::screens::home::selection::TextPart;
 use crate::screens::home::view::avatar;
 use crate::screens::home::view::markdown::MarkdownOptions;
 
@@ -70,7 +71,8 @@ impl HomeScreen {
                         &forward.markdown,
                         MarkdownOptions::new(format!("forward-{message_id}"), &forward.mentions)
                             .edited(forward.edited_label())
-                            .jumbo(),
+                            .jumbo()
+                            .selectable(message_id, TextPart::Forward),
                         cx,
                     ),
                 )
