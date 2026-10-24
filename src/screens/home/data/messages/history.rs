@@ -275,6 +275,7 @@ impl HomeScreen {
         // them accumulate; the next one repopulates the cache as it renders.
         self.image_cache
             .update(cx, |cache, cx| cache.clear(window, cx));
+        self.release_gifs(window, cx);
         self.stop_video(window, cx);
         self.messages_error = None;
         self.older_loading = false;

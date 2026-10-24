@@ -9,6 +9,7 @@ pub(super) mod attachments;
 pub(super) mod autocomplete;
 pub(super) mod dms;
 pub(super) mod emoji;
+pub(super) mod gif;
 pub(super) mod guilds;
 pub(super) mod image_viewer;
 pub(super) mod member_list;

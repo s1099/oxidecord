@@ -146,7 +146,7 @@
 | Offline and reconnecting indicator | Missing | The shard reconnects silently |
 | Minimize to system tray and run on startup | Missing | |
 | Auto-updater on macOS and Linux | Missing | Windows only |
-| Video playback on macOS and Linux | Missing | `platform/video/unsupported.rs` falls back to the poster card |
+| Video playback on macOS and Linux | Missing | `platform/video/unsupported.rs` falls back to the poster card, and GIFs Discord serves as video (Tenor, Klipy, Giphy) stay on their still poster |
 | Deep links (`discord://` URLs) and in-app handling of discord.com message links | Missing | |
 | Multiple windows and popping out channels | Missing | |
 | Spell check | Missing | |

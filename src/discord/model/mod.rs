@@ -19,7 +19,7 @@ mod upload;
 mod user;
 mod voice;
 
-pub use cdn::scaled_url;
+pub use cdn::{animated_webp, scaled_url};
 pub use channel::{Channel, ChannelKind, DirectMessage};
 pub use embed::{Embed, EmbedAuthor, EmbedField, EmbedFooter, EmbedLayout, EmbedMedia};
 pub use emoji::GuildEmoji;

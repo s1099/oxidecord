@@ -47,12 +47,15 @@ impl HomeScreen {
                 .cloned()
         };
         let layer = |url: SharedString| {
-            img(url)
+            img(url.clone())
                 .image_cache(&self.image_cache)
                 .absolute()
                 .inset_0()
                 .size_full()
                 .object_fit(ObjectFit::Contain)
+                // Somewhere for gpui to keep an animated image's frame index;
+                // keyed by copy, since two can be on screen at once.
+                .id(ElementId::Name(url))
         };
 
         // Only an image bigger than the window has anywhere to pan to.

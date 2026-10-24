@@ -258,18 +258,28 @@ fn play(url: String, target: (u32, u32), control: &Control, events: &UnboundedSe
 /// file, so scrubbing works without a byte-range implementation, and Discord's
 /// signed URL is only ever handled by the HTTP client that already knows how.
 fn fetch_to_temp(url: &str, control: &Control) -> Result<PathBuf, String> {
-    // Unique per player so two clips playing in sequence can't collide, and
-    // named so a leaked file is obvious in a temp directory.
+    let path = temp_path("video");
+    // Blocking here is fine: this is the decoder's own thread, and it has
+    // nothing to do until the file has arrived.
+    let result = runtime::handle().block_on(download(url.to_owned(), path.clone(), || {
+        control.is_stopped()
+    }));
+    result.map(|()| path)
+}
+
+/// A file in the temp directory, unique per call so two clips can't collide,
+/// and named so a leaked one is obvious.
+fn temp_path(kind: &str) -> PathBuf {
     let unique = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |since| since.as_nanos());
-    let path = std::env::temp_dir().join(format!("oxidecord-video-{unique:x}"));
+    std::env::temp_dir().join(format!("oxidecord-{kind}-{unique:x}"))
+}
 
-    // Blocking here is fine: this is the decoder's own thread, and it has
-    // nothing to do until the file has arrived. Streamed to disk so a big clip
-    // is never held in memory whole, and so stopping cancels mid-download.
-    let url = url.to_owned();
-    let result = runtime::handle().block_on(async {
+/// Streams `url` to `path`, so a big clip is never held in memory whole, and
+/// so `cancelled` can stop it mid-download. Leaves no file behind on failure.
+async fn download(url: String, path: PathBuf, cancelled: impl Fn() -> bool) -> Result<(), String> {
+    let result = async {
         let mut file = std::fs::File::create(&path)
             .map_err(|err| format!("Couldn't buffer the video: {err}"))?;
         let download = |err: reqwest::Error| format!("Couldn't download the video: {err}");
@@ -280,20 +290,55 @@ fn fetch_to_temp(url: &str, control: &Control) -> Result<PathBuf, String> {
             .and_then(reqwest::Response::error_for_status)
             .map_err(download)?;
         while let Some(chunk) = response.chunk().await.map_err(download)? {
-            if control.is_stopped() {
+            if cancelled() {
                 return Err(String::from("cancelled"));
             }
             file.write_all(&chunk)
                 .map_err(|err| format!("Couldn't buffer the video: {err}"))?;
         }
         Ok(())
-    });
-
-    match result {
-        Ok(()) => Ok(path),
-        Err(err) => {
-            _ = std::fs::remove_file(&path);
-            Err(err)
-        }
     }
+    .await;
+
+    if result.is_err() {
+        _ = std::fs::remove_file(&path);
+    }
+    result
+}
+
+/// A short clip decoded whole, to loop the way a GIF does.
+///
+/// Discord serves most GIFs — everything from Tenor, Klipy and Giphy — as
+/// muted mp4s in a `gifv` embed, and its client plays them on a loop rather
+/// than offering a player. Holding every frame is what lets them animate in
+/// place for as long as they're on screen, with no decoder running, the same
+/// way a real GIF does once it's decoded.
+pub struct LoopingClip {
+    pub frames: Vec<VideoFrame>,
+    /// The clip's run time, which the last frame is held until. Zero when the
+    /// file doesn't say.
+    pub duration: Duration,
+}
+
+/// The most a looping clip's frames may take up. A GIF's frames sit in memory
+/// for as long as it's on screen, so a long one is thinned out rather than
+/// allowed to cost what a channel full of them would add up to. At the size a
+/// message draws one, that is a few seconds at full rate.
+const LOOP_BUDGET: usize = 24 * 1024 * 1024;
+
+/// Downloads and decodes a clip to loop, scaling frames to fit `target` (in
+/// physical pixels).
+///
+/// The download runs on the Tokio runtime; the decode runs on whichever thread
+/// awaits this, so it belongs on a background executor.
+pub async fn decode_loop(url: String, target: (u32, u32)) -> Result<LoopingClip, String> {
+    let path = temp_path("gif");
+    runtime::run(download(url, path.clone(), || false))
+        .await
+        .map_err(|err| format!("Couldn't download the video: {err}"))??;
+
+    let result = backend::decode_all(&path, target, LOOP_BUDGET);
+    let _ = std::fs::remove_file(&path);
+    let (frames, duration) = result?;
+    Ok(LoopingClip { frames, duration })
 }

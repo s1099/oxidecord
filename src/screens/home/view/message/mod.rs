@@ -96,7 +96,7 @@ impl HomeScreen {
             .when_some(editing, |this, editing| {
                 this.child(self.render_edit_box(editing, cx))
             })
-            .when(editing.is_none() && !message.content.is_empty(), |this| {
+            .when(editing.is_none() && message.shows_text(), |this| {
                 this.child(
                     self.render_markdown(
                         &message.markdown,

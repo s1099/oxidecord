@@ -3,6 +3,7 @@
 use std::sync::Arc;
 
 use serde::Deserialize;
+use twilight_model::channel::AttachmentFlags;
 use twilight_model::channel::message::{MessageReferenceType, MessageSnapshot};
 use twilight_model::id::{
     Id,
@@ -10,7 +11,7 @@ use twilight_model::id::{
 };
 
 use super::cdn;
-use super::embed::{Embed, convert_embed};
+use super::embed::{Embed, EmbedLayout, convert_embed};
 use super::guild::GuildMember;
 use super::markdown::{self, Inline, Markdown};
 use super::time::{format_local_full, format_message_time};
@@ -70,6 +71,11 @@ pub enum Delivery {
 }
 
 impl Message {
+    /// Whether the message's text is drawn; see [`is_bare_media_link`].
+    pub fn shows_text(&self) -> bool {
+        !self.content.is_empty() && !is_bare_media_link(&self.content, &self.embeds)
+    }
+
     /// A message the user is sending, as it's shown before the server has it.
     ///
     /// `id` is the request's nonce: a snowflake for the moment it was sent, so
@@ -249,6 +255,11 @@ pub struct ForwardedMessage {
 }
 
 impl ForwardedMessage {
+    /// Whether the message's text is drawn; see [`is_bare_media_link`].
+    pub fn shows_text(&self) -> bool {
+        !self.content.is_empty() && !is_bare_media_link(&self.content, &self.embeds)
+    }
+
     /// When the original was sent, formatted like a message header's time.
     pub fn timestamp_label(&self) -> String {
         format_message_time(self.timestamp)
@@ -270,6 +281,9 @@ pub struct ImageAttachment {
     /// inline preview while preserving aspect ratio.
     pub width: Option<u32>,
     pub height: Option<u32>,
+    /// Whether [`Self::source`] has to be asked of the proxy as animated WebP
+    /// to stay moving at another size; see [`cdn::wants_animated_webp`].
+    pub animated_webp: bool,
     pub spoiler: Option<SpoilerCover>,
 }
 
@@ -412,26 +426,39 @@ fn convert_attachments(
     let images = attachments
         .iter()
         .filter(|attachment| is_image(attachment))
-        .map(|attachment| ImageAttachment {
-            url: cdn::scaled_url(
+        .map(|attachment| {
+            let animated = attachment
+                .flags
+                .is_some_and(|flags| flags.contains(AttachmentFlags::IS_ANIMATED));
+            let animated_webp =
+                cdn::wants_animated_webp(animated, attachment.content_type.as_deref());
+            let url = cdn::scaled_url(
                 &attachment.proxy_url,
                 attachment.width,
                 attachment.height,
                 PREVIEW_MAX_WIDTH,
                 PREVIEW_MAX_HEIGHT,
-            ),
-            source: attachment.proxy_url.clone(),
-            width: attachment.width.map(|w| w as u32),
-            height: attachment.height.map(|h| h as u32),
-            spoiler: is_spoiler(attachment).then(|| SpoilerCover {
-                url: cdn::scaled_url(
-                    &attachment.proxy_url,
-                    attachment.width,
-                    attachment.height,
-                    SpoilerCover::SIZE,
-                    SpoilerCover::SIZE,
-                ),
-            }),
+            );
+            ImageAttachment {
+                url: if animated_webp {
+                    cdn::animated_webp(url)
+                } else {
+                    url
+                },
+                source: attachment.proxy_url.clone(),
+                width: attachment.width.map(|w| w as u32),
+                height: attachment.height.map(|h| h as u32),
+                animated_webp,
+                spoiler: is_spoiler(attachment).then(|| SpoilerCover {
+                    url: cdn::scaled_url(
+                        &attachment.proxy_url,
+                        attachment.width,
+                        attachment.height,
+                        SpoilerCover::SIZE,
+                        SpoilerCover::SIZE,
+                    ),
+                }),
+            }
         })
         .collect();
     let videos = attachments
@@ -550,6 +577,21 @@ const PREVIEW_MAX_HEIGHT: u32 = 390;
 /// Whether the uploader marked an attachment as a spoiler. There's no flag for
 /// it in the API: the client prefixes the filename, and every client reads it
 /// back the same way.
+/// Whether a message is nothing but a link to the image or GIF its embed
+/// draws. Discord leaves the link out then, so a Tenor link posted on its own
+/// reads as the GIF alone; any other text keeps it, link and all.
+fn is_bare_media_link(content: &str, embeds: &[Embed]) -> bool {
+    let content = content.trim();
+    !content.contains(char::is_whitespace)
+        && embeds.iter().any(|embed| {
+            embed.layout == EmbedLayout::Media
+                && embed
+                    .url
+                    .as_deref()
+                    .is_some_and(|url| url.trim_end_matches('/') == content.trim_end_matches('/'))
+        })
+}
+
 fn is_spoiler(attachment: &twilight_model::channel::Attachment) -> bool {
     attachment.filename.starts_with(SPOILER_PREFIX)
 }

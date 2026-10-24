@@ -15,6 +15,7 @@ use gpui_kit::*;
 
 use crate::discord;
 use crate::screens::home::HomeScreen;
+use crate::screens::home::data::gif::gif_source;
 use crate::screens::home::data::image_viewer::ViewerImage;
 use crate::screens::home::selection::{EmbedPiece, TextPart};
 use crate::screens::home::state::MediaKey;
@@ -239,7 +240,7 @@ impl HomeScreen {
 
         // Sized to the media rather than stretched across the message, so the
         // debug copy button anchors to the image's own corner.
-        let size = fit_within(image.width, image.height, MEDIA_MAX_WIDTH, MEDIA_MAX_HEIGHT);
+        let size = media_size(embed, image);
         div()
             .id(id.element_id("embed"))
             .group(id.group())
@@ -264,7 +265,7 @@ impl HomeScreen {
         cx: &Context<Self>,
     ) -> impl IntoElement {
         let theme = cx.theme();
-        let size = fit_within(image.width, image.height, MEDIA_MAX_WIDTH, MEDIA_MAX_HEIGHT);
+        let size = media_size(embed, image);
 
         // The cache has to be named on the element itself: `list` renders its
         // items during prepaint, so an ancestor `image_cache(..)` — which only
@@ -285,12 +286,40 @@ impl HomeScreen {
             Some((width, height)) => media = media.w(px(width)).h(px(height)),
             None => media = media.max_h(px(MEDIA_MAX_HEIGHT)),
         }
+        // An id is what gives gpui somewhere to keep an animated image's frame
+        // index; without one a GIF draws as its first frame.
+        let media = media.id(id.element_id("embed-media"));
+
+        // A GIF served as video loops over its poster, which stays underneath
+        // until the clip has loaded — and for good, should it fail to.
+        let media = match (&embed.gif, size) {
+            (Some(gif), Some((width, height))) => div()
+                .relative()
+                .w(px(width))
+                .h(px(height))
+                .child(media)
+                .child(
+                    img(gif_source(
+                        gif.url.clone(),
+                        (width, height),
+                        self.gifs.clone(),
+                    ))
+                    .id(id.element_id("embed-gif"))
+                    .absolute()
+                    .inset_0()
+                    .size_full()
+                    .rounded(px(4.)),
+                )
+                .into_any_element(),
+            _ => media.into_any_element(),
+        };
 
         // Clicking opens the source page for a video and the image viewer
         // otherwise, so a YouTube preview lands on YouTube rather than on a
-        // still frame.
+        // still frame. A looping GIF opens nothing, as in Discord: its poster
+        // is all the viewer could show.
         let video_url = embed.url.clone().filter(|_| embed.has_video);
-        let viewed = (!embed.has_video).then(|| ViewerImage::from(image));
+        let viewed = (!embed.has_video && embed.gif.is_none()).then(|| ViewerImage::from(image));
 
         div()
             .id(id.element_id("embed-image"))
@@ -485,6 +514,17 @@ impl HomeScreen {
     ) -> Option<impl IntoElement> {
         None::<Div>
     }
+}
+
+/// The box an embed's large media is drawn in. A GIF's poster is the clip's
+/// first frame, so the clip's own dimensions stand in when the poster's are
+/// missing.
+fn media_size(embed: &discord::Embed, image: &discord::EmbedMedia) -> Option<(f32, f32)> {
+    let (width, height) = match (&embed.gif, image.width.zip(image.height)) {
+        (Some(gif), None) => (gif.width, gif.height),
+        _ => (image.width, image.height),
+    };
+    fit_within(width, height, MEDIA_MAX_WIDTH, MEDIA_MAX_HEIGHT)
 }
 
 /// The author row: a small round icon and the name. Unlike the title, an author

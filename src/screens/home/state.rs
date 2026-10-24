@@ -27,6 +27,7 @@ use crate::ui::smooth_scroll::SmoothScroll;
 use super::autocomplete::{Suggestion, Trigger};
 use super::channels::ChannelGroup;
 use super::data::attachments::PendingAttachment;
+use super::data::gif::LoadedGifs;
 use super::emoji::{PickerLayout, SectionKind};
 use super::folders::RailEntry;
 use super::history_cache::HistoryCache;
@@ -131,6 +132,9 @@ pub(super) struct ImageViewer {
     /// Intrinsic dimensions, when Discord reported them.
     pub width: Option<u32>,
     pub height: Option<u32>,
+    /// Whether the larger copies have to be asked for as animated WebP to stay
+    /// moving; see [`discord::animated_webp`].
+    pub animated_webp: bool,
     /// How far the image is zoomed past fitting the window: 1 fits it.
     pub zoom: f32,
     /// How far the image's centre is panned from the window's.
@@ -546,6 +550,9 @@ pub struct HomeScreen {
     /// Owns the decoded bitmaps for the currently displayed messages' images.
     /// Cleared on channel switch so image memory doesn't grow without bound.
     pub(super) image_cache: Entity<RetainAllImageCache>,
+    /// The GIF clips decoded for the currently displayed messages, released
+    /// alongside `image_cache`.
+    pub(super) gifs: LoadedGifs,
     /// Wheel easing for each scrollable pane; see [`crate::ui::smooth_scroll`].
     pub(super) rail_scroll: SmoothScroll,
     pub(super) sidebar_scroll: SmoothScroll,
@@ -706,6 +713,7 @@ impl HomeScreen {
             message_list_view,
             typing_dots,
             image_cache: RetainAllImageCache::new(cx),
+            gifs: LoadedGifs::default(),
             rail_scroll: SmoothScroll::div(),
             sidebar_scroll: SmoothScroll::div(),
             dm_scroll: SmoothScroll::div(),

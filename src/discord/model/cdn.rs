@@ -60,7 +60,7 @@ pub fn scaled_url(
 ) -> String {
     // Only Discord's own proxy understands the resize query; asking a third
     // party host for it would at best be ignored and at worst break a signature.
-    if !url.contains("discordapp.") && !url.contains("discord.com") {
+    if !is_discord_proxy(url) {
         return url.to_string();
     }
     let (target_w, target_h) = match (width, height) {
@@ -78,4 +78,31 @@ pub fn scaled_url(
     // A proxy URL already carries a signed query string, so append with `&`.
     let separator = if url.contains('?') { '&' } else { '?' };
     format!("{url}{separator}width={target_w}&height={target_h}")
+}
+
+/// Whether an image Discord flagged as animated has to be asked of the proxy
+/// as animated WebP to arrive still moving.
+///
+/// A GIF doesn't: the proxy scales it as a GIF and gpui animates that. Any
+/// other animated image — an animated WebP, or the animated AVIF that sites
+/// like vxtwitter serve a Twitter GIF as — does, and the proxy converts it on
+/// the fly. That is what Discord's own client asks for, and the only animated
+/// format besides GIF that gpui decodes.
+pub(super) fn wants_animated_webp(animated: bool, content_type: Option<&str>) -> bool {
+    animated && content_type != Some("image/gif")
+}
+
+/// Asks the proxy for `url` as animated WebP; see [`wants_animated_webp`].
+/// Takes a URL [`scaled_url`] already produced, and leaves anything not on
+/// Discord's proxy alone.
+pub fn animated_webp(url: String) -> String {
+    if !is_discord_proxy(&url) {
+        return url;
+    }
+    let separator = if url.contains('?') { '&' } else { '?' };
+    format!("{url}{separator}format=webp&animated=true")
+}
+
+fn is_discord_proxy(url: &str) -> bool {
+    url.contains("discordapp.") || url.contains("discord.com")
 }

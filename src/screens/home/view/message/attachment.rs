@@ -59,6 +59,9 @@ impl HomeScreen {
             Some((width, height)) => element.w(px(width)).h(px(height)),
             None => element.max_h(px(MEDIA_MAX_HEIGHT)),
         };
+        // An id is what gives gpui somewhere to keep an animated image's frame
+        // index; without one a GIF draws as its first frame.
+        let element = element.id(key.element_id("image-frame"));
 
         let viewed = ViewerImage::from(image);
         div()

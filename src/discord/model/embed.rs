@@ -5,7 +5,9 @@
 //! ([`EmbedLayout`]): a bordered card with a coloured spine, and a bare piece of
 //! media with no card at all.
 
-use super::cdn::scaled_url;
+use twilight_model::channel::message::embed::EmbedMediaFlags;
+
+use super::cdn::{animated_webp, scaled_url, wants_animated_webp};
 use super::markdown::{self, Inline, Markdown};
 use super::time::format_embed_timestamp;
 
@@ -40,6 +42,9 @@ pub struct Embed {
     /// Set when the embed points at a video; the UI overlays a play badge on
     /// the media and opens [`Self::url`] on click.
     pub has_video: bool,
+    /// Set when the embed is a GIF served as video, which plays on a loop in
+    /// place of [`Self::image`] — its poster frame until the clip has loaded.
+    pub gif: Option<EmbedGif>,
     pub footer: Option<EmbedFooter>,
     /// Already formatted for display, appended to the footer line.
     pub timestamp: Option<String>,
@@ -92,6 +97,21 @@ pub struct EmbedMedia {
     /// the exact scaled box so the message doesn't reflow once it loads.
     pub width: Option<u32>,
     pub height: Option<u32>,
+    /// Whether [`Self::source`] has to be asked of the proxy as animated WebP
+    /// to stay moving at another size; see [`super::cdn::wants_animated_webp`].
+    pub animated_webp: bool,
+}
+
+/// A GIF Discord sends as a muted mp4: everything from Tenor, Klipy and
+/// Giphy, which arrive as `gifv` embeds. Discord's client plays these on a
+/// loop with no controls, as if they were GIFs, rather than as videos.
+#[derive(Clone)]
+pub struct EmbedGif {
+    /// The proxied clip.
+    pub url: String,
+    /// Intrinsic pixel dimensions of the clip, for when the poster has none.
+    pub width: Option<u32>,
+    pub height: Option<u32>,
 }
 
 impl Embed {
@@ -114,8 +134,15 @@ pub(in crate::discord) fn convert_embed(embed: twilight_model::channel::message:
     #[cfg(debug_assertions)]
     let raw = serde_json::to_string_pretty(&embed).unwrap_or_else(|err| format!("<{err}>"));
 
-    let has_video = embed.video.is_some() || embed.kind == "video" || embed.kind == "gifv";
-    let layout = layout_for(&embed);
+    let gif = gif_for(&embed);
+    let has_video = gif.is_none() && (embed.video.is_some() || embed.kind == "video");
+    // Tenor and Klipy send a title and provider along with the clip, but
+    // Discord draws a GIF bare whatever else the embed carries.
+    let layout = if gif.is_some() {
+        EmbedLayout::Media
+    } else {
+        layout_for(&embed)
+    };
 
     // Link previews and video embeds carry their artwork in `thumbnail` but
     // render it large, the way `image` is drawn — Discord promotes it whenever
@@ -134,24 +161,38 @@ pub(in crate::discord) fn convert_embed(embed: twilight_model::channel::message:
             }
         };
 
-    let large = |url: &str, width, height| EmbedMedia {
-        url: scaled_url(url, width, height, IMAGE_MAX_WIDTH, IMAGE_MAX_HEIGHT),
-        source: url.to_owned(),
-        width: width.map(|w| w as u32),
-        height: height.map(|h| h as u32),
+    let large = |url: &str, width, height, as_webp| {
+        let scaled = scaled_url(url, width, height, IMAGE_MAX_WIDTH, IMAGE_MAX_HEIGHT);
+        EmbedMedia {
+            url: if as_webp {
+                animated_webp(scaled)
+            } else {
+                scaled
+            },
+            source: url.to_owned(),
+            width: width.map(|w| w as u32),
+            height: height.map(|h| h as u32),
+            animated_webp: as_webp,
+        }
     };
     let mut image = embed.image.map(|image| {
+        let animated = image
+            .flags
+            .is_some_and(|flags| flags.contains(EmbedMediaFlags::IS_ANIMATED));
         large(
             image.proxy_url.as_deref().unwrap_or(&image.url),
             image.width,
             image.height,
+            wants_animated_webp(animated, image.content_type.as_deref()),
         )
     });
     let mut thumbnail = None;
     if let Some(raw) = embed.thumbnail {
         let url = raw.proxy_url.as_deref().unwrap_or(&raw.url);
+        // twilight doesn't carry a thumbnail's flags, so one is never known to
+        // be animated.
         if promote_thumbnail {
-            image = Some(large(url, raw.width, raw.height));
+            image = Some(large(url, raw.width, raw.height, false));
         } else {
             thumbnail = Some(EmbedMedia {
                 url: scaled_url(
@@ -164,6 +205,7 @@ pub(in crate::discord) fn convert_embed(embed: twilight_model::channel::message:
                 source: url.to_owned(),
                 width: raw.width.map(|w| w as u32),
                 height: raw.height.map(|h| h as u32),
+                animated_webp: false,
             });
         }
     }
@@ -201,6 +243,7 @@ pub(in crate::discord) fn convert_embed(embed: twilight_model::channel::message:
         image,
         thumbnail,
         has_video,
+        gif,
         footer: embed
             .footer
             .filter(|footer| !footer.text.is_empty())
@@ -215,8 +258,9 @@ pub(in crate::discord) fn convert_embed(embed: twilight_model::channel::message:
 }
 
 /// Picks the shape an embed is drawn in. Media types only escape the card when
-/// they carry nothing but the media — a GIF link posted on its own renders
-/// bare, but one a bot wrapped in a titled embed keeps its card.
+/// they carry nothing but the media — an image link posted on its own renders
+/// bare, but one a bot wrapped in a titled embed keeps its card. GIFs served
+/// as video are the exception, and never get here.
 fn layout_for(embed: &twilight_model::channel::message::Embed) -> EmbedLayout {
     let is_media_kind = matches!(embed.kind.as_str(), "image" | "gifv" | "video");
     let has_chrome = embed.title.is_some()
@@ -229,4 +273,21 @@ fn layout_for(embed: &twilight_model::channel::message::Embed) -> EmbedLayout {
     } else {
         EmbedLayout::Card
     }
+}
+
+/// The looping clip, for an embed that is a GIF served as video: a `gifv`, or
+/// any embed whose video Discord flags as animated.
+fn gif_for(embed: &twilight_model::channel::message::Embed) -> Option<EmbedGif> {
+    let video = embed.video.as_ref()?;
+    let animated = video
+        .flags
+        .is_some_and(|flags| flags.contains(EmbedMediaFlags::IS_ANIMATED));
+    if embed.kind != "gifv" && !animated {
+        return None;
+    }
+    Some(EmbedGif {
+        url: video.proxy_url.clone().or_else(|| video.url.clone())?,
+        width: video.width.map(|w| w as u32),
+        height: video.height.map(|h| h as u32),
+    })
 }

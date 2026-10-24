@@ -49,6 +49,10 @@ const RELEASE_SLACK: Duration = Duration::from_millis(8);
 /// frame coming due is not noticeably late.
 const IDLE: Duration = Duration::from_millis(4);
 
+/// How many reads in a row may come back with nothing before a clip being
+/// decoded whole is given up on.
+const MAX_EMPTY_READS: u32 = 256;
+
 /// Media Foundation counts in 100ns units.
 const HNS_PER_SEC: u64 = 10_000_000;
 
@@ -64,6 +68,67 @@ pub(super) fn decode(session: Session) -> Result<(), String> {
     run(session)
 }
 
+/// Decodes every frame of a clip at once, video only, for a GIF to loop on
+/// its own. Frames are thinned to an even stride when keeping all of them
+/// would run past `budget` bytes, and the clip is cut short where the frame
+/// rate is unknown and the budget runs out anyway.
+pub(super) fn decode_all(
+    path: &std::path::Path,
+    target: (u32, u32),
+    budget: usize,
+) -> Result<(Vec<VideoFrame>, Duration), String> {
+    let _platform = MediaFoundation::startup()?;
+
+    let reader = open_reader(path)?;
+    let mut format = configure_video(&reader, target)?;
+    // Nothing reads the audio, and a selected stream nobody drains stalls the
+    // reader once its queue fills.
+    unsafe {
+        let _ = reader.SetStreamSelection(MF_SOURCE_READER_FIRST_AUDIO_STREAM.0 as u32, false);
+    }
+    let duration = duration_of(&reader);
+
+    let frame_bytes = format.width as usize * format.height as usize * 4;
+    let max_frames = (budget / frame_bytes.max(1)).max(1);
+    let expected = format
+        .frame_rate
+        .map_or(0, |fps| (duration.as_secs_f64() * fps).ceil() as usize);
+    let stride = expected.div_ceil(max_frames).max(1);
+
+    let mut frames = Vec::new();
+    let mut index = 0usize;
+    // Unlike playback there is no clock to idle against, so a reader that
+    // keeps coming back empty without ending would otherwise spin forever.
+    let mut retries = 0;
+    while frames.len() < max_frames && retries < MAX_EMPTY_READS {
+        let read = if index.is_multiple_of(stride) {
+            read_video(&reader, &mut format)?.map(|frame| frames.push(frame))
+        } else {
+            // Decoding is sequential, so a skipped frame is still read — just
+            // never copied out of the decoder's buffer.
+            read_sample(
+                &reader,
+                MF_SOURCE_READER_FIRST_VIDEO_STREAM.0 as u32,
+                Some(&mut format),
+            )?
+            .map(drop)
+        };
+        match read {
+            Read::Ready(()) => {
+                index += 1;
+                retries = 0;
+            }
+            Read::Retry => retries += 1,
+            Read::End => break,
+        }
+    }
+
+    if frames.is_empty() {
+        return Err(String::from("The clip has no frames."));
+    }
+    Ok((frames, duration))
+}
+
 fn run(session: Session) -> Result<(), String> {
     let Session {
         path,
@@ -74,7 +139,7 @@ fn run(session: Session) -> Result<(), String> {
     } = session;
 
     let reader = open_reader(path)?;
-    let video = configure_video(&reader, target)?;
+    let mut video = configure_video(&reader, target)?;
     // A file whose audio can't be configured still plays, silently; so does
     // one on a machine with no output device.
     let audio = audio.filter(|(_, rate)| configure_audio(&reader, *rate).is_ok());
@@ -182,7 +247,7 @@ fn run(session: Session) -> Result<(), String> {
                 Read::End => audio_done = true,
             }
         } else if want_video {
-            match read_video(&reader, &video)? {
+            match read_video(&reader, &mut video)? {
                 Read::Ready(frame) => pending.push_back(frame),
                 Read::Retry => {}
                 Read::End => video_done = true,
@@ -264,15 +329,26 @@ fn open_reader(path: &std::path::Path) -> Result<IMFSourceReader, String> {
 /// How the decoded video comes out, and what it is turned into on the way to
 /// the UI.
 struct VideoFormat {
-    /// What Media Foundation actually decodes at.
+    /// The picture inside what Media Foundation decodes: the visible area,
+    /// which is smaller than the decoded buffer when the decoder pads it.
     source_width: u32,
     source_height: u32,
+    /// Where the picture starts inside the decoded buffer.
+    crop_x: u32,
+    crop_y: u32,
+    /// Rows in the decoded buffer, padding included.
+    frame_height: u32,
     /// Bytes between the start of one row and the next, as Media Foundation
     /// reports it. Negative means the image is stored bottom-up.
     stride: i32,
     /// What frames are handed over at, never larger than the source.
     width: u32,
     height: u32,
+    /// Frames per second, when the file says.
+    frame_rate: Option<f64>,
+    /// The box frames are fitted into, kept so the format can be read again
+    /// when the decoder changes it mid-stream.
+    target: (u32, u32),
 }
 
 impl VideoFormat {
@@ -305,13 +381,19 @@ fn configure_video(reader: &IMFSourceReader, target: (u32, u32)) -> Result<Video
 
     // Read back what was actually agreed to, which after a fallback is not
     // what was asked for.
+    current_format(reader, target)
+}
+
+/// The format the video stream is coming out in right now.
+fn current_format(reader: &IMFSourceReader, target: (u32, u32)) -> Result<VideoFormat, String> {
+    let video = MF_SOURCE_READER_FIRST_VIDEO_STREAM.0 as u32;
     let actual = unsafe { reader.GetCurrentMediaType(video) }
         .map_err(|err| format!("Couldn't read the video format: {err}"))?;
     let size = unsafe { actual.GetUINT64(&MF_MT_FRAME_SIZE) }
         .map_err(|err| format!("Couldn't read the video size: {err}"))?;
-    let (source_width, source_height) = ((size >> 32) as u32, size as u32);
+    let (frame_width, frame_height) = ((size >> 32) as u32, size as u32);
 
-    if source_width == 0 || source_height == 0 {
+    if frame_width == 0 || frame_height == 0 {
         return Err(String::from("The video reports no picture size."));
     }
 
@@ -320,7 +402,14 @@ fn configure_video(reader: &IMFSourceReader, target: (u32, u32)) -> Result<Video
     // preferred where it has one, because this is what the format wants rather
     // than what the decoder did.
     let stride = unsafe { actual.GetUINT32(&MF_MT_DEFAULT_STRIDE) }
-        .map_or(source_width as i32 * 4, |stride| stride as i32);
+        .map_or(frame_width as i32 * 4, |stride| stride as i32);
+
+    // H.264 decodes in 16-pixel blocks, so a decoder that switches to its real
+    // output size mid-stream pads the frame out to them, and the aperture is
+    // what says which part is picture. Drawn whole, the padding is a green
+    // strip down the right and along the bottom.
+    let (crop_x, crop_y, source_width, source_height) =
+        aperture(&actual, frame_width, frame_height).unwrap_or((0, 0, frame_width, frame_height));
 
     // Stored pixels aren't always square. Anamorphic sources — plenty of phone
     // and camera footage — store a narrower picture and expect it stretched on
@@ -334,13 +423,52 @@ fn configure_video(reader: &IMFSourceReader, target: (u32, u32)) -> Result<Video
 
     let (width, height) = fit(display_width, f64::from(source_height), target);
 
+    let frame_rate = unsafe { actual.GetUINT64(&MF_MT_FRAME_RATE) }
+        .ok()
+        .and_then(|rate| {
+            let (numerator, denominator) = ((rate >> 32) as f64, (rate as u32) as f64);
+            (numerator > 0. && denominator > 0.).then(|| numerator / denominator)
+        });
+
     Ok(VideoFormat {
         source_width,
         source_height,
+        crop_x,
+        crop_y,
+        frame_height,
         stride,
         width,
         height,
+        frame_rate,
+        target,
     })
+}
+
+/// The visible part of a decoded frame as `(x, y, width, height)`, when the
+/// format names one that fits inside it.
+fn aperture(media_type: &IMFMediaType, width: u32, height: u32) -> Option<(u32, u32, u32, u32)> {
+    [MF_MT_MINIMUM_DISPLAY_APERTURE, MF_MT_GEOMETRIC_APERTURE]
+        .iter()
+        .find_map(|key| {
+            // An `MFVideoArea`: two fixed-point offsets, of which only the
+            // whole part means anything for pixels, then the size.
+            let mut blob = [0u8; 16];
+            unsafe { media_type.GetBlob(key, &mut blob, None) }.ok()?;
+            let x = i16::from_le_bytes([blob[2], blob[3]]);
+            let y = i16::from_le_bytes([blob[6], blob[7]]);
+            let area_width = i32::from_le_bytes([blob[8], blob[9], blob[10], blob[11]]);
+            let area_height = i32::from_le_bytes([blob[12], blob[13], blob[14], blob[15]]);
+            let (x, y) = (u32::try_from(x).ok()?, u32::try_from(y).ok()?);
+            let (area_width, area_height) = (
+                u32::try_from(area_width).ok()?,
+                u32::try_from(area_height).ok()?,
+            );
+            (area_width > 0
+                && area_height > 0
+                && x + area_width <= width
+                && y + area_height <= height)
+                .then_some((x, y, area_width, area_height))
+        })
 }
 
 /// The largest box with the picture's display aspect ratio that fits inside
@@ -440,13 +568,19 @@ fn seek(reader: &IMFSourceReader, position: Duration) -> Result<(), String> {
 }
 
 /// One decoded video frame, if the reader had one ready.
-fn read_video(reader: &IMFSourceReader, format: &VideoFormat) -> Result<Read<VideoFrame>, String> {
-    let (sample, timestamp) =
-        match read_sample(reader, MF_SOURCE_READER_FIRST_VIDEO_STREAM.0 as u32)? {
-            Read::Ready(ready) => ready,
-            Read::Retry => return Ok(Read::Retry),
-            Read::End => return Ok(Read::End),
-        };
+fn read_video(
+    reader: &IMFSourceReader,
+    format: &mut VideoFormat,
+) -> Result<Read<VideoFrame>, String> {
+    let (sample, timestamp) = match read_sample(
+        reader,
+        MF_SOURCE_READER_FIRST_VIDEO_STREAM.0 as u32,
+        Some(format),
+    )? {
+        Read::Ready(ready) => ready,
+        Read::Retry => return Ok(Read::Retry),
+        Read::End => return Ok(Read::End),
+    };
 
     let mut bgra = vec![0u8; format.width as usize * format.height as usize * 4];
 
@@ -478,6 +612,7 @@ fn read_video(reader: &IMFSourceReader, format: &VideoFormat) -> Result<Read<Vid
                     pitch: pitch as isize,
                     format,
                 }
+                .cropped()
             }
             None => {
                 let mut data = std::ptr::null_mut();
@@ -486,7 +621,9 @@ fn read_video(reader: &IMFSourceReader, format: &VideoFormat) -> Result<Read<Vid
                     .Lock(&mut data, None, Some(&mut length))
                     .map_err(|err| format!("Couldn't read a video frame: {err}"))?;
 
-                let Some(source) = Source::from_flat(data, length as usize, format) else {
+                let Some(source) =
+                    Source::from_flat(data, length as usize, format).map(Source::cropped)
+                else {
                     let _ = buffer.Unlock();
                     // Too short to hold the picture it claims to; skipping one
                     // frame is better than reading past the buffer.
@@ -539,8 +676,10 @@ impl<'a> Source<'a> {
     /// which is the one case where reading rows would run off the end of it.
     fn from_flat(data: *const u8, available: usize, format: &'a VideoFormat) -> Option<Self> {
         let pitch = format.stride as isize;
-        let row_bytes = format.source_width as usize * 4;
-        let rows = format.source_height as usize;
+        // The whole decoded frame, padding included: the picture is cropped out
+        // of it afterwards.
+        let row_bytes = (format.crop_x + format.source_width) as usize * 4;
+        let rows = format.frame_height as usize;
         let needed = pitch.unsigned_abs() * (rows - 1) + row_bytes;
         if needed > available {
             return None;
@@ -560,6 +699,17 @@ impl<'a> Source<'a> {
             pitch,
             format,
         })
+    }
+
+    /// Moves the start from the top-left of the decoded frame to the top-left
+    /// of the picture inside it.
+    fn cropped(self) -> Self {
+        let offset = self.format.crop_y as isize * self.pitch + self.format.crop_x as isize * 4;
+        Self {
+            // SAFETY: the aperture was checked to lie inside the frame.
+            scanline0: unsafe { self.scanline0.offset(offset) },
+            ..self
+        }
     }
 
     /// One row of the picture.
@@ -649,7 +799,7 @@ fn downscale(source: &Source, out: &mut [u8]) {
 
 /// One packet of decoded audio as interleaved stereo `f32`.
 fn read_audio(reader: &IMFSourceReader) -> Result<Read<Vec<f32>>, String> {
-    let sample = match read_sample(reader, MF_SOURCE_READER_FIRST_AUDIO_STREAM.0 as u32)? {
+    let sample = match read_sample(reader, MF_SOURCE_READER_FIRST_AUDIO_STREAM.0 as u32, None)? {
         Read::Ready((sample, _)) => sample,
         Read::Retry => return Ok(Read::Retry),
         Read::End => return Ok(Read::End),
@@ -691,7 +841,26 @@ enum Read<T> {
     End,
 }
 
-fn read_sample(reader: &IMFSourceReader, stream: u32) -> Result<Read<(IMFSample, i64)>, String> {
+impl<T> Read<T> {
+    fn map<U>(self, f: impl FnOnce(T) -> U) -> Read<U> {
+        match self {
+            Self::Ready(value) => Read::Ready(f(value)),
+            Self::Retry => Read::Retry,
+            Self::End => Read::End,
+        }
+    }
+}
+
+/// The next sample off `stream`. A video stream passes its `format`, which is
+/// read again whenever the decoder changes it: H.264 decoders commonly start
+/// out at the size the container declares and switch to the padded size they
+/// really decode at a few frames in, and copying rows out at the old size
+/// after that shears the picture diagonally.
+fn read_sample(
+    reader: &IMFSourceReader,
+    stream: u32,
+    format: Option<&mut VideoFormat>,
+) -> Result<Read<(IMFSample, i64)>, String> {
     let mut flags = 0u32;
     let mut timestamp = 0i64;
     let mut sample = None;
@@ -707,6 +876,12 @@ fn read_sample(reader: &IMFSourceReader, stream: u32) -> Result<Read<(IMFSample,
         )
     }
     .map_err(|err| format!("Couldn't decode the video: {err}"))?;
+
+    if flags & MF_SOURCE_READERF_CURRENTMEDIATYPECHANGED.0 as u32 != 0
+        && let Some(format) = format
+    {
+        *format = current_format(reader, format.target)?;
+    }
 
     if flags & MF_SOURCE_READERF_ENDOFSTREAM.0 as u32 != 0 {
         return Ok(Read::End);

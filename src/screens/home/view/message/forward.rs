@@ -65,7 +65,7 @@ impl HomeScreen {
             .border_l(px(BAR_WIDTH))
             .border_color(theme.border)
             .child(label)
-            .when(!forward.content.is_empty(), |this| {
+            .when(forward.shows_text(), |this| {
                 this.child(
                     self.render_markdown(
                         &forward.markdown,

@@ -70,6 +70,7 @@ pub(in crate::screens::home) struct ViewerImage {
     pub source_url: String,
     pub width: Option<u32>,
     pub height: Option<u32>,
+    pub animated_webp: bool,
 }
 
 impl From<&discord::ImageAttachment> for ViewerImage {
@@ -79,6 +80,7 @@ impl From<&discord::ImageAttachment> for ViewerImage {
             source_url: image.source.clone(),
             width: image.width,
             height: image.height,
+            animated_webp: image.animated_webp,
         }
     }
 }
@@ -90,6 +92,7 @@ impl From<&discord::EmbedMedia> for ViewerImage {
             source_url: image.source.clone(),
             width: image.width,
             height: image.height,
+            animated_webp: image.animated_webp,
         }
     }
 }
@@ -113,6 +116,11 @@ impl HomeScreen {
             (width * scale).round() as u32,
             (height * scale).round() as u32,
         );
+        let full_url = if image.animated_webp {
+            discord::animated_webp(full_url)
+        } else {
+            full_url
+        };
         if let Some(previous) = self.image_viewer.take() {
             self.release_viewer_images(&previous, window, cx);
         }
@@ -123,6 +131,7 @@ impl HomeScreen {
             zoomed_url: None,
             width: image.width,
             height: image.height,
+            animated_webp: image.animated_webp,
             zoom: 1.,
             offset: point(px(0.), px(0.)),
             drag: None,
@@ -241,11 +250,16 @@ fn zoomed_url(viewer: &ImageViewer, window: &Window) -> Option<String> {
     {
         return None;
     }
-    Some(discord::scaled_url(
+    let url = discord::scaled_url(
         &viewer.source_url,
         viewer.width.map(u64::from),
         viewer.height.map(u64::from),
         ZOOMED_MAX_SIDE,
         ZOOMED_MAX_SIDE,
-    ))
+    );
+    Some(if viewer.animated_webp {
+        discord::animated_webp(url)
+    } else {
+        url
+    })
 }
