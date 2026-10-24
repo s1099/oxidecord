@@ -7,6 +7,7 @@ use gpui_kit::*;
 
 use crate::discord::{self, ChannelKind, MemberListItem, MemberListOp};
 use crate::platform::prefs;
+use crate::screens::home::member_list_cache::{self, CachedMemberList};
 use crate::screens::home::state::MemberList;
 use crate::screens::home::{HomeScreen, View};
 
@@ -37,31 +38,68 @@ impl HomeScreen {
             .then(|| self.selected_guild.zip(self.selected_channel))
             .flatten();
         let Some((guild_id, channel_id)) = wanted else {
-            self.member_list = None;
+            self.stash_member_list();
             return;
         };
+        let known = self.member_list_cache.list_id(channel_id);
         match &mut self.member_list {
             Some(list) if list.guild_id == guild_id && list.channel_id == channel_id => return,
-            // Another channel in the same guild: what's shown stays up until
+            // Another channel in the same guild with the list that's shown,
+            // or one whose list hasn't been kept: what's shown stays up until
             // Discord says which list this channel has.
-            Some(list) if list.guild_id == guild_id => {
+            Some(list)
+                if list.guild_id == guild_id
+                    && (known.is_none_or(|known| list.id.as_deref() == Some(known))
+                        || !self.member_list_cache.has(guild_id, channel_id)) =>
+            {
                 list.channel_id = channel_id;
                 list.ranges = vec![[0, RANGE_SIZE - 1]];
                 list.scroll = UniformListScrollHandle::new();
             }
-            list => {
-                *list = Some(MemberList {
-                    guild_id,
-                    channel_id,
-                    id: None,
-                    groups: Vec::new(),
-                    rows: Vec::new(),
-                    ranges: vec![[0, RANGE_SIZE - 1]],
-                    scroll: UniformListScrollHandle::new(),
-                })
+            _ => {
+                self.stash_member_list();
+                // The list this channel had last time, drawn until the sync
+                // the subscription brings replaces it.
+                let cached = self.member_list_cache.take(guild_id, channel_id);
+                self.member_list = Some(match cached {
+                    Some(cached) => MemberList {
+                        guild_id,
+                        channel_id,
+                        id: Some(cached.id),
+                        groups: cached.groups,
+                        rows: cached.rows,
+                        ranges: vec![[0, RANGE_SIZE - 1]],
+                        scroll: UniformListScrollHandle::new(),
+                    },
+                    None => MemberList {
+                        guild_id,
+                        channel_id,
+                        id: None,
+                        groups: Vec::new(),
+                        rows: Vec::new(),
+                        ranges: vec![[0, RANGE_SIZE - 1]],
+                        scroll: UniformListScrollHandle::new(),
+                    },
+                });
             }
         }
         self.resubscribe_member_list();
+    }
+
+    /// Puts the shown list away in the cache, leaving none shown.
+    fn stash_member_list(&mut self) {
+        if let Some(list) = self.member_list.take()
+            && let Some(id) = list.id
+        {
+            self.member_list_cache.store(
+                list.guild_id,
+                CachedMemberList {
+                    id,
+                    groups: list.groups,
+                    rows: list.rows,
+                },
+            );
+        }
     }
 
     /// Sends the open list's subscription again — after a new session, which
@@ -123,72 +161,41 @@ impl HomeScreen {
             .as_mut()
             .filter(|list| list.guild_id == update.guild_id)
         else {
+            self.member_list_cache.apply(&update);
             return;
         };
+        let synced = update
+            .ops
+            .iter()
+            .any(|op| matches!(op, MemberListOp::Sync { .. }));
         if list.id.as_deref() != Some(update.list_id.as_str()) {
             // Edits to a list that isn't the one shown are a channel left
             // behind. A sync of another means the open channel's list has
             // arrived in its place.
-            if !update
-                .ops
-                .iter()
-                .any(|op| matches!(op, MemberListOp::Sync { .. }))
-            {
+            if !synced {
+                self.member_list_cache.apply(&update);
                 return;
             }
-            list.id = Some(update.list_id);
-            list.rows.clear();
-        }
-
-        let rows = &mut list.rows;
-        for op in update.ops {
-            match op {
-                MemberListOp::Sync { start, items } => {
-                    let end = start + items.len();
-                    if rows.len() < end {
-                        rows.resize(end, None);
-                    }
-                    for (row, item) in rows[start..end].iter_mut().zip(items) {
-                        *row = Some(item);
-                    }
-                }
-                MemberListOp::Insert { index, item } => {
-                    if rows.len() < index {
-                        rows.resize(index, None);
-                    }
-                    rows.insert(index, Some(item));
-                }
-                MemberListOp::Update { index, item } => {
-                    if rows.len() <= index {
-                        rows.resize(index + 1, None);
-                    }
-                    rows[index] = Some(item);
-                }
-                MemberListOp::Delete { index } => {
-                    if index < rows.len() {
-                        rows.remove(index);
-                    }
-                }
-                MemberListOp::Invalidate { start, end } => {
-                    let end = (end + 1).min(rows.len());
-                    if start < end {
-                        rows[start..end].fill(None);
-                    }
-                }
+            if let Some(id) = list.id.replace(update.list_id.clone()) {
+                self.member_list_cache.store(
+                    list.guild_id,
+                    CachedMemberList {
+                        id,
+                        groups: std::mem::take(&mut list.groups),
+                        rows: std::mem::take(&mut list.rows),
+                    },
+                );
             }
         }
+        if synced {
+            self.member_list_cache
+                .learn(list.channel_id, &update.list_id);
+        }
 
-        // The groups say how long the list is: a header for each group with
-        // anyone in it, then its members. Rows past what's been synced are
-        // placeholders until they are.
+        member_list_cache::apply_ops(&mut list.rows, update.ops);
         list.groups = update.groups;
-        let len = list
-            .groups
-            .iter()
-            .filter(|group| group.count > 0)
-            .map(|group| group.count + 1)
-            .sum();
-        list.rows.resize(len, None);
+        list.rows
+            .resize(member_list_cache::list_len(&list.groups), None);
         cx.notify();
     }
 

@@ -31,6 +31,7 @@ use super::data::gif::LoadedGifs;
 use super::emoji::{PickerLayout, SectionKind};
 use super::folders::RailEntry;
 use super::history_cache::HistoryCache;
+use super::member_list_cache::MemberListCache;
 use super::selection::{Selection, TextCopies, TextRegions};
 use super::unread::Unreads;
 use super::voice::{PendingVoice, ScreenShare, StreamWatch, VoiceCall};
@@ -517,6 +518,8 @@ pub struct HomeScreen {
     /// asked for again with every page.
     pub(super) requested_members: HashSet<(Id<GuildMarker>, Id<UserMarker>)>,
     pub(super) member_list: Option<MemberList>,
+    /// Lists shown before, drawn at once when a channel with one is opened.
+    pub(super) member_list_cache: MemberListCache,
     /// The user closed the member list. Remembered between runs.
     pub(super) member_list_hidden: bool,
     /// The message search box in the conversation header. Not wired up yet.
@@ -706,6 +709,7 @@ impl HomeScreen {
             pins_popup: None,
             image_viewer: None,
             member_list: None,
+            member_list_cache: MemberListCache::default(),
             member_list_hidden: prefs::load().member_list_hidden,
             search_input,
             revealed_spoilers: HashSet::new(),

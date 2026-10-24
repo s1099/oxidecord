@@ -44,6 +44,7 @@ pub enum MemberGroupKind {
 }
 
 /// An edit to the list, at an index into it.
+#[derive(Clone)]
 pub enum MemberListOp {
     /// The items from `start` on, as they are now.
     Sync {

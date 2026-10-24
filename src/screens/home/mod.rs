@@ -13,6 +13,7 @@ mod data;
 mod emoji;
 mod folders;
 mod history_cache;
+mod member_list_cache;
 mod selection;
 mod state;
 mod unread;
