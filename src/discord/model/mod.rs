@@ -31,8 +31,8 @@ pub use member_list::{
     ListMember, MemberGroupKind, MemberListGroup, MemberListItem, MemberListOp, MemberListUpdate,
 };
 pub use message::{
-    Delivery, ForwardedMessage, ImageAttachment, MentionedUser, Message, MessageReference,
-    Reaction, ReactionEmoji, SPOILER_PREFIX, SpoilerCover, VideoAttachment,
+    Delivery, FileAttachment, ForwardedMessage, ImageAttachment, MentionedUser, Message,
+    MessageReference, Reaction, ReactionEmoji, SPOILER_PREFIX, SpoilerCover, VideoAttachment,
 };
 pub use read_state::{ChannelLatest, GuildUnreads, MuteSettings, ReadState, UnreadChannel};
 pub use settings::{GuildFolders, PresenceStatus, UserSettings};

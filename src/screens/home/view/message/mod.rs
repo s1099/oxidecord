@@ -64,6 +64,46 @@ fn fit_within(
     Some((width * scale, height * scale))
 }
 
+/// What [`HomeScreen::render_media`] draws: the attachments and embeds of a
+/// message or a forward, with the mentions its embeds can name.
+#[derive(Clone, Copy)]
+pub(super) struct Media<'a> {
+    images: &'a [discord::ImageAttachment],
+    videos: &'a [discord::VideoAttachment],
+    files: &'a [discord::FileAttachment],
+    embeds: &'a [discord::Embed],
+    mentions: &'a [discord::MentionedUser],
+}
+
+impl<'a> Media<'a> {
+    pub(super) fn of(message: &'a discord::Message) -> Self {
+        Self {
+            images: &message.images,
+            videos: &message.videos,
+            files: &message.files,
+            embeds: &message.embeds,
+            mentions: &message.mentions,
+        }
+    }
+
+    pub(super) fn of_forward(forward: &'a discord::ForwardedMessage) -> Self {
+        Self {
+            images: &forward.images,
+            videos: &forward.videos,
+            files: &forward.files,
+            embeds: &forward.embeds,
+            mentions: &forward.mentions,
+        }
+    }
+
+    pub(super) fn is_empty(&self) -> bool {
+        self.images.is_empty()
+            && self.videos.is_empty()
+            && self.files.is_empty()
+            && self.embeds.is_empty()
+    }
+}
+
 impl HomeScreen {
     pub(super) fn render_message(
         &self,
@@ -78,9 +118,7 @@ impl HomeScreen {
             .filter(|editing| editing.message_id == message.id);
 
         let mentioned = self.mentions_me(message);
-        let has_images = !message.images.is_empty();
-        let has_videos = !message.videos.is_empty();
-        let has_embeds = !message.embeds.is_empty();
+        let media = Media::of(message);
         let uploads = match &message.delivery {
             discord::Delivery::Sending { uploads } => uploads.as_slice(),
             _ => &[],
@@ -113,9 +151,7 @@ impl HomeScreen {
                     && message.content.is_empty()
                     && uploads.is_empty()
                     && message.forward.is_none()
-                    && !has_images
-                    && !has_videos
-                    && !has_embeds,
+                    && media.is_empty(),
                 |this| {
                     this.child(
                         div()
@@ -125,15 +161,8 @@ impl HomeScreen {
                     )
                 },
             )
-            .when(has_images || has_videos || has_embeds, |this| {
-                this.child(self.render_media(
-                    message.id.get(),
-                    &message.images,
-                    &message.videos,
-                    &message.embeds,
-                    &message.mentions,
-                    cx,
-                ))
+            .when(!media.is_empty(), |this| {
+                this.child(self.render_media(message.id.get(), media, cx))
             })
             .children(uploads.iter().map(|filename| {
                 div()
@@ -249,21 +278,20 @@ impl HomeScreen {
             .into_any_element()
     }
 
-    /// A message's images, videos, and embeds, stacked under its text.
+    /// A message's images, videos, files, and embeds, stacked under its text.
     ///
     /// `message_id` keys the media's element ids and playback. A forward's
     /// media borrows its forwarding message's id: Discord sends any comment
     /// on a forward as a message of its own, so a forward never carries media
     /// of its own for those keys to collide with.
-    fn render_media(
-        &self,
-        message_id: u64,
-        images: &[discord::ImageAttachment],
-        videos: &[discord::VideoAttachment],
-        embeds: &[discord::Embed],
-        mentions: &[discord::MentionedUser],
-        cx: &Context<Self>,
-    ) -> impl IntoElement {
+    fn render_media(&self, message_id: u64, media: Media, cx: &Context<Self>) -> impl IntoElement {
+        let Media {
+            images,
+            videos,
+            files,
+            embeds,
+            mentions,
+        } = media;
         v_flex()
             .w_full()
             .min_w_0()
@@ -276,6 +304,11 @@ impl HomeScreen {
             .when(!videos.is_empty(), |this| {
                 this.child(v_flex().gap_1().children(videos.iter().enumerate().map(
                     |(index, video)| self.render_video(video, MediaKey { message_id, index }, cx),
+                )))
+            })
+            .when(!files.is_empty(), |this| {
+                this.child(v_flex().gap_1().children(files.iter().enumerate().map(
+                    |(index, file)| self.render_file(file, MediaKey { message_id, index }, cx),
                 )))
             })
             .when(!embeds.is_empty(), |this| {

@@ -120,7 +120,11 @@ impl HomeScreen {
         if content == message.content {
             return self.cancel_edit(window, cx);
         }
-        if content.is_empty() && message.images.is_empty() && message.videos.is_empty() {
+        if content.is_empty()
+            && message.images.is_empty()
+            && message.videos.is_empty()
+            && message.files.is_empty()
+        {
             return self.confirm_delete_from_edit(message_id, window, cx);
         }
 

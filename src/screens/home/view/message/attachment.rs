@@ -1,4 +1,5 @@
-//! Inline previews for a message's image and video attachments.
+//! Inline previews for a message's image and video attachments, and cards
+//! for the files that aren't either.
 
 use std::time::Duration;
 
@@ -274,6 +275,71 @@ impl HomeScreen {
             .gap(px(2.))
             .child(surface)
             .child(caption)
+            .into_any_element()
+    }
+
+    /// A file that isn't an image or a video: a card with its name and size,
+    /// as Discord shows one. Its name and the download button both open it in
+    /// the browser, which downloads it.
+    pub(super) fn render_file(
+        &self,
+        file: &discord::FileAttachment,
+        key: MediaKey,
+        cx: &Context<Self>,
+    ) -> AnyElement {
+        let theme = cx.theme();
+        let open = {
+            let url = file.url.clone();
+            move |_: &ClickEvent, _: &mut Window, cx: &mut App| cx.open_url(&url)
+        };
+
+        h_flex()
+            .w_full()
+            .max_w(px(MEDIA_MAX_WIDTH))
+            .p_3()
+            .gap_3()
+            .items_center()
+            .rounded(px(8.))
+            .bg(theme.muted.opacity(0.5))
+            .border_1()
+            .border_color(theme.border)
+            .child(
+                Icon::default()
+                    .path("icons/file.svg")
+                    .size_8()
+                    .flex_shrink_0()
+                    .text_color(theme.muted_foreground),
+            )
+            .child(
+                v_flex()
+                    .flex_1()
+                    .min_w_0()
+                    .child(
+                        div()
+                            .id(key.element_id("file-name"))
+                            .truncate()
+                            .text_sm()
+                            .text_color(theme.link)
+                            .hover(|this| this.text_color(theme.link_hover).underline())
+                            .cursor_pointer()
+                            .child(file.filename.clone())
+                            .on_click(open.clone()),
+                    )
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(theme.muted_foreground)
+                            .child(format_size(file.size)),
+                    ),
+            )
+            .child(
+                Button::new(key.element_id("file-download"))
+                    .icon(Icon::default().path("icons/download.svg"))
+                    .ghost()
+                    .small()
+                    .tooltip("Download")
+                    .on_click(open),
+            )
             .into_any_element()
     }
 

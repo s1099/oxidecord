@@ -14,7 +14,7 @@
 | Stickers (sending and rendering) | Missing | |
 | GIF picker (Tenor) | Missing | |
 | Polls (creating, voting, results) | Missing | |
-| Non-media file attachments shown in the chat (audio player, file cards for PDFs, zips, and so on) | Missing | The message model only has images and videos; other attachments are dropped from the view |
+| Non-media file attachments shown in the chat (audio player, file cards for PDFs, zips, and so on) | Partial | Shown as file cards that open in the browser to download; audio has no inline player, and spoilered files aren't covered |
 | Voice messages (recording and playback) | Missing | |
 | Cloud uploads (`POST /channels/{id}/attachments`, as Discord's client sends files) | Missing | Files go in the message request itself, read whole into memory; Nitro and boost limits apply, but Cloudflare caps that request just under 500 MiB, so Nitro's 1 GB files are capped at 500 MB |
 | Drag and drop of files onto the chat | Missing | Picker and paste only |

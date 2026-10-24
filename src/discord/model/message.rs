@@ -41,6 +41,7 @@ pub struct Message {
     pub edited: Option<i64>,
     pub images: Vec<ImageAttachment>,
     pub videos: Vec<VideoAttachment>,
+    pub files: Vec<FileAttachment>,
     pub embeds: Vec<Embed>,
     /// The message this one is a reply to, when it references another. Carries
     /// just enough to render the quoted preview above the message.
@@ -103,6 +104,7 @@ impl Message {
             edited: None,
             images: Vec::new(),
             videos: Vec::new(),
+            files: Vec::new(),
             embeds: Vec::new(),
             reply: reply_to.map(MessageReference::quoting),
             forward: None,
@@ -129,6 +131,7 @@ impl Message {
         // change the embeds.
         self.images = edited.images;
         self.videos = edited.videos;
+        self.files = edited.files;
         self.embeds = edited.embeds;
     }
 
@@ -252,6 +255,7 @@ pub struct ForwardedMessage {
     pub edited: Option<i64>,
     pub images: Vec<ImageAttachment>,
     pub videos: Vec<VideoAttachment>,
+    pub files: Vec<FileAttachment>,
     pub embeds: Vec<Embed>,
     /// The guild the original was sent in; `None` for a direct message.
     pub guild_id: Option<Id<GuildMarker>>,
@@ -304,6 +308,17 @@ impl SpoilerCover {
     /// the broad colours should survive being blown back up to preview size —
     /// at 16 a face or a line of text was still readable through the smear.
     pub const SIZE: u32 = 6;
+}
+
+/// Any other attachment, which the view shows as a card that opens it in the
+/// browser to download.
+#[derive(Clone)]
+pub struct FileAttachment {
+    /// The CDN URL rather than the media proxy's, which only serves images
+    /// and video.
+    pub url: String,
+    pub filename: String,
+    pub size: u64,
 }
 
 /// A video attachment, played inline by [`crate::platform::video`].
@@ -376,7 +391,7 @@ pub(in crate::discord) fn convert_message(message: twilight_model::channel::Mess
         .filter(|nick| !nick.is_empty())
         .or(message.author.global_name)
         .unwrap_or_else(|| message.author.name.clone());
-    let (images, videos) = convert_attachments(&message.attachments);
+    let (images, videos, files) = convert_attachments(&message.attachments);
     // A forward points at its original through the same reference a reply
     // does, so only a plain reference counts as a reply.
     let is_forward = message
@@ -402,6 +417,7 @@ pub(in crate::discord) fn convert_message(message: twilight_model::channel::Mess
         edited: message.edited_timestamp.map(|edited| edited.as_secs()),
         images,
         videos,
+        files,
         embeds: message.embeds.into_iter().map(convert_embed).collect(),
         reply: message
             .referenced_message
@@ -421,11 +437,15 @@ pub(in crate::discord) fn convert_message(message: twilight_model::channel::Mess
     }
 }
 
-/// Splits attachments into the images and videos the view draws inline;
-/// anything else isn't shown.
+/// Splits attachments into the images and videos the view draws inline and
+/// the files it lists as cards.
 fn convert_attachments(
     attachments: &[twilight_model::channel::Attachment],
-) -> (Vec<ImageAttachment>, Vec<VideoAttachment>) {
+) -> (
+    Vec<ImageAttachment>,
+    Vec<VideoAttachment>,
+    Vec<FileAttachment>,
+) {
     let images = attachments
         .iter()
         .filter(|attachment| is_image(attachment))
@@ -479,12 +499,21 @@ fn convert_attachments(
             size: attachment.size,
         })
         .collect();
-    (images, videos)
+    let files = attachments
+        .iter()
+        .filter(|attachment| !is_image(attachment) && !is_video(attachment))
+        .map(|attachment| FileAttachment {
+            url: attachment.url.clone(),
+            filename: attachment.filename.clone(),
+            size: attachment.size,
+        })
+        .collect();
+    (images, videos, files)
 }
 
 fn convert_snapshot(snapshot: MessageSnapshot) -> ForwardedMessage {
     let message = snapshot.message;
-    let (images, videos) = convert_attachments(&message.attachments);
+    let (images, videos, files) = convert_attachments(&message.attachments);
     ForwardedMessage {
         markdown: Arc::new(Markdown::parse(&message.content)),
         content: message.content,
@@ -493,6 +522,7 @@ fn convert_snapshot(snapshot: MessageSnapshot) -> ForwardedMessage {
         edited: message.edited_timestamp.map(|edited| edited.as_secs()),
         images,
         videos,
+        files,
         embeds: message.embeds.into_iter().map(convert_embed).collect(),
         guild_id: snapshot.guild_id,
     }

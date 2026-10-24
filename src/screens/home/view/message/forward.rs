@@ -11,6 +11,8 @@ use crate::screens::home::selection::TextPart;
 use crate::screens::home::view::avatar;
 use crate::screens::home::view::markdown::MarkdownOptions;
 
+use super::Media;
+
 const BAR_WIDTH: f32 = 4.;
 /// The source guild's icon in the footer.
 const SOURCE_ICON_SIZE: f32 = 16.;
@@ -23,8 +25,7 @@ impl HomeScreen {
         cx: &Context<Self>,
     ) -> impl IntoElement {
         let theme = cx.theme();
-        let has_media =
-            !forward.images.is_empty() || !forward.videos.is_empty() || !forward.embeds.is_empty();
+        let media = Media::of_forward(forward);
 
         let label = h_flex()
             .gap_1()
@@ -77,15 +78,8 @@ impl HomeScreen {
                     ),
                 )
             })
-            .when(has_media, |this| {
-                this.child(self.render_media(
-                    message_id,
-                    &forward.images,
-                    &forward.videos,
-                    &forward.embeds,
-                    &forward.mentions,
-                    cx,
-                ))
+            .when(!media.is_empty(), |this| {
+                this.child(self.render_media(message_id, media, cx))
             })
             .child(source)
     }

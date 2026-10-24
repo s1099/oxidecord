@@ -11,7 +11,7 @@ use crate::screens::home::view::avatar;
 use crate::ui::depth::{self, Level, radius};
 
 use super::super::markdown::MarkdownOptions;
-use super::MEDIA_MAX_WIDTH;
+use super::{MEDIA_MAX_WIDTH, Media};
 
 const LIST_HEIGHT: f32 = 480.;
 /// Space around and between pins.
@@ -160,8 +160,7 @@ impl HomeScreen {
     /// One pinned message: who sent it and when, over what it says.
     fn render_pin(&self, message: &discord::Message, cx: &Context<Self>) -> impl IntoElement {
         let theme = cx.theme();
-        let has_media =
-            !message.images.is_empty() || !message.videos.is_empty() || !message.embeds.is_empty();
+        let media = Media::of(message);
         let author_name = self
             .author_name(message.author_id, &message.author_name)
             .to_owned();
@@ -230,15 +229,8 @@ impl HomeScreen {
                     .when_some(message.forward.as_ref(), |this, forward| {
                         this.child(self.render_forward(message.id.get(), forward, cx))
                     })
-                    .when(has_media, |this| {
-                        this.child(self.render_media(
-                            message.id.get(),
-                            &message.images,
-                            &message.videos,
-                            &message.embeds,
-                            &message.mentions,
-                            cx,
-                        ))
+                    .when(!media.is_empty(), |this| {
+                        this.child(self.render_media(message.id.get(), media, cx))
                     }),
             )
     }
