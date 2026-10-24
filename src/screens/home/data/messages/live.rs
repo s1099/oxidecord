@@ -235,6 +235,9 @@ impl HomeScreen {
                 }
                 cx.notify();
             }
+            discord::GatewayEvent::GuildUploadLimit { guild_id, limit } => {
+                self.guild_upload_limits.insert(guild_id, limit);
+            }
             discord::GatewayEvent::GuildEmojis { guild_id, emojis } => {
                 self.guild_emojis.insert(guild_id, emojis);
             }

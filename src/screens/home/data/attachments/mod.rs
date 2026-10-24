@@ -9,12 +9,12 @@ use std::sync::Arc;
 use gpui_kit::*;
 
 use crate::discord;
-use crate::screens::home::{HomeScreen, PasteAttachment};
+use crate::screens::home::{HomeScreen, PasteAttachment, View};
 use crate::ui::dialogs::show_error;
 
 pub(crate) use pending::{AttachmentData, PendingAttachment, format_size};
 
-use picker::{oversize_message, read_picked_file};
+use picker::{UploadBudget, read_picked_file};
 
 impl HomeScreen {
     /// Handles the paste shortcut in the composer. If the clipboard holds an
@@ -51,6 +51,7 @@ impl HomeScreen {
 
         let mut found = false;
         let mut rejected = Vec::new();
+        let mut budget = self.upload_budget();
         for entry in item.into_entries() {
             let ClipboardEntry::Image(image) = entry else {
                 continue;
@@ -60,9 +61,8 @@ impl HomeScreen {
             }
             found = true;
 
-            let size = image.bytes.len() as u64;
-            if size > discord::MAX_ATTACHMENT_SIZE {
-                rejected.push(oversize_message("The pasted image", size));
+            if let Err(reason) = budget.take("The pasted image", image.bytes.len() as u64) {
+                rejected.push(reason);
                 continue;
             }
 
@@ -100,6 +100,11 @@ impl HomeScreen {
             prompt: None,
         });
 
+        // Taken now rather than when the files are back, so they're checked
+        // before they're read. The picker is modal, so nothing else gets
+        // staged meanwhile.
+        let mut budget = self.upload_budget();
+
         cx.spawn_in(window, async move |this, cx| {
             // Dismissed without choosing anything, or the picker wouldn't open.
             let Ok(Ok(Some(paths))) = paths.await else {
@@ -109,7 +114,10 @@ impl HomeScreen {
             // Reading the files is blocking I/O, so it stays off the foreground.
             let files = cx
                 .background_spawn(async move {
-                    paths.into_iter().map(read_picked_file).collect::<Vec<_>>()
+                    paths
+                        .into_iter()
+                        .map(|path| read_picked_file(path, &mut budget))
+                        .collect::<Vec<_>>()
                 })
                 .await;
 
@@ -136,6 +144,31 @@ impl HomeScreen {
             });
         })
         .detach();
+    }
+
+    /// What may still be staged for the open conversation. A file can be as
+    /// large as the more generous of the user's Nitro and the guild's boosts.
+    fn upload_budget(&self) -> UploadBudget {
+        let user_limit = self
+            .current_user
+            .as_ref()
+            .map_or(discord::DEFAULT_UPLOAD_LIMIT, |user| user.upload_limit);
+        let guild_limit = self
+            .selected_guild
+            .filter(|_| self.view == View::Guild)
+            .and_then(|guild_id| self.guild_upload_limits.get(&guild_id))
+            .copied()
+            .unwrap_or_default();
+        let staged: u64 = self
+            .pending_attachments
+            .iter()
+            .map(|attachment| attachment.data.bytes().len() as u64)
+            .sum();
+        UploadBudget {
+            // Nitro allows a file larger than one message request can carry.
+            per_file: user_limit.max(guild_limit).min(discord::MAX_UPLOAD_TOTAL),
+            remaining: discord::MAX_UPLOAD_TOTAL.saturating_sub(staged),
+        }
     }
 
     fn reserve_attachment_id(&mut self) -> u64 {

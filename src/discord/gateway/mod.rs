@@ -127,6 +127,12 @@ pub enum GatewayEvent {
         guild_id: Id<GuildMarker>,
         role_id: Id<RoleMarker>,
     },
+    /// The largest file anyone may send in a guild, as its boosts allow:
+    /// from `READY`, `GUILD_CREATE`, or `GUILD_UPDATE`.
+    GuildUploadLimit {
+        guild_id: Id<GuildMarker>,
+        limit: u64,
+    },
     /// Every custom emoji in a guild, from `READY`, `GUILD_CREATE`, or
     /// `GUILD_EMOJIS_UPDATE`. Replaces what was known before.
     GuildEmojis {

@@ -22,9 +22,6 @@ pub const MESSAGE_PAGE_SIZE: usize = 50;
 /// allows; a response with fewer means the list is complete.
 pub const REACTORS_PAGE_SIZE: usize = 100;
 
-/// TODO: add support for higher file sizes upto 500mb with nitro checks
-pub const MAX_ATTACHMENT_SIZE: u64 = 10 * 1024 * 1024;
-
 /// Which page of a channel's history [`fetch_messages`] fetches.
 #[derive(Clone, Copy)]
 pub enum MessagePage {

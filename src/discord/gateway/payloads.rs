@@ -167,6 +167,9 @@ pub(super) struct GatewayGuild {
     pub(super) joined_at: Option<Timestamp>,
     #[serde(default)]
     owner_id: Option<Id<UserMarker>>,
+    /// Its boost level, which raises how large a file can be sent there.
+    #[serde(default)]
+    premium_tier: Option<u8>,
     /// Where the guild's own fields sit when the session asked for them
     /// apart from its lists.
     #[serde(default)]
@@ -177,11 +180,19 @@ pub(super) struct GatewayGuild {
 struct GuildProperties {
     #[serde(default)]
     owner_id: Option<Id<UserMarker>>,
+    #[serde(default)]
+    premium_tier: Option<u8>,
 }
 
 impl GatewayGuild {
     pub(super) fn owner_id(&self) -> Option<Id<UserMarker>> {
         self.owner_id.or_else(|| self.properties.as_ref()?.owner_id)
+    }
+
+    /// `None` for an unavailable guild, which says nothing about its boosts.
+    pub(super) fn premium_tier(&self) -> Option<u8> {
+        self.premium_tier
+            .or_else(|| self.properties.as_ref()?.premium_tier)
     }
 }
 

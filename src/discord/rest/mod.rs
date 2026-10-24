@@ -21,9 +21,8 @@ pub use auth::log_out;
 pub use channel::{fetch_dms, ring_call, stop_ringing};
 pub use guild::{fetch_channels, fetch_guilds};
 pub use message::{
-    MAX_ATTACHMENT_SIZE, MESSAGE_PAGE_SIZE, MessagePage, REACTORS_PAGE_SIZE, ack_message,
-    delete_message, edit_message, fetch_messages, fetch_pins, fetch_reactors, send_message,
-    toggle_reaction, trigger_typing,
+    MESSAGE_PAGE_SIZE, MessagePage, REACTORS_PAGE_SIZE, ack_message, delete_message, edit_message,
+    fetch_messages, fetch_pins, fetch_reactors, send_message, toggle_reaction, trigger_typing,
 };
 pub use settings::{fetch_user_settings, save_status};
 pub use user::{fetch_current_user, fetch_user_profile};

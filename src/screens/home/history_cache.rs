@@ -191,6 +191,7 @@ mod tests {
             username: String::new(),
             avatar_url: None,
             premium: false,
+            upload_limit: 0,
         };
         let mut message =
             Message::pending(Id::new(id), &author, String::new(), 0, None, Vec::new());

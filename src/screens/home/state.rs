@@ -486,6 +486,9 @@ pub struct HomeScreen {
     /// Every guild's roles, from the gateway, so a role mention can be named
     /// and coloured.
     pub(super) guild_roles: HashMap<Id<GuildMarker>, HashMap<Id<RoleMarker>, discord::Role>>,
+    /// The largest file each boosted guild accepts, from the gateway. A guild
+    /// missing here allows only the default.
+    pub(super) guild_upload_limits: HashMap<Id<GuildMarker>, u64>,
     /// Every guild's custom emoji, from the gateway, for the emoji picker.
     pub(super) guild_emojis: HashMap<Id<GuildMarker>, Vec<discord::GuildEmoji>>,
     pub(super) emoji_picker: Option<EmojiPicker>,
@@ -676,6 +679,7 @@ impl HomeScreen {
             guild_roles: HashMap::new(),
             member_roles: HashMap::new(),
             requested_members: HashSet::new(),
+            guild_upload_limits: HashMap::new(),
             guild_emojis: HashMap::new(),
             emoji_picker: None,
             pins_popup: None,

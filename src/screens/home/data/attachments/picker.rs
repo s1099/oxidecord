@@ -14,10 +14,42 @@ pub(super) struct PickedFile {
     pub data: AttachmentData,
 }
 
+/// How much more can be staged: the largest file the open conversation takes,
+/// and what's left of the total one message can carry.
+pub(super) struct UploadBudget {
+    pub per_file: u64,
+    pub remaining: u64,
+}
+
+impl UploadBudget {
+    /// Counts a file of `size` against the budget, or returns the error-dialog
+    /// line saying why it doesn't fit.
+    pub fn take(&mut self, subject: &str, size: u64) -> Result<(), String> {
+        if size > self.per_file {
+            return Err(format!(
+                "{subject} is {}, over the {} upload limit.",
+                format_size(size),
+                format_size(self.per_file)
+            ));
+        }
+        if size > self.remaining {
+            return Err(format!(
+                "{subject} would take this message over the {} its attachments can add up to.",
+                format_size(discord::MAX_UPLOAD_TOTAL)
+            ));
+        }
+        self.remaining -= size;
+        Ok(())
+    }
+}
+
 /// Reads one picked file into an attachment, or returns the error-dialog line
 /// explaining why it can't be attached. The size is checked before the contents
 /// so an oversized file is never read into memory just to be turned down.
-pub(super) fn read_picked_file(path: PathBuf) -> Result<PickedFile, String> {
+pub(super) fn read_picked_file(
+    path: PathBuf,
+    budget: &mut UploadBudget,
+) -> Result<PickedFile, String> {
     let filename = path
         .file_name()
         .map(|name| name.to_string_lossy().into_owned())
@@ -26,26 +58,17 @@ pub(super) fn read_picked_file(path: PathBuf) -> Result<PickedFile, String> {
     let size = std::fs::metadata(&path)
         .map_err(|err| format!("{filename} couldn't be read: {err}"))?
         .len();
-    if size > discord::MAX_ATTACHMENT_SIZE {
-        return Err(oversize_message(&filename, size));
-    }
+    budget.take(&filename, size)?;
 
-    let bytes =
-        std::fs::read(&path).map_err(|err| format!("{filename} couldn't be read: {err}"))?;
+    let bytes = std::fs::read(&path).map_err(|err| {
+        budget.remaining += size;
+        format!("{filename} couldn't be read: {err}")
+    })?;
     let data = match image_format_from_path(&path) {
         Some(format) => AttachmentData::Image(Arc::new(Image::from_bytes(format, bytes))),
         None => AttachmentData::File(Arc::new(bytes)),
     };
     Ok(PickedFile { filename, data })
-}
-
-/// The error-dialog line for a file that's over Discord's upload limit.
-pub(super) fn oversize_message(subject: &str, size: u64) -> String {
-    format!(
-        "{subject} is {}, over the {} upload limit.",
-        format_size(size),
-        format_size(discord::MAX_ATTACHMENT_SIZE)
-    )
 }
 
 /// The image format for a path's extension. Anything else is staged as a plain

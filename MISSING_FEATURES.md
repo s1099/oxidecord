@@ -16,7 +16,7 @@
 | Polls (creating, voting, results) | Missing | |
 | Non-media file attachments shown in the chat (audio player, file cards for PDFs, zips, and so on) | Missing | The message model only has images and videos; other attachments are dropped from the view |
 | Voice messages (recording and playback) | Missing | |
-| Uploads larger than 10 MB (Nitro and boosted-server limits) | Partial | Hard-coded 10 MB cap (`MAX_ATTACHMENT_SIZE`) |
+| Cloud uploads (`POST /channels/{id}/attachments`, as Discord's client sends files) | Missing | Files go in the message request itself, read whole into memory; Nitro and boost limits apply, but Cloudflare caps that request just under 500 MiB, so Nitro's 1 GB files are capped at 500 MB |
 | Drag and drop of files onto the chat | Missing | Picker and paste only |
 | Attachment alt text and descriptions | Missing | |
 | System messages (joins, pins, boosts, calls, thread created, and so on) | Missing | |

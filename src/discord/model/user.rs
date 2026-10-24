@@ -5,6 +5,7 @@ use twilight_model::id::{Id, marker::UserMarker};
 
 use super::cdn;
 use super::time::format_snowflake_date;
+use super::upload::{DEFAULT_UPLOAD_LIMIT, premium_upload_limit};
 
 /// Size the profile popout renders the avatar and banner at.
 const PROFILE_AVATAR_SIZE: u32 = 160;
@@ -20,6 +21,9 @@ pub struct CurrentUser {
     /// Whether they have any tier of Nitro, which is what lets custom emoji be
     /// used outside their own guild and animated ones at all.
     pub premium: bool,
+    /// The largest file their Nitro lets them send anywhere. A boosted guild
+    /// may allow more.
+    pub upload_limit: u64,
 }
 
 /// Another user, as shown in the profile popout opened from their avatar.
@@ -174,6 +178,9 @@ pub(in crate::discord) fn convert_current_user(
         premium: user
             .premium_type
             .is_some_and(|tier| tier != twilight_model::user::PremiumType::None),
+        upload_limit: user
+            .premium_type
+            .map_or(DEFAULT_UPLOAD_LIMIT, premium_upload_limit),
         username: user.name,
     }
 }

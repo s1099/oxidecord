@@ -15,6 +15,7 @@ mod message;
 mod read_state;
 mod settings;
 mod time;
+mod upload;
 mod user;
 mod voice;
 
@@ -33,6 +34,7 @@ pub use message::{
 };
 pub use read_state::{ChannelLatest, GuildUnreads, MuteSettings, ReadState, UnreadChannel};
 pub use settings::{GuildFolders, PresenceStatus, UserSettings};
+pub use upload::{DEFAULT_UPLOAD_LIMIT, MAX_UPLOAD_TOTAL};
 pub use user::{CurrentUser, Reactor, UserProfile};
 pub use voice::{StreamServerInfo, VoiceServerInfo, VoiceUserState, stream_key};
 
@@ -46,6 +48,7 @@ pub(super) use read_state::{
     convert_guild_channels, convert_mute_settings, convert_read_states, versioned_list,
 };
 pub(super) use settings::{RawSettingsProto, encode_status_settings, parse_user_settings};
+pub(super) use upload::boost_upload_limit;
 pub(super) use user::{RawProfile, convert_current_user, convert_reactor, convert_user_profile};
 pub(super) use voice::{
     RawVoiceServer, RawVoiceState, convert_call_voice_states, convert_guild_voice_states,

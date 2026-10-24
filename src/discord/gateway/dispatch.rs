@@ -9,11 +9,11 @@ use twilight_model::util::Timestamp;
 
 use crate::discord::model::{
     RawEmoji, RawGuildChannel, RawGuildSettings, RawMember, RawMemberListUpdate, RawRole,
-    RawVoiceServer, RawVoiceState, StreamServerInfo, author_member, convert_call_voice_states,
-    convert_channel_unreads, convert_guild_channels, convert_guild_emoji,
-    convert_guild_voice_states, convert_member_list_update, convert_message, convert_mute_settings,
-    convert_reaction_emoji, convert_read_states, convert_role, convert_stream_server,
-    convert_voice_server, convert_voice_state, parse_user_settings,
+    RawVoiceServer, RawVoiceState, StreamServerInfo, author_member, boost_upload_limit,
+    convert_call_voice_states, convert_channel_unreads, convert_guild_channels,
+    convert_guild_emoji, convert_guild_voice_states, convert_member_list_update, convert_message,
+    convert_mute_settings, convert_reaction_emoji, convert_read_states, convert_role,
+    convert_stream_server, convert_voice_server, convert_voice_state, parse_user_settings,
 };
 
 use super::payloads::*;
@@ -59,6 +59,7 @@ pub(super) fn dispatch(
                     presences.append(&mut guild.presences);
                     let merged = merged.next().unwrap_or_default();
                     let owner_id = guild.owner_id();
+                    unreads.extend(guild_upload_limit(&guild));
                     unreads.extend(guild_channels(
                         guild.id,
                         ready.user.id,
@@ -227,6 +228,7 @@ pub(super) fn dispatch(
         "GUILD_CREATE" => serde_json::from_str::<GatewayGuild>(data)
             .map(|guild| {
                 let owner_id = guild.owner_id();
+                let upload_limit = guild_upload_limit(&guild);
                 let channels = match *self_id {
                     Some(self_id) => guild_channels(
                         guild.id,
@@ -250,6 +252,7 @@ pub(super) fn dispatch(
                 let presences = GatewayEvent::Presences(convert_presences(guild.presences));
                 std::iter::once(voice)
                     .chain(std::iter::once(presences))
+                    .chain(upload_limit)
                     .chain(channels)
                     .chain(guild_emojis(guild.id, guild.emojis))
                     .chain(guild_roles(guild.id, guild.roles, guild.members))
@@ -266,6 +269,12 @@ pub(super) fn dispatch(
                 .map(|guild_id| vec![GatewayEvent::GuildChannelsChanged { guild_id }])
                 .unwrap_or_default()
         }
+        // Of the guild's own fields, only its boost level matters here.
+        "GUILD_UPDATE" => serde_json::from_str::<GatewayGuild>(data)
+            .ok()
+            .and_then(|guild| guild_upload_limit(&guild))
+            .into_iter()
+            .collect(),
         "GUILD_DELETE" => serde_json::from_str::<GuildDeletePayload>(data)
             .map(|guild| {
                 vec![GatewayEvent::GuildVoiceStates {
@@ -413,6 +422,15 @@ fn guild_channels<'a>(
         GatewayEvent::GuildUnreads(unreads),
         GatewayEvent::GuildChannels { guild_id, channels },
     ]
+}
+
+/// The file size a guild's boosts allow as an event, unless it arrived
+/// unavailable.
+fn guild_upload_limit(guild: &GatewayGuild) -> Option<GatewayEvent> {
+    Some(GatewayEvent::GuildUploadLimit {
+        guild_id: guild.id,
+        limit: boost_upload_limit(guild.premium_tier()?),
+    })
 }
 
 /// A guild's emoji as an event, unless the guild arrived without its list.
