@@ -176,7 +176,10 @@ impl HomeScreen {
             .replying_to
             .as_ref()
             .is_some_and(|target| target.message_id == message_id);
-        let tint = if replying {
+        // One just jumped to is lit the same way for a moment, so the eye
+        // lands on it.
+        let flashed = self.flashed_message == Some(message_id);
+        let tint = if replying || flashed {
             Some(theme.primary)
         } else {
             mentioned.then_some(theme.warning)

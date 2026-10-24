@@ -30,6 +30,8 @@ pub enum MessagePage {
     /// The messages just newer than this one, which needn't be real — any
     /// snowflake does, an ack's included.
     After(Id<MessageMarker>),
+    /// The messages either side of this one, and it.
+    Around(Id<MessageMarker>),
 }
 
 /// Fetches a page of messages in a channel, oldest first.
@@ -46,6 +48,7 @@ pub async fn fetch_messages(
             MessagePage::Latest => request.await,
             MessagePage::Before(before) => request.before(before).await,
             MessagePage::After(after) => request.after(after).await,
+            MessagePage::Around(around) => request.around(around).await,
         }?;
         let mut messages = response.models().await?;
 

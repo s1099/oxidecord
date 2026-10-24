@@ -9,6 +9,7 @@ mod channel;
 mod embed;
 mod emoji;
 mod guild;
+mod link;
 mod markdown;
 mod member_list;
 mod message;
@@ -24,6 +25,7 @@ pub use channel::{Channel, ChannelKind, DirectMessage};
 pub use embed::{Embed, EmbedAuthor, EmbedField, EmbedFooter, EmbedLayout, EmbedMedia};
 pub use emoji::GuildEmoji;
 pub use guild::{Guild, GuildMember, Role};
+pub use link::MessageLink;
 pub use markdown::{Block, Inline, List, Markdown, Mention};
 pub use member_list::{
     ListMember, MemberGroupKind, MemberListGroup, MemberListItem, MemberListOp, MemberListUpdate,

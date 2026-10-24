@@ -16,7 +16,7 @@ pub use model::{
     DirectMessage, Embed, EmbedAuthor, EmbedField, EmbedFooter, EmbedLayout, EmbedMedia,
     ForwardedMessage, Guild, GuildEmoji, GuildFolders, GuildMember, GuildUnreads, ImageAttachment,
     Inline, List, ListMember, MAX_UPLOAD_TOTAL, Markdown, MemberGroupKind, MemberListGroup,
-    MemberListItem, MemberListOp, MemberListUpdate, Mention, MentionedUser, Message,
+    MemberListItem, MemberListOp, MemberListUpdate, Mention, MentionedUser, Message, MessageLink,
     MessageReference, MuteSettings, PresenceStatus, Reaction, ReactionEmoji, Reactor, ReadState,
     Role, SPOILER_PREFIX, SpoilerCover, StreamServerInfo, UnreadChannel, UserProfile,
     VideoAttachment, VoiceServerInfo, VoiceUserState, animated_webp, scaled_url, stream_key,

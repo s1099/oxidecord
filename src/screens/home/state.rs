@@ -393,6 +393,16 @@ pub struct HomeScreen {
     /// live message should snap the list to the bottom (following the
     /// conversation) or be appended silently (the user is reading history).
     pub(super) at_bottom: bool,
+    /// Bumped whenever the conversation's messages are replaced wholesale, so
+    /// a page fetched for what was there before doesn't land over them.
+    pub(super) messages_generation: u64,
+    /// A message to open its channel at, once that channel's conversation
+    /// loads: a link's target, while its guild or channel list is opened.
+    pub(super) pending_jump: Option<(Id<ChannelMarker>, Id<MessageMarker>)>,
+    /// The message just jumped to, lit up briefly so the eye finds it, and
+    /// the timer that puts it out.
+    pub(super) flashed_message: Option<Id<MessageMarker>>,
+    pub(super) flash_timer: Option<Task<()>>,
     pub(super) send_error: Option<String>,
     /// Set while composing a reply; drives the "Replying to …" banner and is
     /// cleared when the reply is sent, dismissed, or the channel changes.
@@ -652,6 +662,10 @@ impl HomeScreen {
             newer_loading: false,
             reached_newest: true,
             at_bottom: true,
+            messages_generation: 0,
+            pending_jump: None,
+            flashed_message: None,
+            flash_timer: None,
             send_error: None,
             replying_to: None,
             editing: None,

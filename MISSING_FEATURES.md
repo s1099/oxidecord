@@ -22,7 +22,7 @@
 | System messages (joins, pins, boosts, calls, thread created, and so on) | Missing | |
 | Pinning and unpinning messages, and the pinned-messages panel | Partial | The header's pin button opens the pinned-messages popout; pinning, unpinning, and jumping to a pin aren't done yet |
 | Message search (with filters: from, in, has, before, after) | Missing | The header has a search box, but typing in it does nothing yet |
-| Jump to a message (from a reply, a link, or search) | Missing | Clicking a reply quote or a forward's source doesn't open the original |
+| Jump to a message (from a reply, a link, or search) | Partial | Reply quotes, the composer's "Replying to" strip, and discord.com message links jump there; search and a forward's source don't yet |
 | "Jump to present" and the new-messages bar | Missing | |
 | Copy text, copy message ID, and other developer-mode context-menu items | Missing | Only "Copy Message Link" is there |
 | Right-click context menus (message, user, channel, server) | Missing | Actions are on the hover toolbar and "More" menu only |
@@ -147,7 +147,7 @@
 | Minimize to system tray and run on startup | Missing | |
 | Auto-updater on macOS and Linux | Missing | Windows only |
 | Video playback on macOS and Linux | Missing | `platform/video/unsupported.rs` falls back to the poster card, and GIFs Discord serves as video (Tenor, Klipy, Giphy) stay on their still poster |
-| Deep links (`discord://` URLs) and in-app handling of discord.com message links | Missing | |
+| Deep links (`discord://` URLs) | Missing | discord.com message links in messages already open in the app |
 | Multiple windows and popping out channels | Missing | |
 | Spell check | Missing | |
 | Clips and game overlay | Missing | |

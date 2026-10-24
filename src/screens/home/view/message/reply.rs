@@ -51,7 +51,9 @@ impl HomeScreen {
             .border_color(theme.border)
             .rounded_tl(px(6.));
 
+        let original = reference.id;
         h_flex()
+            .id(("reply-preview", message_id))
             .relative()
             .w_full()
             .min_w_0()
@@ -61,6 +63,14 @@ impl HomeScreen {
             .items_center()
             .text_xs()
             .text_color(theme.muted_foreground)
+            .cursor_pointer()
+            .hover(|this| this.text_color(theme.foreground))
+            .on_click(cx.listener(move |this, _, window, cx| {
+                // A drag that selected text and let go here wasn't a click.
+                if !this.has_text_selection() {
+                    this.jump_to_message(original, window, cx);
+                }
+            }))
             .child(spine)
             .child(avatar)
             .child(

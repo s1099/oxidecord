@@ -207,6 +207,8 @@ impl ReactionEmoji {
 /// quoted preview line atop the reply.
 #[derive(Clone)]
 pub struct MessageReference {
+    /// The original, which clicking the quote jumps to.
+    pub id: Id<MessageMarker>,
     pub author_id: Id<UserMarker>,
     pub author_name: String,
     pub author_avatar_url: Option<String>,
@@ -227,6 +229,7 @@ impl MessageReference {
             _ => message.content.as_str(),
         };
         Self {
+            id: message.id,
             author_id: message.author_id,
             author_name: message.author_name.clone(),
             author_avatar_url: message.author_avatar_url.clone(),
@@ -541,6 +544,7 @@ fn convert_reference(referenced: twilight_model::channel::Message) -> MessageRef
         _ => referenced.content.as_str(),
     };
     MessageReference {
+        id: referenced.id,
         author_id: referenced.author.id,
         author_name: referenced
             .author

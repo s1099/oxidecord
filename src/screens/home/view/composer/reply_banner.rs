@@ -25,9 +25,16 @@ impl HomeScreen {
             .border_color(theme.border)
             .child(
                 h_flex()
+                    .id("reply-banner-target")
                     .gap_1()
                     .text_xs()
                     .text_color(theme.muted_foreground)
+                    .cursor_pointer()
+                    .hover(|this| this.text_color(theme.foreground))
+                    .on_click(cx.listener({
+                        let message_id = target.message_id;
+                        move |this, _, window, cx| this.jump_to_message(message_id, window, cx)
+                    }))
                     .child("Replying to")
                     .child(
                         div()

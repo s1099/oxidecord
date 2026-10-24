@@ -45,7 +45,7 @@ won't know that generator so either update CMake, or build through Ninja with
 - [x] Voice calls
 - [x] Screenshare
 - [ ] Video calls
-- [ ] Caching
+- [x] Caching
 - [x] Markdown rendering
 - [ ] Custom themes
 - [ ] Cross platform autoupdater (only Windows is works right now)

@@ -46,6 +46,13 @@ impl HomeScreen {
         let Some(channel_id) = self.selected_channel else {
             return;
         };
+        // Taken whatever opens, so a jump that went astray doesn't wait to
+        // fire the next time its channel is opened by hand.
+        let jump = self
+            .pending_jump
+            .take()
+            .filter(|&(channel, _)| channel == channel_id)
+            .map(|(_, message_id)| message_id);
         let placeholder = match self.view {
             View::DirectMessages => self
                 .selected_dm_info()
@@ -67,6 +74,10 @@ impl HomeScreen {
             .flatten();
         self.reset_conversation(placeholder, window, cx);
         self.unread_marker = marker;
+        if let Some(message_id) = jump {
+            self.load_around(channel_id, message_id, window, cx);
+            return;
+        }
         // Opened before, it's drawn from what was there then while the
         // newest page is fetched, which is merged in when it lands.
         match self.history_cache.take(channel_id) {
@@ -103,6 +114,7 @@ impl HomeScreen {
         self.newer_loading = false;
         self.at_bottom = true;
         self.messages_loading = true;
+        self.messages_generation += 1;
         self.fetch_opening_page(channel_id, None, window, cx);
         cx.notify();
     }
@@ -119,6 +131,7 @@ impl HomeScreen {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        let generation = self.messages_generation;
         cx.spawn_in(window, async move |this, cx| {
             let page_size = discord::MESSAGE_PAGE_SIZE;
             let mut result = discord::fetch_messages(channel_id, MessagePage::Latest)
@@ -133,9 +146,12 @@ impl HomeScreen {
                     .map(|page| (page, false));
             }
             let _ = this.update_in(cx, |this, window, cx| {
-                // The user may have clicked another channel while this request
-                // was in flight; drop the stale response.
-                if this.selected_channel != Some(channel_id) {
+                // The user may have clicked another channel, or jumped to a
+                // message, while this request was in flight; drop the stale
+                // response.
+                if this.selected_channel != Some(channel_id)
+                    || this.messages_generation != generation
+                {
                     return;
                 }
                 // Drawn from the cache meanwhile, the newest page is merged
@@ -270,6 +286,7 @@ impl HomeScreen {
         }
         self.messages.clear();
         self.messages_list.reset(0);
+        self.messages_generation += 1;
         self.reactors.clear();
         // Release the previous conversation's decoded images instead of letting
         // them accumulate; the next one repopulates the cache as it renders.
@@ -292,6 +309,8 @@ impl HomeScreen {
         self.revealed_spoilers.clear();
         self.text_selection = None;
         self.text_copies.get_mut().clear();
+        self.flashed_message = None;
+        self.flash_timer = None;
         self.unread_marker = None;
         self.marked_unread = false;
         for attachment in self.pending_attachments.drain(..) {

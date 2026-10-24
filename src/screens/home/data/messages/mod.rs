@@ -4,6 +4,7 @@
 mod delete;
 mod edit;
 mod history;
+mod jump;
 mod live;
 mod reactions;
 mod send;
