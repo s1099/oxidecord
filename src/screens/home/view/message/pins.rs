@@ -160,8 +160,10 @@ impl HomeScreen {
     /// One pinned message: who sent it and when, over what it says.
     fn render_pin(&self, message: &discord::Message, cx: &Context<Self>) -> impl IntoElement {
         let theme = cx.theme();
-        let has_media =
-            !message.images.is_empty() || !message.videos.is_empty() || !message.embeds.is_empty();
+        let has_media = !message.images.is_empty()
+            || !message.videos.is_empty()
+            || !message.files.is_empty()
+            || !message.embeds.is_empty();
         let author_name = self
             .author_name(message.author_id, &message.author_name)
             .to_owned();
@@ -235,6 +237,7 @@ impl HomeScreen {
                             message.id.get(),
                             &message.images,
                             &message.videos,
+                            &message.files,
                             &message.embeds,
                             &message.mentions,
                             cx,

@@ -40,6 +40,7 @@ pub struct Message {
     pub edited: Option<i64>,
     pub images: Vec<ImageAttachment>,
     pub videos: Vec<VideoAttachment>,
+    pub files: Vec<FileAttachment>,
     pub embeds: Vec<Embed>,
     /// The message this one is a reply to, when it references another. Carries
     /// just enough to render the quoted preview above the message.
@@ -97,6 +98,7 @@ impl Message {
             edited: None,
             images: Vec::new(),
             videos: Vec::new(),
+            files: Vec::new(),
             embeds: Vec::new(),
             reply: reply_to.map(MessageReference::quoting),
             forward: None,
@@ -123,6 +125,7 @@ impl Message {
         // change the embeds.
         self.images = edited.images;
         self.videos = edited.videos;
+        self.files = edited.files;
         self.embeds = edited.embeds;
     }
 
@@ -243,6 +246,7 @@ pub struct ForwardedMessage {
     pub edited: Option<i64>,
     pub images: Vec<ImageAttachment>,
     pub videos: Vec<VideoAttachment>,
+    pub files: Vec<FileAttachment>,
     pub embeds: Vec<Embed>,
     /// The guild the original was sent in; `None` for a direct message.
     pub guild_id: Option<Id<GuildMarker>>,
@@ -307,6 +311,24 @@ pub struct VideoAttachment {
     pub spoiler: Option<SpoilerCover>,
 }
 
+/// An attachment that is neither an image nor a video — a PDF, an archive,
+/// whatever else — shown as a card naming the file, since there is no preview
+/// to draw. Clicking the card opens the file.
+#[derive(Clone)]
+pub struct FileAttachment {
+    /// Discord's CDN URL, which is what clicking the card opens. Signed and
+    /// expiring like the media-proxy ones, so it's only good for as long as
+    /// the message is fresh.
+    pub url: String,
+    /// The name as uploaded, which may carry no extension at all.
+    pub filename: String,
+    /// Bytes on disk, as Discord reported them.
+    pub size: u64,
+    /// Discord's reported media type, when it knows one; extensionless
+    /// uploads usually have none either.
+    pub content_type: Option<String>,
+}
+
 /// A page of `GET /channels/{id}/messages/pins`, most recently pinned first.
 #[derive(Deserialize)]
 pub(in crate::discord) struct RawPins {
@@ -355,7 +377,7 @@ pub(in crate::discord) fn convert_message(message: twilight_model::channel::Mess
         .filter(|nick| !nick.is_empty())
         .or(message.author.global_name)
         .unwrap_or_else(|| message.author.name.clone());
-    let (images, videos) = convert_attachments(&message.attachments);
+    let (images, videos, files) = convert_attachments(&message.attachments);
     // A forward points at its original through the same reference a reply
     // does, so only a plain reference counts as a reply.
     let is_forward = message
@@ -381,6 +403,7 @@ pub(in crate::discord) fn convert_message(message: twilight_model::channel::Mess
         edited: message.edited_timestamp.map(|edited| edited.as_secs()),
         images,
         videos,
+        files,
         embeds: message.embeds.into_iter().map(convert_embed).collect(),
         reply: message
             .referenced_message
@@ -400,11 +423,16 @@ pub(in crate::discord) fn convert_message(message: twilight_model::channel::Mess
     }
 }
 
-/// Splits attachments into the images and videos the view draws inline;
-/// anything else isn't shown.
+/// Splits attachments into the images and videos the view draws inline and
+/// the generic files it shows as cards; every attachment lands in exactly one
+/// of the three.
 fn convert_attachments(
     attachments: &[twilight_model::channel::Attachment],
-) -> (Vec<ImageAttachment>, Vec<VideoAttachment>) {
+) -> (
+    Vec<ImageAttachment>,
+    Vec<VideoAttachment>,
+    Vec<FileAttachment>,
+) {
     let images = attachments
         .iter()
         .filter(|attachment| is_image(attachment))
@@ -444,12 +472,25 @@ fn convert_attachments(
             size: attachment.size,
         })
         .collect();
-    (images, videos)
+    // Whatever is neither becomes a card, which opens the file rather than
+    // drawing it. The plain CDN URL rather than the media proxy, since that
+    // one exists to transform media and the card only ever opens the file.
+    let files = attachments
+        .iter()
+        .filter(|attachment| !is_image(attachment) && !is_video(attachment))
+        .map(|attachment| FileAttachment {
+            url: attachment.url.clone(),
+            filename: attachment.filename.clone(),
+            size: attachment.size,
+            content_type: attachment.content_type.clone(),
+        })
+        .collect();
+    (images, videos, files)
 }
 
 fn convert_snapshot(snapshot: MessageSnapshot) -> ForwardedMessage {
     let message = snapshot.message;
-    let (images, videos) = convert_attachments(&message.attachments);
+    let (images, videos, files) = convert_attachments(&message.attachments);
     ForwardedMessage {
         markdown: Arc::new(Markdown::parse(&message.content)),
         content: message.content,
@@ -458,6 +499,7 @@ fn convert_snapshot(snapshot: MessageSnapshot) -> ForwardedMessage {
         edited: message.edited_timestamp.map(|edited| edited.as_secs()),
         images,
         videos,
+        files,
         embeds: message.embeds.into_iter().map(convert_embed).collect(),
         guild_id: snapshot.guild_id,
     }
@@ -592,4 +634,60 @@ fn poster_url(attachment: &twilight_model::channel::Attachment, width: u32, heig
         "{}{separator}format=jpeg&width={width}&height={height}",
         attachment.proxy_url
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn wire_message() -> serde_json::Value {
+        serde_json::json!({
+            "id": "100", "channel_id": "200", "type": 0,
+            "author": {"id": "300", "username": "member", "discriminator": "0"},
+            "content": "", "timestamp": "2026-10-19T00:00:00.000000+00:00",
+            "edited_timestamp": null, "tts": false, "mention_everyone": false, "pinned": false,
+            "mentions": [], "mention_roles": [], "attachments": [], "embeds": []
+        })
+    }
+
+    #[test]
+    fn non_media_attachments_become_file_cards() {
+        let mut raw = wire_message();
+        raw["attachments"] = serde_json::json!([
+            {"id": "500", "filename": "report.pdf", "size": 2048, "url": "https://cdn.example.com/report.pdf",
+             "proxy_url": "https://proxy.example.com/report.pdf", "content_type": "application/pdf"},
+            {"id": "501", "filename": "backup", "size": 5, "url": "https://cdn.example.com/backup",
+             "proxy_url": "https://proxy.example.com/backup"},
+            {"id": "502", "filename": "pic.png", "size": 9, "url": "https://cdn.example.com/pic.png",
+             "proxy_url": "https://proxy.example.com/pic.png", "content_type": "image/png"},
+            {"id": "503", "filename": "clip.mp4", "size": 11, "url": "https://cdn.example.com/clip.mp4",
+             "proxy_url": "https://proxy.example.com/clip.mp4", "content_type": "video/mp4"}
+        ]);
+        let message = convert_message(serde_json::from_value(raw).unwrap());
+        let files = &message.files;
+        assert_eq!(
+            files.len(),
+            2,
+            "only the attachments that are neither image nor video become cards"
+        );
+        assert_eq!(files[0].filename, "report.pdf");
+        assert_eq!(files[0].size, 2048);
+        assert_eq!(files[0].content_type.as_deref(), Some("application/pdf"));
+        // An upload without an extension usually has no media type either.
+        assert_eq!(files[1].filename, "backup");
+        assert_eq!(files[1].content_type, None);
+        assert_eq!(message.images.len(), 1);
+        assert_eq!(message.videos.len(), 1);
+        // An edit can remove an attachment; the cards follow.
+        let mut edited = wire_message();
+        edited["attachments"] = serde_json::json!([
+            {"id": "504", "filename": "next.txt", "size": 2, "url": "https://cdn.example.com/next.txt",
+             "proxy_url": "https://proxy.example.com/next.txt"}
+        ]);
+        let mut message = message;
+        message.apply_edit(convert_message(serde_json::from_value(edited).unwrap()));
+        assert_eq!(message.files.len(), 1);
+        assert_eq!(message.files[0].filename, "next.txt");
+        assert_eq!(message.images.len(), 0);
+    }
 }

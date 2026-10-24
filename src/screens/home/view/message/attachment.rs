@@ -1,4 +1,5 @@
-//! Inline previews for a message's image and video attachments.
+//! Inline previews for a message's image and video attachments, and file
+//! cards for the rest.
 
 use std::time::Duration;
 
@@ -260,6 +261,55 @@ impl HomeScreen {
             .gap(px(2.))
             .child(surface)
             .child(caption)
+            .into_any_element()
+    }
+
+    /// One generic file attachment: a compact card naming it, which opens the
+    /// file with the OS default handler when clicked, the way message links
+    /// do. Nothing is fetched until then, so a channel full of files costs no
+    /// more than one of text.
+    pub(super) fn render_file(
+        &self,
+        file: &discord::FileAttachment,
+        key: MediaKey,
+        cx: &Context<Self>,
+    ) -> AnyElement {
+        let theme = cx.theme();
+        let url = file.url.clone();
+        let hover = theme.accent.opacity(0.08);
+
+        h_flex()
+            .id(key.element_id("file"))
+            .max_w(px(MEDIA_MAX_WIDTH))
+            .gap_2()
+            .items_center()
+            .px_2()
+            .py_1()
+            .rounded(px(8.))
+            .border_1()
+            .border_color(theme.border)
+            .bg(theme.muted)
+            .shadow(media_shadow())
+            .cursor_pointer()
+            .hover(move |this| this.bg(hover))
+            .on_click(move |_, _, cx| cx.open_url(&url))
+            .child(
+                div()
+                    .flex_shrink_0()
+                    .text_color(theme.muted_foreground)
+                    .child(Icon::default().path("icons/file.svg").small()),
+            )
+            .child(
+                v_flex()
+                    .min_w_0()
+                    .child(div().truncate().child(file.filename.clone()))
+                    .child(div().text_xs().text_color(theme.muted_foreground).child(
+                        match file.content_type.as_deref() {
+                            Some(kind) => format!("{} · {}", format_size(file.size), kind),
+                            None => format_size(file.size),
+                        },
+                    )),
+            )
             .into_any_element()
     }
 
