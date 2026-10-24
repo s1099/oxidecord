@@ -10,7 +10,7 @@ use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
 use crate::assets::icons::DISCORD_ICON;
-use crate::discord::Guild;
+use crate::discord::{DirectMessage, Guild};
 use crate::screens::home::folders::{RailEntry, RailFolder};
 use crate::screens::home::{HomeScreen, View};
 use crate::ui::depth::{Finish, Level, Lit as _};
@@ -41,7 +41,11 @@ impl HomeScreen {
         let theme = cx.theme();
         let rail_bg = theme.sidebar;
         let logo_bg = rgb(0x313338);
-        let dm_mentions = self.dms.iter().map(|dm| self.unreads.mentions(dm.id)).sum();
+        let dm_mentions = self
+            .dms
+            .iter()
+            .map(|dm| self.unreads.dm_mentions(dm.id))
+            .sum();
 
         // The whole rail — the DMs icon, its separator, and the guild list —
         // scrolls as one column, so the icon isn't pinned above the list.
@@ -77,10 +81,42 @@ impl HomeScreen {
                         this.open_direct_messages(window, cx);
                     })),
             )
+            // Conversations waiting on the user line up under the DMs icon,
+            // newest first, as in Discord — muted ones never ping, so never
+            // show.
+            .children(
+                self.dms
+                    .iter()
+                    .filter(|dm| self.unreads.dm_mentions(dm.id) > 0)
+                    .map(|dm| self.render_rail_dm(dm, cx)),
+            )
             .child(Separator::horizontal().w(px(32.)))
             .children(self.rail_entries.iter().map(|entry| match entry {
                 RailEntry::Guild(guild) => self.render_rail_guild(guild, cx).into_any_element(),
                 RailEntry::Folder(folder) => self.render_rail_folder(folder, cx).into_any_element(),
+            }))
+    }
+
+    /// An unread DM's icon, which opens the conversation. It's never the one
+    /// open: opening it reads it, and it leaves the rail.
+    fn render_rail_dm(
+        &self,
+        dm: &DirectMessage,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement + use<> {
+        let channel_id = dm.id;
+        selection_pill(div().id(("rail-dm", channel_id.get())), false, cx)
+            .child(super::avatar(
+                dm.name.clone(),
+                dm.avatar_url.clone(),
+                px(48.),
+            ))
+            .child(unread_pill(RAIL_GUTTER, cx))
+            .children(rail_badge(self.unreads.dm_mentions(channel_id), cx))
+            .tooltip(tooltip::text(SharedString::from(dm.name.clone())))
+            .on_click(cx.listener(move |this, _, window, cx| {
+                this.open_direct_messages(window, cx);
+                this.select_channel(channel_id, window, cx);
             }))
     }
 

@@ -230,6 +230,17 @@ impl Unreads {
         self.mentions.get(&channel_id).copied().unwrap_or(0)
     }
 
+    /// A DM's mentions, none while it's muted. Every message in a DM counts as
+    /// a ping, and the counts a session starts with take no notice of mutes,
+    /// but Discord's client shows a muted conversation's as nothing.
+    pub(super) fn dm_mentions(&self, channel_id: ChannelId) -> u32 {
+        if self.is_muted(channel_id, None) {
+            0
+        } else {
+            self.mentions(channel_id)
+        }
+    }
+
     /// A guild's mentions across its channels. Mutes don't hide them: a
     /// muted guild still shows how often it pinged the user, as Discord's
     /// does.
@@ -395,5 +406,26 @@ mod tests {
         let mut unreads = Unreads::default();
         unreads.note_message(Id::new(10), Id::new(100));
         assert!(unreads.is_unread(Id::new(10)));
+    }
+
+    #[test]
+    fn a_muted_dm_shows_no_mentions() {
+        let mut unreads = Unreads::default();
+        unreads.set_read_states(vec![ReadState {
+            channel_id: Id::new(10),
+            last_message_id: Id::new(40),
+            mention_count: 3,
+        }]);
+        assert_eq!(unreads.dm_mentions(Id::new(10)), 3);
+
+        unreads.set_mutes(vec![MuteSettings {
+            guild_id: None,
+            muted: false,
+            muted_channels: vec![Id::new(10)],
+            suppress_everyone: false,
+            suppress_roles: false,
+        }]);
+        assert!(unreads.is_muted(Id::new(10), None));
+        assert_eq!(unreads.dm_mentions(Id::new(10)), 0);
     }
 }

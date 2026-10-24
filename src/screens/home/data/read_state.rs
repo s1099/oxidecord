@@ -200,15 +200,18 @@ impl HomeScreen {
             self.unreads.note_latest(channel_id, newest);
         }
         // Discord leaves the client to say how many pings are past the ack,
-        // and only the loaded messages can be counted.
+        // and only the loaded messages can be counted. In an unmuted DM
+        // that's every message, the user's own included, as Discord's
+        // client counts it.
         let guild_id = self.selected_guild.filter(|_| self.view == View::Guild);
+        let every_message = guild_id.is_none() && !self.unreads.is_muted(channel_id, None);
         let ix = self
             .messages
             .partition_point(|message| message.id <= before);
         let mentions = self.messages[ix..]
             .iter()
             .filter(|message| message.delivery == discord::Delivery::Sent)
-            .filter(|message| self.pings_me(channel_id, guild_id, message))
+            .filter(|message| every_message || self.pings_me(channel_id, guild_id, message))
             .count() as u32;
         self.unreads.set_acked(channel_id, before, mentions);
         self.pending_acks.remove(&channel_id);

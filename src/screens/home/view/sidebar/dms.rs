@@ -24,7 +24,8 @@ impl HomeScreen {
         let theme = cx.theme();
         let channel_id = dm.id;
         let is_selected = self.selected_channel == Some(channel_id);
-        let unread = self.unreads.is_unread(channel_id);
+        let muted = self.unreads.is_muted(channel_id, None);
+        let unread = !muted && self.unreads.is_unread(channel_id);
 
         // Only a 1:1 conversation has one person whose status to show.
         let status = dm.recipient_id.map(|user_id| self.user_status(user_id));
@@ -64,6 +65,9 @@ impl HomeScreen {
             .text_sm()
             .text_color(if is_selected || unread {
                 theme.sidebar_accent_foreground
+            } else if muted {
+                // Muted conversations fade back, as muted channels do.
+                theme.muted_foreground.opacity(0.6)
             } else {
                 theme::secondary_text(cx)
             })
@@ -82,7 +86,7 @@ impl HomeScreen {
             })
             .child(avatar)
             .child(div().flex_1().truncate().child(dm.name.clone()))
-            .children(mention_badge(self.unreads.mentions(channel_id), cx))
+            .children(mention_badge(self.unreads.dm_mentions(channel_id), cx))
             .on_click(cx.listener(move |this, _, window, cx| {
                 this.select_channel(channel_id, window, cx);
             }))
