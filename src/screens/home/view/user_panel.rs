@@ -1,6 +1,5 @@
-//! The account panel pinned below the sidebar, like Discord's user area.
-//! Shared by the channel sidebar and the DM sidebar. Clicking the user opens
-//! the status picker.
+//! The account row of the card pinned under the rail and sidebar, like
+//! Discord's user area. Clicking the user opens the status picker.
 
 use gpui_kit::component::{
     ActiveTheme as _, Icon, IconName, Selectable, Sizable as _, Theme, h_flex,
@@ -42,7 +41,7 @@ impl HomeScreen {
                     .child(status_indicator(
                         status,
                         px(10.),
-                        theme.sidebar,
+                        theme.secondary,
                         Some(("account-status".into(), theme.secondary_hover)),
                         theme,
                     )),
@@ -65,12 +64,31 @@ impl HomeScreen {
                             .font_weight(FontWeight::SEMIBOLD)
                             .child(name),
                     )
+                    // The status, swapped for the username while hovered, as
+                    // Discord's user area does. Both are drawn, stacked, and
+                    // the hover only fades between them: a hover that hid one
+                    // outright (`display` or `visibility`) would change what
+                    // gets prepainted after the fact, which gpui panics on.
                     .child(
                         div()
-                            .truncate()
+                            .relative()
                             .text_xs()
                             .text_color(theme.muted_foreground)
-                            .child(username),
+                            .child(
+                                div()
+                                    .truncate()
+                                    .group_hover("account-status", |style| style.opacity(0.))
+                                    .child(status_label(status)),
+                            )
+                            .child(
+                                div()
+                                    .absolute()
+                                    .inset_0()
+                                    .truncate()
+                                    .opacity(0.)
+                                    .group_hover("account-status", |style| style.opacity(1.))
+                                    .child(username),
+                            ),
                     ),
             )
             .dropdown_menu_with_anchor(Anchor::BottomLeft, move |menu, _, cx| {

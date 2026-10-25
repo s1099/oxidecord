@@ -12,7 +12,7 @@ mod sidebar;
 mod user_panel;
 mod voice;
 
-use gpui_kit::component::{ActiveTheme as _, Sizable as _, avatar::Avatar, h_flex};
+use gpui_kit::component::{ActiveTheme as _, Sizable as _, avatar::Avatar, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
@@ -104,8 +104,22 @@ impl Render for HomeScreen {
             // reads as the app having handled the click — killing the window
             // controls and the drag region.
             .child(div().track_focus(&self.focus_handle))
-            .child(self.render_server_rail(cx))
-            .children(sidebar)
+            // The account card reaches under the rail as well as the sidebar,
+            // so the two share a column with it at the bottom.
+            .child(
+                v_flex()
+                    .h_full()
+                    .flex_shrink_0()
+                    .child(
+                        h_flex()
+                            .flex_1()
+                            .min_h_0()
+                            .w_full()
+                            .child(self.render_server_rail(cx))
+                            .children(sidebar),
+                    )
+                    .child(self.render_sidebar_footer(cx)),
+            )
             .child(inset(self.render_content(cx), cx))
             .children(self.render_profile_popup(cx))
             .children(self.render_pins_popup(cx))

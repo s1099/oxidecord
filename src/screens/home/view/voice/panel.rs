@@ -8,26 +8,34 @@ use gpui_kit::*;
 use crate::screens::home::HomeScreen;
 use crate::screens::home::voice::{VoiceCall, VoiceStatus};
 use crate::ui::button::Button;
-use crate::ui::depth::{self, radius};
+use crate::ui::depth::radius;
 
 use super::CAMERA_UNAVAILABLE;
 
 impl HomeScreen {
-    /// The sidebar footer: the call panel when there's a call, the account
-    /// panel always.
+    /// The card under the rail and sidebar: the call strip when there's a
+    /// call, the account row always. Discord draws it as one surface floating
+    /// over both columns, with a margin of the window's colour at its sides
+    /// and bottom. None above: the lists end right where it starts.
     pub(in crate::screens::home) fn render_sidebar_footer(
         &self,
         cx: &Context<Self>,
     ) -> impl IntoElement {
-        v_flex()
-            .flex_shrink_0()
-            .w_full()
-            .children(self.render_voice_panel(cx))
-            .child(self.render_user_panel(cx))
+        let theme = cx.theme();
+        div().flex_shrink_0().w_full().px_2().pb_2().child(
+            v_flex()
+                .w_full()
+                .overflow_hidden()
+                .rounded(radius::CONTROL)
+                .bg(theme.secondary)
+                .text_color(theme.sidebar_foreground)
+                .children(self.render_voice_panel(cx))
+                .child(self.render_user_panel(cx)),
+        )
     }
 
-    /// The strip that sits above the account panel while a call is up: where
-    /// the call is, and the ways out of it.
+    /// The strip at the top of the card while a call is up: where the call is,
+    /// and the ways out of it.
     fn render_voice_panel(&self, cx: &Context<Self>) -> Option<impl IntoElement> {
         let call = self.voice.as_ref()?;
         let theme = cx.theme();
@@ -40,12 +48,14 @@ impl HomeScreen {
             theme.muted_foreground
         };
 
-        // A card of its own above the account panel, so a live call stands out
-        // from the sidebar it sits in.
+        // Divided from the account row below it by a hairline, within the one
+        // card.
         Some(
-            div().px_2().child(
-                depth::card(radius::CONTROL, cx)
+            div().child(
+                div()
                     .w_full()
+                    .border_b_1()
+                    .border_color(theme.border)
                     .flex()
                     .flex_col()
                     .p_2()
