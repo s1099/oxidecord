@@ -1,5 +1,6 @@
 //! Read states: how far the user has read each channel, how far each channel
-//! has got, and which are muted — what the unread marks are worked out from.
+//! has got, and which are muted or set to mark only pings unread — what the
+//! unread marks are worked out from.
 //!
 //! None of this is in twilight, since bots have no read state. Discord's own
 //! client works the marks out itself from the same three things: a channel is
@@ -53,12 +54,60 @@ pub struct UnreadChannel {
     pub last_message_id: Option<Id<MessageMarker>>,
 }
 
+/// Whether new messages mark a channel unread, or only messages that ping
+/// the user.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum UnreadSetting {
+    AllMessages,
+    OnlyMentions,
+}
+
+impl UnreadSetting {
+    /// What a notification level means for unreads when no unread setting
+    /// was picked apart from it: only "all messages" marks every message
+    /// unread. `None` for the level that inherits from the guild.
+    fn from_notifications(level: u8) -> Option<Self> {
+        match level {
+            0 => Some(Self::AllMessages),
+            1 | 2 => Some(Self::OnlyMentions),
+            _ => None,
+        }
+    }
+
+    /// The setting picked by `all` or `only_mentions` in `flags`, or else the
+    /// one `notifications` implies.
+    fn resolve(
+        flags: u64,
+        all: u64,
+        only_mentions: u64,
+        notifications: Option<u8>,
+    ) -> Option<Self> {
+        if flags & all != 0 {
+            Some(Self::AllMessages)
+        } else if flags & only_mentions != 0 {
+            Some(Self::OnlyMentions)
+        } else {
+            notifications.and_then(Self::from_notifications)
+        }
+    }
+
+    /// What a guild's `default_message_notifications` means for unreads.
+    pub(in crate::discord) fn guild_default(level: u8) -> Self {
+        Self::from_notifications(level).unwrap_or(Self::AllMessages)
+    }
+}
+
 /// What the user has muted in one guild, or across their DMs when `guild_id`
-/// is `None`.
+/// is `None`, and what they've set to mark it unread.
 pub struct MuteSettings {
     pub guild_id: Option<Id<GuildMarker>>,
     pub muted: bool,
     pub muted_channels: Vec<Id<ChannelMarker>>,
+    /// What marks the guild's channels unread, unless one says otherwise.
+    /// `None` leaves it to the guild's default notifications.
+    pub unreads: Option<UnreadSetting>,
+    /// Channels and categories with a setting of their own.
+    pub channel_unreads: Vec<(Id<ChannelMarker>, UnreadSetting)>,
     /// Whether `@everyone` and `@here` don't count as pinging the user.
     pub suppress_everyone: bool,
     /// Whether mentions of the user's roles don't count as pinging them.
@@ -122,6 +171,10 @@ pub(in crate::discord) struct RawGuildSettings {
     suppress_everyone: bool,
     #[serde(default)]
     suppress_roles: bool,
+    #[serde(default)]
+    message_notifications: Option<u8>,
+    #[serde(default)]
+    flags: Option<u64>,
     #[serde(default, deserialize_with = "versioned_list")]
     channel_overrides: Vec<RawChannelOverride>,
 }
@@ -133,7 +186,20 @@ struct RawChannelOverride {
     muted: bool,
     #[serde(default)]
     mute_config: Option<RawMuteConfig>,
+    #[serde(default)]
+    message_notifications: Option<u8>,
+    #[serde(default)]
+    flags: Option<u64>,
 }
+
+/// `UNREADS_ALL_MESSAGES` and `UNREADS_ONLY_MENTIONS` in a guild's settings'
+/// flags.
+const GUILD_UNREADS_ALL: u64 = 1 << 11;
+const GUILD_UNREADS_ONLY_MENTIONS: u64 = 1 << 12;
+/// The same in a channel override's flags, which number them the other way
+/// round.
+const CHANNEL_UNREADS_ONLY_MENTIONS: u64 = 1 << 9;
+const CHANNEL_UNREADS_ALL: u64 = 1 << 10;
 
 #[derive(Deserialize)]
 struct RawMuteConfig {
@@ -312,6 +378,25 @@ pub(in crate::discord) fn convert_mute_settings(settings: RawGuildSettings) -> M
             .filter(|channel| in_force(channel.muted, channel.mute_config.as_ref()))
             .map(|channel| channel.channel_id)
             .collect(),
+        unreads: UnreadSetting::resolve(
+            settings.flags.unwrap_or(0),
+            GUILD_UNREADS_ALL,
+            GUILD_UNREADS_ONLY_MENTIONS,
+            settings.message_notifications,
+        ),
+        channel_unreads: settings
+            .channel_overrides
+            .iter()
+            .filter_map(|channel| {
+                let unreads = UnreadSetting::resolve(
+                    channel.flags.unwrap_or(0),
+                    CHANNEL_UNREADS_ALL,
+                    CHANNEL_UNREADS_ONLY_MENTIONS,
+                    channel.message_notifications,
+                )?;
+                Some((channel.channel_id, unreads))
+            })
+            .collect(),
         suppress_everyone: settings.suppress_everyone,
         suppress_roles: settings.suppress_roles,
     }
@@ -400,5 +485,44 @@ mod tests {
         let mutes = convert_mute_settings(settings);
         assert!(!mutes.muted);
         assert_eq!(mutes.muted_channels, [Id::new(100)]);
+    }
+
+    #[test]
+    fn unread_settings_follow_flags_then_notifications() {
+        let settings: RawGuildSettings = serde_json::from_str(
+            r#"{
+                "guild_id": "10",
+                "message_notifications": 1,
+                "channel_overrides": [
+                    {"channel_id": "100", "message_notifications": 3, "flags": 1024},
+                    {"channel_id": "101", "message_notifications": 2},
+                    {"channel_id": "102", "message_notifications": 3, "flags": null}
+                ]
+            }"#,
+        )
+        .unwrap();
+        let settings = convert_mute_settings(settings);
+        assert_eq!(settings.unreads, Some(UnreadSetting::OnlyMentions));
+        assert_eq!(
+            settings.channel_unreads,
+            [
+                (Id::new(100), UnreadSetting::AllMessages),
+                (Id::new(101), UnreadSetting::OnlyMentions),
+            ]
+        );
+
+        // The flag outranks the notification level, and a level that
+        // inherits leaves it to the guild's default.
+        let settings: RawGuildSettings = serde_json::from_str(
+            r#"{"guild_id": "10", "message_notifications": 1, "flags": 2048}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            convert_mute_settings(settings).unreads,
+            Some(UnreadSetting::AllMessages)
+        );
+        let settings: RawGuildSettings =
+            serde_json::from_str(r#"{"guild_id": "10", "message_notifications": 3}"#).unwrap();
+        assert_eq!(convert_mute_settings(settings).unreads, None);
     }
 }

@@ -170,6 +170,9 @@ pub(super) struct GatewayGuild {
     /// Its boost level, which raises how large a file can be sent there.
     #[serde(default)]
     premium_tier: Option<u8>,
+    /// The notification level members get until they pick their own.
+    #[serde(default)]
+    default_message_notifications: Option<u8>,
     /// Where the guild's own fields sit when the session asked for them
     /// apart from its lists.
     #[serde(default)]
@@ -182,6 +185,8 @@ struct GuildProperties {
     owner_id: Option<Id<UserMarker>>,
     #[serde(default)]
     premium_tier: Option<u8>,
+    #[serde(default)]
+    default_message_notifications: Option<u8>,
 }
 
 impl GatewayGuild {
@@ -193,6 +198,12 @@ impl GatewayGuild {
     pub(super) fn premium_tier(&self) -> Option<u8> {
         self.premium_tier
             .or_else(|| self.properties.as_ref()?.premium_tier)
+    }
+
+    /// `None` for an unavailable guild, which says nothing about it.
+    pub(super) fn default_message_notifications(&self) -> Option<u8> {
+        self.default_message_notifications
+            .or_else(|| self.properties.as_ref()?.default_message_notifications)
     }
 }
 

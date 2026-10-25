@@ -7,6 +7,7 @@ use twilight_model::id::{
 };
 use twilight_model::util::Timestamp;
 
+use crate::discord::UnreadSetting;
 use crate::discord::model::{
     RawEmoji, RawGuildChannel, RawGuildSettings, RawMember, RawMemberListUpdate, RawRole,
     RawVoiceServer, RawVoiceState, StreamServerInfo, author_member, boost_upload_limit,
@@ -60,6 +61,7 @@ pub(super) fn dispatch(
                     let merged = merged.next().unwrap_or_default();
                     let owner_id = guild.owner_id();
                     unreads.extend(guild_upload_limit(&guild));
+                    unreads.extend(guild_default_unreads(&guild));
                     unreads.extend(guild_channels(
                         guild.id,
                         ready.user.id,
@@ -229,6 +231,7 @@ pub(super) fn dispatch(
             .map(|guild| {
                 let owner_id = guild.owner_id();
                 let upload_limit = guild_upload_limit(&guild);
+                let default_unreads = guild_default_unreads(&guild);
                 let channels = match *self_id {
                     Some(self_id) => guild_channels(
                         guild.id,
@@ -253,6 +256,7 @@ pub(super) fn dispatch(
                 std::iter::once(voice)
                     .chain(std::iter::once(presences))
                     .chain(upload_limit)
+                    .chain(default_unreads)
                     .chain(channels)
                     .chain(guild_emojis(guild.id, guild.emojis))
                     .chain(guild_roles(guild.id, guild.roles, guild.members))
@@ -269,12 +273,16 @@ pub(super) fn dispatch(
                 .map(|guild_id| vec![GatewayEvent::GuildChannelsChanged { guild_id }])
                 .unwrap_or_default()
         }
-        // Of the guild's own fields, only its boost level matters here.
+        // Of the guild's own fields, only its boost level and default
+        // notifications matter here.
         "GUILD_UPDATE" => serde_json::from_str::<GatewayGuild>(data)
-            .ok()
-            .and_then(|guild| guild_upload_limit(&guild))
-            .into_iter()
-            .collect(),
+            .map(|guild| {
+                guild_upload_limit(&guild)
+                    .into_iter()
+                    .chain(guild_default_unreads(&guild))
+                    .collect()
+            })
+            .unwrap_or_default(),
         "GUILD_DELETE" => serde_json::from_str::<GuildDeletePayload>(data)
             .map(|guild| {
                 vec![GatewayEvent::GuildVoiceStates {
@@ -430,6 +438,15 @@ fn guild_upload_limit(guild: &GatewayGuild) -> Option<GatewayEvent> {
     Some(GatewayEvent::GuildUploadLimit {
         guild_id: guild.id,
         limit: boost_upload_limit(guild.premium_tier()?),
+    })
+}
+
+/// What marks a guild unread by default as an event, unless it arrived
+/// unavailable.
+fn guild_default_unreads(guild: &GatewayGuild) -> Option<GatewayEvent> {
+    Some(GatewayEvent::GuildDefaultUnreads {
+        guild_id: guild.id,
+        unreads: UnreadSetting::guild_default(guild.default_message_notifications()?),
     })
 }
 

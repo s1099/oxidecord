@@ -5,6 +5,11 @@
 //! unread while the second is past the first. [`Unreads`] keeps both, fed by
 //! the gateway, the REST loads, and the user's own reading.
 //!
+//! Not every unread channel shows as one: a muted channel, category or guild
+//! never does, and nor does one set to mark only pings unread — which is
+//! where a "Only @mentions" notification level leaves it unless the user
+//! picked an unread setting apart from it.
+//!
 //! Mentions are counted here too, for the red badges. Discord only reports
 //! the count as each session starts and when it's acked; in between, the
 //! client counts the pings that arrive itself, as the official one does.
@@ -17,7 +22,9 @@ use twilight_model::id::{
     marker::{ChannelMarker, GuildMarker, MessageMarker},
 };
 
-use crate::discord::{ChannelLatest, GuildUnreads, MuteSettings, ReadState, UnreadChannel};
+use crate::discord::{
+    ChannelLatest, GuildUnreads, MuteSettings, ReadState, UnreadChannel, UnreadSetting,
+};
 
 type ChannelId = Id<ChannelMarker>;
 type GuildId = Id<GuildMarker>;
@@ -51,6 +58,12 @@ pub(super) struct Unreads {
     /// Muted channels and categories, by guild — `None` for DMs — so one
     /// guild's settings can be replaced without touching the rest.
     muted_channels: HashMap<Option<GuildId>, HashSet<ChannelId>>,
+    /// What marks each guild's channels unread for a user who hasn't set it.
+    default_unreads: HashMap<GuildId, UnreadSetting>,
+    /// What the user set to mark each guild's channels unread, where they did.
+    guild_unreads: HashMap<GuildId, UnreadSetting>,
+    /// Channels and categories with an unread setting of their own, by guild.
+    channel_unreads: HashMap<GuildId, HashMap<ChannelId, UnreadSetting>>,
     /// Unread messages that ping the user, by channel. A channel with none
     /// has no entry.
     mentions: HashMap<ChannelId, u32>,
@@ -129,12 +142,23 @@ impl Unreads {
                         set.remove(&guild_id);
                     }
                 }
+                match settings.unreads {
+                    Some(unreads) => self.guild_unreads.insert(guild_id, unreads),
+                    None => self.guild_unreads.remove(&guild_id),
+                };
+                self.channel_unreads
+                    .insert(guild_id, settings.channel_unreads.into_iter().collect());
             }
             self.muted_channels.insert(
                 settings.guild_id,
                 settings.muted_channels.into_iter().collect(),
             );
         }
+    }
+
+    pub(super) fn set_default_unreads(&mut self, guild_id: GuildId, unreads: UnreadSetting) {
+        self.marks.get_mut().remove(&guild_id);
+        self.default_unreads.insert(guild_id, unreads);
     }
 
     /// Records how far a channel has got, as a channel list reports it.
@@ -272,8 +296,36 @@ impl Unreads {
         })
     }
 
-    /// Whether a guild has a channel with something unread in it, leaving out
-    /// what's muted — a muted guild never shows its mark at all.
+    /// What marks a channel unread: its own setting, else its category's,
+    /// else its guild's. DMs mark every message.
+    fn unread_setting(&self, channel_id: ChannelId, parent_id: Option<ChannelId>) -> UnreadSetting {
+        let Some(guild_id) = self.channel_guild.get(&channel_id) else {
+            return UnreadSetting::AllMessages;
+        };
+        self.channel_unreads
+            .get(guild_id)
+            .and_then(|channels| {
+                channels
+                    .get(&channel_id)
+                    .or_else(|| channels.get(&parent_id?))
+            })
+            .or_else(|| self.guild_unreads.get(guild_id))
+            .or_else(|| self.default_unreads.get(guild_id))
+            .copied()
+            .unwrap_or(UnreadSetting::AllMessages)
+    }
+
+    /// Whether a channel shows as unread: it has something new and isn't
+    /// muted, and either marks every message or has pinged the user.
+    pub(super) fn shows_unread(&self, channel_id: ChannelId, parent_id: Option<ChannelId>) -> bool {
+        self.is_unread(channel_id)
+            && !self.is_muted(channel_id, parent_id)
+            && (self.mentions(channel_id) > 0
+                || self.unread_setting(channel_id, parent_id) == UnreadSetting::AllMessages)
+    }
+
+    /// Whether a guild has a channel that shows as unread — a muted guild
+    /// never shows its mark at all.
     pub(super) fn is_guild_unread(&self, guild_id: GuildId) -> bool {
         self.mark(guild_id).unread
     }
@@ -288,9 +340,9 @@ impl Unreads {
             .map_or(&[][..], |guild| &guild.channels);
         let mark = GuildMark {
             unread: !self.muted_guilds.contains(&guild_id)
-                && channels.iter().any(|&(channel_id, parent_id)| {
-                    !self.is_muted(channel_id, parent_id) && self.is_unread(channel_id)
-                }),
+                && channels
+                    .iter()
+                    .any(|&(channel_id, parent_id)| self.shows_unread(channel_id, parent_id)),
             mentions: channels
                 .iter()
                 .map(|&(channel_id, _)| self.mentions(channel_id))
@@ -360,6 +412,8 @@ mod tests {
             guild_id: Some(Id::new(1)),
             muted: true,
             muted_channels: Vec::new(),
+            unreads: None,
+            channel_unreads: Vec::new(),
             suppress_everyone: false,
             suppress_roles: false,
         }]);
@@ -392,6 +446,8 @@ mod tests {
             guild_id: Some(Id::new(1)),
             muted: false,
             muted_channels: vec![Id::new(5)],
+            unreads: None,
+            channel_unreads: Vec::new(),
             suppress_everyone: false,
             suppress_roles: false,
         }]);
@@ -399,6 +455,34 @@ mod tests {
         assert!(!unreads.is_guild_unread(Id::new(1)));
         // Muting doesn't make the channel itself read.
         assert!(unreads.is_unread(Id::new(10)));
+    }
+
+    #[test]
+    fn mention_only_channels_need_a_ping_to_show() {
+        let mut unreads = Unreads::default();
+        unreads.set_guild(guild(
+            Some(1),
+            &[(10, Some(5), Some(50)), (11, None, Some(50))],
+        ));
+        unreads.set_default_unreads(Id::new(1), UnreadSetting::OnlyMentions);
+        assert!(!unreads.is_guild_unread(Id::new(1)));
+
+        // The user's setting for one category outranks the guild's default.
+        unreads.set_mutes(vec![MuteSettings {
+            guild_id: Some(Id::new(1)),
+            muted: false,
+            muted_channels: Vec::new(),
+            unreads: None,
+            channel_unreads: vec![(Id::new(5), UnreadSetting::AllMessages)],
+            suppress_everyone: false,
+            suppress_roles: false,
+        }]);
+        assert!(unreads.shows_unread(Id::new(10), Some(Id::new(5))));
+        assert!(!unreads.shows_unread(Id::new(11), None));
+
+        // A ping shows a channel that only marks pings.
+        unreads.note_mention(Id::new(11));
+        assert!(unreads.shows_unread(Id::new(11), None));
     }
 
     #[test]
@@ -422,6 +506,8 @@ mod tests {
             guild_id: None,
             muted: false,
             muted_channels: vec![Id::new(10)],
+            unreads: None,
+            channel_unreads: Vec::new(),
             suppress_everyone: false,
             suppress_roles: false,
         }]);

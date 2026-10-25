@@ -42,7 +42,7 @@
 | Media channels | Missing | |
 | Stage channels (speakers, audience, raising a hand) | Partial | Joined as a plain voice channel |
 | Announcement channel follow and publish | Missing | Listed and readable only |
-| Server and channel notification settings (all, mentions, nothing, suppress `@everyone`) | Missing | |
+| Server and channel notification settings (all, mentions, nothing, suppress `@everyone`) | Partial | Read from Discord and honoured by unread marks and pings; can't be changed in the app |
 | Muting servers, channels and DMs | Missing | |
 | Member list sidebar with roles, presence and grouping | Partial | Guild text and announcement channels only; group DMs and threads show none, and right-clicking a member does nothing |
 | Role icons, server tags and badges next to names | Missing | |

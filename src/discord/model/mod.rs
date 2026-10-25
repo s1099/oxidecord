@@ -34,7 +34,9 @@ pub use message::{
     Delivery, FileAttachment, ForwardedMessage, ImageAttachment, MentionedUser, Message,
     MessageReference, Reaction, ReactionEmoji, SPOILER_PREFIX, SpoilerCover, VideoAttachment,
 };
-pub use read_state::{ChannelLatest, GuildUnreads, MuteSettings, ReadState, UnreadChannel};
+pub use read_state::{
+    ChannelLatest, GuildUnreads, MuteSettings, ReadState, UnreadChannel, UnreadSetting,
+};
 pub use settings::{GuildFolders, PresenceStatus, UserSettings};
 pub use upload::{DEFAULT_UPLOAD_LIMIT, MAX_UPLOAD_TOTAL};
 pub use user::{CurrentUser, Reactor, UserProfile};

@@ -124,13 +124,10 @@ impl HomeScreen {
             }))
     }
 
-    /// Whether a channel shows as unread: it has something new, and isn't
-    /// muted. Voice channels' text chats are left out, as Discord leaves them
-    /// out of its unread markers.
+    /// Whether a channel shows as unread. Voice channels' text chats are left
+    /// out, as Discord leaves them out of its unread markers.
     fn shows_unread(&self, channel: &Channel) -> bool {
-        !channel.kind.is_voice()
-            && self.unreads.is_unread(channel.id)
-            && !self.unreads.is_muted(channel.id, channel.parent_id)
+        !channel.kind.is_voice() && self.unreads.shows_unread(channel.id, channel.parent_id)
     }
 
     /// Who's in a voice channel, listed under it.

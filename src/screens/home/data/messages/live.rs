@@ -238,6 +238,10 @@ impl HomeScreen {
             discord::GatewayEvent::GuildUploadLimit { guild_id, limit } => {
                 self.guild_upload_limits.insert(guild_id, limit);
             }
+            discord::GatewayEvent::GuildDefaultUnreads { guild_id, unreads } => {
+                self.unreads.set_default_unreads(guild_id, unreads);
+                cx.notify();
+            }
             discord::GatewayEvent::GuildEmojis { guild_id, emojis } => {
                 self.guild_emojis.insert(guild_id, emojis);
             }

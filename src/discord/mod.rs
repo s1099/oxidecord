@@ -19,8 +19,8 @@ pub use model::{
     MemberListGroup, MemberListItem, MemberListOp, MemberListUpdate, Mention, MentionedUser,
     Message, MessageLink, MessageReference, MuteSettings, PresenceStatus, Reaction, ReactionEmoji,
     Reactor, ReadState, Role, SPOILER_PREFIX, SpoilerCover, StreamServerInfo, UnreadChannel,
-    UserProfile, VideoAttachment, VoiceServerInfo, VoiceUserState, animated_webp, scaled_url,
-    stream_key,
+    UnreadSetting, UserProfile, VideoAttachment, VoiceServerInfo, VoiceUserState, animated_webp,
+    scaled_url, stream_key,
 };
 pub use rest::{
     MESSAGE_PAGE_SIZE, MessagePage, REACTORS_PAGE_SIZE, ack_message, delete_message, edit_message,

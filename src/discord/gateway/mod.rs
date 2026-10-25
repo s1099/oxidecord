@@ -25,7 +25,7 @@ use crate::platform::runtime;
 
 use super::model::{
     Channel, ChannelLatest, GuildEmoji, GuildMember, GuildUnreads, MemberListUpdate, Message,
-    MuteSettings, PresenceStatus, ReactionEmoji, ReadState, Role, StreamServerInfo,
+    MuteSettings, PresenceStatus, ReactionEmoji, ReadState, Role, StreamServerInfo, UnreadSetting,
     VoiceServerInfo, VoiceUserState,
 };
 
@@ -133,6 +133,13 @@ pub enum GatewayEvent {
         guild_id: Id<GuildMarker>,
         limit: u64,
     },
+    /// What marks a guild's channels unread for a user who hasn't set it,
+    /// from its default notifications: from `READY`, `GUILD_CREATE`, or
+    /// `GUILD_UPDATE`.
+    GuildDefaultUnreads {
+        guild_id: Id<GuildMarker>,
+        unreads: UnreadSetting,
+    },
     /// Every custom emoji in a guild, from `READY`, `GUILD_CREATE`, or
     /// `GUILD_EMOJIS_UPDATE`. Replaces what was known before.
     GuildEmojis {
@@ -194,8 +201,8 @@ pub enum GatewayEvent {
     /// Channels' newest messages: the DMs' from `READY`, and channels that
     /// moved in guilds the session isn't sent every message for.
     LatestMessages(Vec<ChannelLatest>),
-    /// What the user muted: in every guild from `READY`, in one from
-    /// `USER_GUILD_SETTINGS_UPDATE`.
+    /// What the user muted and how they want unreads marked: in every guild
+    /// from `READY`, in one from `USER_GUILD_SETTINGS_UPDATE`.
     MuteSettings(Vec<MuteSettings>),
 }
 
