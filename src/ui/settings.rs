@@ -2,9 +2,9 @@
 //! beside the active page's groups — hosted in a dialog, opened from the
 //! account panel.
 //!
-//! Both pages are real: themes picks a preset, and updates drives the
-//! self-updater in [`crate::platform::updater`]. Typing [`DEBUG_CODE`] into the
-//! search adds a third, [`gallery`], for the rest of the session. A logout
+//! Themes picks a preset, voice controls membership cues, and updates drives
+//! the self-updater in [`crate::platform::updater`]. Typing [`DEBUG_CODE`] into
+//! the search adds [`gallery`] for the rest of the session. A logout
 //! button sits under the page list.
 
 use std::rc::Rc;
@@ -19,9 +19,11 @@ use gpui_kit::component::{
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
+use crate::platform::prefs;
 use crate::platform::updater::{self, Status};
 use crate::ui::button::Button;
 use crate::ui::{depth, gallery, theme};
+use crate::voice::cues::CueSettings;
 
 /// Size the popup aims for. Both are capped to the window with [`WINDOW_MARGIN`]
 /// to spare, since the dialog is positioned from a fixed size and would
@@ -53,6 +55,7 @@ const DEBUG_CODE: &str = "debug";
 pub fn open(
     window: &mut Window,
     cx: &mut App,
+    cue_settings: CueSettings,
     on_log_out: impl Fn(&mut Window, &mut App) + 'static,
 ) {
     arm_debug_code(cx);
@@ -96,6 +99,7 @@ pub fn open(
                             .sidebar_width(px(SIDEBAR_WIDTH))
                             .sidebar_style(&StyleRefinement::default().rounded_l(inner_radius))
                             .page(themes_page())
+                            .page(voice_page(cue_settings.clone()))
                             .page(updates_page())
                             .when(debug, |this| this.page(gallery::page())),
                     )
@@ -200,6 +204,27 @@ fn themes_page() -> SettingPage {
                 .item(SettingItem::render(|_: &RenderOptions, _window, cx| {
                     theme_grid(cx)
                 })),
+        )
+}
+
+fn voice_page(settings: CueSettings) -> SettingPage {
+    let read = settings.clone();
+    SettingPage::new("Voice")
+        .resettable(false)
+        .group(
+            SettingGroup::new().title("Sounds").item(
+                SettingItem::new(
+                    "Voice event sounds",
+                    SettingField::switch(
+                        move |_| read.enabled(),
+                        move |enabled, _| {
+                            settings.set_enabled(enabled);
+                            prefs::update(|prefs| prefs.voice_event_sounds_disabled = !enabled);
+                        },
+                    ),
+                )
+                .description("Play a short sound when you or others join or leave your call. Always silent while deafened."),
+            ),
         )
 }
 

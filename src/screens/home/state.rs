@@ -448,6 +448,8 @@ pub struct HomeScreen {
     pub(super) pending_voice: Option<PendingVoice>,
     /// Runs the call. Started with the gateway, since a call needs both.
     pub(super) voice_engine: Option<VoiceEngine>,
+    pub(super) voice_cue_policy: super::voice::cues::CuePolicy,
+    pub(super) voice_cues: crate::voice::cues::CuePlayer,
     /// The user's screen share into the call, from the moment it's announced
     /// to the gateway.
     pub(super) screen_share: Option<ScreenShare>,
@@ -691,6 +693,14 @@ impl HomeScreen {
             call_ringing: HashMap::new(),
             pending_voice: None,
             voice_engine: None,
+            voice_cue_policy: Default::default(),
+            voice_cues: crate::voice::cues::CuePlayer::start(
+                !prefs::load().voice_event_sounds_disabled,
+                || {
+                    use cpal::traits::HostTrait as _;
+                    cpal::default_host().default_output_device()
+                },
+            ),
             screen_share: None,
             stream_events: None,
             watching: None,
