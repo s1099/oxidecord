@@ -325,6 +325,8 @@ impl HomeScreen {
             .id(id.element_id("embed-image"))
             .relative()
             .flex()
+            // Only as wide as the image, so the space beside it isn't a link.
+            .self_start()
             .mt(px(top_gap))
             .when_some(video_url, |this, url| {
                 this.cursor_pointer()

@@ -68,6 +68,9 @@ impl HomeScreen {
         div()
             .id(key.element_id("image"))
             .flex()
+            // The column it sits in would stretch it across the message,
+            // leaving all that width clickable rather than the image alone.
+            .self_start()
             .cursor_pointer()
             .child(element)
             .on_click(cx.listener(move |this, _, window, cx| {
