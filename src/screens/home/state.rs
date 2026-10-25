@@ -556,6 +556,9 @@ pub struct HomeScreen {
     /// query, so retyping a name doesn't ask again.
     pub(super) member_searches: HashSet<(Id<GuildMarker>, String)>,
     pub(super) _composer_changed: Subscription,
+    /// Hands focus back to the screen when what held it goes away, a closed
+    /// menu or edit box, so typing still reaches the composer.
+    pub(super) _focus_lost: Subscription,
     pub(super) messages_list: ListState,
     pub(super) message_list_view: Entity<MessageListView>,
     pub(super) typing_dots: Entity<TypingDots>,
@@ -585,6 +588,10 @@ impl HomeScreen {
         });
 
         let search_input = cx.new(|cx| InputState::new(window, cx).placeholder("Search"));
+
+        let focus_lost = cx.on_focus_lost(window, |this, window, cx| {
+            this.focus_handle.focus(window, cx);
+        });
 
         let composer_changed = cx.subscribe(&message_input, |this, _, event: &InputEvent, cx| {
             if matches!(event, InputEvent::Change) {
@@ -726,6 +733,7 @@ impl HomeScreen {
             guild_members: HashMap::new(),
             member_searches: HashSet::new(),
             _composer_changed: composer_changed,
+            _focus_lost: focus_lost,
             messages_scroll: SmoothScroll::list(messages_list.clone()),
             messages_list,
             message_list_view,

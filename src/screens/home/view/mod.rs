@@ -93,6 +93,20 @@ impl Render for HomeScreen {
                 }
             }))
             .on_action(cx.listener(Self::on_copy_selection))
+            // After the bindings, so only a keystroke no shortcut took.
+            .on_key_down(cx.listener(Self::on_type_to_compose))
+            // gpui leaves focus where it was when a click lands on nothing
+            // focusable. Discord lets go of it, so typing afterwards goes to
+            // the composer rather than a search box or edit box left behind.
+            // Whatever takes focus on mouse down prevents the default first.
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(|this, _, window, cx| {
+                    if !window.default_prevented() {
+                        this.focus_handle.focus(window, cx);
+                    }
+                }),
+            )
             .on_modifiers_changed(cx.listener(|this, event: &ModifiersChangedEvent, _, cx| {
                 if this.shift_held != event.modifiers.shift {
                     cx.notify();
