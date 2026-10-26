@@ -198,6 +198,9 @@ async fn run(mut commands: UnboundedReceiver<Command>, events: UnboundedSender<V
                 muted = value;
                 if let Some(call) = &mut call {
                     call.driver.mute(value);
+                    if let Ok(audio) = call.audio.lock() {
+                        audio.set_muted(value);
+                    }
                 }
             }
             Command::Deafen(value) => {
@@ -211,7 +214,7 @@ async fn run(mut commands: UnboundedReceiver<Command>, events: UnboundedSender<V
             Command::InputDevice(device) => {
                 input_device = device;
                 if let Some(call) = &mut call {
-                    swap_microphone(call, input_device.as_deref(), deafened);
+                    swap_microphone(call, input_device.as_deref(), muted, deafened);
                 }
             }
         }
@@ -231,6 +234,7 @@ async fn connect(
     let mut driver = Driver::new(config);
 
     let audio = Arc::new(AudioIo::start(input_device));
+    audio.set_muted(muted);
     audio.set_deafened(deafened);
     let mic_input = audio.mic_input();
     let audio: SharedAudio = Arc::new(Mutex::new(audio));
@@ -258,6 +262,8 @@ async fn connect(
     driver.add_global_event(
         Event::Core(CoreEvent::VoiceTick),
         TickHandler {
+            audio: audio.clone(),
+            local_user: connection.user_id,
             speakers: speakers.clone(),
             events: events.clone(),
         },
@@ -285,12 +291,13 @@ async fn connect(
 /// Reopening takes the speakers with it, which costs a few milliseconds of
 /// playback — only when the user switches, and simpler than rebuilding half of
 /// the audio thread underneath a live track.
-fn swap_microphone(call: &mut Call, input_device: Option<&str>, deafened: bool) {
+fn swap_microphone(call: &mut Call, input_device: Option<&str>, muted: bool, deafened: bool) {
     let Ok(mut current) = call.audio.lock() else {
         return;
     };
 
     let audio = Arc::new(AudioIo::start(input_device));
+    audio.set_muted(muted);
     audio.set_deafened(deafened);
     let mic_input = audio.mic_input();
 
@@ -419,6 +426,8 @@ impl EventHandler for PacketHandler {
 
 /// One 20ms tick of the call: who was heard in it, for the tiles.
 struct TickHandler {
+    audio: SharedAudio,
+    local_user: Id<UserMarker>,
     speakers: Arc<Mutex<Speakers>>,
     events: UnboundedSender<VoiceEvent>,
 }
@@ -430,14 +439,26 @@ impl EventHandler for TickHandler {
             return None;
         };
 
-        let audible: HashSet<_> = match self.speakers.lock() {
-            Ok(speakers) => tick
-                .speaking
-                .keys()
-                .filter_map(|ssrc| speakers.users.get(ssrc).copied())
+        self.update_speaking(tick.speaking.keys().copied());
+        None
+    }
+}
+
+impl TickHandler {
+    fn update_speaking(&self, streams: impl Iterator<Item = u32>) {
+        let mut audible: HashSet<_> = match self.speakers.lock() {
+            Ok(speakers) => streams
+                .filter_map(|ssrc| speakers.users.get(&ssrc).copied())
                 .collect(),
-            Err(_) => return None,
+            Err(_) => return,
         };
+
+        audible.remove(&self.local_user);
+        if let Ok(audio) = self.audio.lock()
+            && audio.is_speaking()
+        {
+            audible.insert(self.local_user);
+        }
 
         // Tiles only repaint when the set changes; at 50 ticks a second,
         // sending every one would repaint the call for no reason.
@@ -447,8 +468,6 @@ impl EventHandler for TickHandler {
             speakers.audible.clone_from(&audible);
             let _ = self.events.unbounded_send(VoiceEvent::Speaking(audible));
         }
-
-        None
     }
 }
 
