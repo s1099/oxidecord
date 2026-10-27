@@ -23,8 +23,9 @@ impl HomeScreen {
             .items_center()
             .justify_center()
             .child(
-                self.with_mic_menu(
+                self.with_device_menu(
                     "call-mic-menu",
+                    "Input Device",
                     control(
                         "call-mute",
                         if self.voice_muted {
@@ -36,25 +37,32 @@ impl HomeScreen {
                         self.voice_muted,
                     )
                     .on_click(cx.listener(|this, _, _, cx| this.toggle_voice_mute(cx))),
+                    DeviceMenu::input(),
                     cx,
                 ),
             )
             .child(
-                control(
-                    "call-deafen",
-                    if self.voice_deafened {
-                        "icons/headphone-off.svg"
-                    } else {
-                        "icons/headphones.svg"
-                    },
-                    if self.voice_deafened {
-                        "Undeafen"
-                    } else {
-                        "Deafen"
-                    },
-                    self.voice_deafened,
-                )
-                .on_click(cx.listener(|this, _, _, cx| this.toggle_voice_deafen(cx))),
+                self.with_device_menu(
+                    "call-speaker-menu",
+                    "Output Device",
+                    control(
+                        "call-deafen",
+                        if self.voice_deafened {
+                            "icons/headphone-off.svg"
+                        } else {
+                            "icons/headphones.svg"
+                        },
+                        if self.voice_deafened {
+                            "Undeafen"
+                        } else {
+                            "Deafen"
+                        },
+                        self.voice_deafened,
+                    )
+                    .on_click(cx.listener(|this, _, _, cx| this.toggle_voice_deafen(cx))),
+                    DeviceMenu::output(),
+                    cx,
+                ),
             )
             .child(
                 control(
@@ -85,15 +93,17 @@ impl HomeScreen {
             )
     }
 
-    /// Puts the microphone picker behind a right-click on `button`.
+    /// Puts a device picker behind a right-click on `button`.
     ///
     /// The menu wraps the button rather than being hung off it: a `Button` with
     /// children lays itself out as a labelled button, which would stretch an icon
     /// one out of shape.
-    pub(in crate::screens::home) fn with_mic_menu(
+    pub(in crate::screens::home) fn with_device_menu(
         &self,
         id: &'static str,
+        label: &'static str,
         button: impl IntoElement,
+        devices: DeviceMenu,
         cx: &Context<Self>,
     ) -> impl IntoElement {
         let screen = cx.entity().downgrade();
@@ -102,37 +112,72 @@ impl HomeScreen {
             let Some(screen) = screen.upgrade() else {
                 return menu;
             };
-            let chosen = screen.read(cx).voice_input_device.clone();
+            let chosen = (devices.chosen)(screen.read(cx));
 
-            // Enumerated as the menu opens, so a microphone plugged in since
-            // the app started is in the list.
-            let devices: Vec<voice::InputDevice> = voice::input_devices();
-            let menu = menu.label("Input Device").item(device_item(
+            // Enumerated as the menu opens, so a device plugged in since the
+            // app started is in the list.
+            let menu = menu.label(label).item(device_item(
                 "System Default",
                 None,
                 chosen.is_none(),
+                devices.set,
                 &screen,
             ));
 
-            devices.into_iter().fold(menu, |menu, device| {
+            (devices.list)().into_iter().fold(menu, |menu, device| {
                 let selected = chosen.as_deref() == Some(device.id.as_str());
-                menu.item(device_item(device.name, Some(device.id), selected, &screen))
+                menu.item(device_item(
+                    device.name,
+                    Some(device.id),
+                    selected,
+                    devices.set,
+                    &screen,
+                ))
             })
         })
     }
 }
 
-/// One microphone in the picker, ticked when it's the one in use.
+/// Which direction a [`HomeScreen::with_device_menu`] picker is for: what to
+/// enumerate, which stored choice is ticked, and what picking an item runs.
+pub(in crate::screens::home) struct DeviceMenu {
+    list: fn() -> Vec<voice::AudioDevice>,
+    chosen: fn(&HomeScreen) -> Option<String>,
+    set: fn(&mut HomeScreen, Option<String>, &mut Context<HomeScreen>),
+}
+
+impl DeviceMenu {
+    /// Microphones: capture the call sends.
+    pub(in crate::screens::home) fn input() -> Self {
+        Self {
+            list: voice::input_devices,
+            chosen: HomeScreen::chosen_input_device,
+            set: HomeScreen::set_input_device,
+        }
+    }
+
+    /// Speakers: play what the call receives.
+    pub(in crate::screens::home) fn output() -> Self {
+        Self {
+            list: voice::output_devices,
+            chosen: HomeScreen::chosen_output_device,
+            set: HomeScreen::set_output_device,
+        }
+    }
+}
+
+/// One device in a picker, ticked when it's the one in use.
 fn device_item(
     label: impl Into<SharedString>,
     id: Option<String>,
     selected: bool,
+    set: fn(&mut HomeScreen, Option<String>, &mut Context<HomeScreen>),
     screen: &Entity<HomeScreen>,
 ) -> PopupMenuItem {
     let screen = screen.downgrade();
     let item = PopupMenuItem::new(label.into()).on_click(move |_, _, cx| {
         if let Some(screen) = screen.upgrade() {
-            screen.update(cx, |this, cx| this.set_input_device(id.clone(), cx));
+            screen.update(cx, |this, cx| set(this, id.clone(), cx));
         }
     });
 
