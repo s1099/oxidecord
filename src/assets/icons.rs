@@ -65,7 +65,7 @@ pub(super) const EXTRA_ICONS: &[(&str, &str)] = &[
     ),
     (
         "icons/phone-off.svg",
-        r#"<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="-1.5 -1.5 27 27" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.68 13.31a16 16 0 0 0 3.41 2.6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7 2 2 0 0 1 1.72 2v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6"/><path d="M22 2 2 22"/><path d="M5.09 5.14A2 2 0 0 1 7 3h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L11 11"/></svg>"#,
+        r#"<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="-1.5 -1.5 27 27" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.1 13.9a14 14 0 0 0 3.732 2.668 1 1 0 0 0 1.213-.303l.355-.465A2 2 0 0 1 17 15h3a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2 18 18 0 0 1-12.728-5.272"/><path d="M22 2 2 22"/><path d="M4.76 13.582A18 18 0 0 1 2 4a2 2 0 0 1 2-2h3a2 2 0 0 1 2 2v3a2 2 0 0 1-.8 1.6l-.468.351a1 1 0 0 0-.292 1.233 14 14 0 0 0 .244.473"/></svg>"#,
     ),
     (
         "icons/signal.svg",
