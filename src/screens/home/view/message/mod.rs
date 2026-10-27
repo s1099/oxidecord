@@ -18,7 +18,7 @@ use gpui_kit::*;
 use crate::discord;
 use crate::screens::home::selection::TextPart;
 use crate::screens::home::state::MediaKey;
-use crate::screens::home::view::avatar;
+use crate::screens::home::view::{avatar, bot_tag};
 use crate::screens::home::{HomeScreen, View};
 
 use super::markdown::MarkdownOptions;
@@ -380,6 +380,7 @@ impl HomeScreen {
                                     })
                                     .child(author_name),
                             )
+                            .when(message.author_bot, |this| this.child(bot_tag(cx)))
                             .child(
                                 div()
                                     .text_xs()

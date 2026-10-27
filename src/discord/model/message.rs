@@ -23,6 +23,7 @@ pub struct Message {
     pub author_id: Id<UserMarker>,
     pub author_name: String,
     pub author_avatar_url: Option<String>,
+    pub author_bot: bool,
     pub content: String,
     /// `content`, parsed. Shared since messages are cloned more often than edited.
     pub markdown: Arc<Markdown>,
@@ -79,6 +80,7 @@ impl Message {
             author_id: author.id,
             author_name: author.name.clone(),
             author_avatar_url: author.avatar_url.clone(),
+            author_bot: false,
             markdown: Arc::new(Markdown::parse(&content)),
             content,
             mentions: Vec::new(),
@@ -361,6 +363,7 @@ pub(in crate::discord) fn convert_message(message: twilight_model::channel::Mess
         author_id: message.author.id,
         author_name,
         author_avatar_url,
+        author_bot: message.author.bot,
         markdown: Arc::new(Markdown::parse(&message.content)),
         mentions: convert_mentions(message.mentions),
         mention_everyone: message.mention_everyone,

@@ -7,7 +7,7 @@ use gpui_kit::*;
 
 use crate::discord;
 use crate::screens::home::HomeScreen;
-use crate::screens::home::view::avatar;
+use crate::screens::home::view::{avatar, bot_tag};
 use crate::ui::depth::{self, Level, radius};
 
 use super::super::markdown::MarkdownOptions;
@@ -194,6 +194,7 @@ impl HomeScreen {
                                     })
                                     .child(author_name),
                             )
+                            .when(message.author_bot, |this| this.child(bot_tag(cx)))
                             .child(
                                 div()
                                     .text_xs()

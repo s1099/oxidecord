@@ -174,6 +174,20 @@ fn avatar(name: String, url: Option<String>, size: Pixels) -> Avatar {
     }
 }
 
+/// The tag after a bot's name, wherever the name is shown.
+fn bot_tag(cx: &App) -> Div {
+    let theme = cx.theme();
+    div()
+        .flex_shrink_0()
+        .px(px(4.))
+        .rounded(px(4.))
+        .bg(theme.primary)
+        .text_color(theme.primary_foreground)
+        .text_size(px(10.))
+        .font_weight(FontWeight::SEMIBOLD)
+        .child("BOT")
+}
+
 /// The unread bar Discord hangs off the left of a row, `inset` out from its edge into the gutter.
 fn unread_pill(inset: Pixels, cx: &App) -> Div {
     div()

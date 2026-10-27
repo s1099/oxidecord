@@ -7,8 +7,8 @@ use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
 use crate::discord::UserProfile;
-use crate::screens::home::view::avatar;
 use crate::screens::home::view::user_panel::status_indicator;
+use crate::screens::home::view::{avatar, bot_tag};
 use crate::screens::home::{HomeScreen, ProfilePopup};
 use crate::ui::depth::{self, Level, radius};
 
@@ -153,17 +153,7 @@ fn render_identity(popup: &ProfilePopup, cx: &App) -> impl IntoElement {
                         ),
                 )
                 .when(profile.is_some_and(|profile| profile.bot), |this| {
-                    this.child(
-                        div()
-                            .flex_shrink_0()
-                            .px(px(4.))
-                            .rounded(px(4.))
-                            .bg(theme.primary)
-                            .text_size(px(10.))
-                            .font_weight(FontWeight::BOLD)
-                            .text_color(theme.primary_foreground)
-                            .child("BOT"),
-                    )
+                    this.child(bot_tag(cx))
                 }),
         )
         .child(

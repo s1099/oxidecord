@@ -11,7 +11,7 @@ use crate::discord::{
 };
 use crate::screens::home::HomeScreen;
 use crate::screens::home::view::user_panel::status_indicator;
-use crate::screens::home::view::{INSET, avatar};
+use crate::screens::home::view::{INSET, avatar, bot_tag};
 use crate::ui::depth::radius;
 use crate::ui::theme;
 
@@ -165,19 +165,7 @@ impl HomeScreen {
                     .text_color(name_color)
                     .child(member.name.clone()),
             )
-            .when(member.bot, |this| {
-                this.child(
-                    div()
-                        .flex_shrink_0()
-                        .px_1()
-                        .rounded_sm()
-                        .bg(theme.primary)
-                        .text_color(theme.primary_foreground)
-                        .text_size(px(10.))
-                        .font_weight(FontWeight::SEMIBOLD)
-                        .child("APP"),
-                )
-            });
+            .when(member.bot, |this| this.child(bot_tag(cx)));
 
         let name_and_activity = v_flex().flex_1().min_w_0().child(name).when_some(
             member.activity.clone().filter(|_| !offline),
