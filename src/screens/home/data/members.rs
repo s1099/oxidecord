@@ -83,7 +83,10 @@ impl HomeScreen {
         let known = self.guild_members.get(&guild_id);
         let mut wanted = Vec::new();
         let authors = self.messages.iter().flat_map(|message| {
-            iter::once(message.author_id).chain(message.reply.as_ref().map(|reply| reply.author_id))
+            iter::once(message.author_id).chain(match &message.reply {
+                Some(discord::Reply::Quote(quote)) => Some(quote.author_id),
+                _ => None,
+            })
         });
         for user_id in authors {
             if known.is_some_and(|known| known.contains_key(&user_id)) {

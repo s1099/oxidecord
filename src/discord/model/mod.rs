@@ -33,7 +33,8 @@ pub use member_list::{
 };
 pub use message::{
     Delivery, FileAttachment, ForwardedMessage, ImageAttachment, MentionedUser, Message,
-    MessageReference, Reaction, ReactionEmoji, SPOILER_PREFIX, SpoilerCover, VideoAttachment,
+    MessageReference, Reaction, ReactionEmoji, Reply, SPOILER_PREFIX, SpoilerCover,
+    VideoAttachment,
 };
 pub use read_state::{
     ChannelLatest, GuildUnreads, MuteSettings, ReadState, UnreadChannel, UnreadSetting,

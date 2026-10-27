@@ -17,7 +17,7 @@ pub use model::{
     ImageAttachment, Inline, List, ListMember, MAX_UPLOAD_TOTAL, Markdown, MemberGroupKind,
     MemberListGroup, MemberListItem, MemberListOp, MemberListUpdate, Mention, MentionedUser,
     Message, MessageLink, MessageReference, MuteSettings, PresenceStatus, Reaction, ReactionEmoji,
-    Reactor, ReadState, Role, SPOILER_PREFIX, SpoilerCover, StreamServerInfo, SystemEvent,
+    Reactor, ReadState, Reply, Role, SPOILER_PREFIX, SpoilerCover, StreamServerInfo, SystemEvent,
     UnreadChannel, UnreadSetting, UserProfile, VideoAttachment, VoiceServerInfo, VoiceUserState,
     WELCOMES, animated_webp, call_duration, scaled_url, stream_key,
 };

@@ -93,6 +93,9 @@ impl HomeScreen {
             self.splice_messages(ix..ix + 1, 0);
             changed = true;
         }
+        for message in &mut self.messages {
+            changed |= message.forget_deleted_reply(message_ids);
+        }
         if !changed {
             return;
         }

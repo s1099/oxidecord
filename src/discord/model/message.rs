@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use serde::Deserialize;
 use twilight_model::channel::AttachmentFlags;
-use twilight_model::channel::message::{MessageReferenceType, MessageSnapshot};
+use twilight_model::channel::message::{MessageReferenceType, MessageSnapshot, MessageType};
 use twilight_model::id::{
     Id,
     marker::{EmojiMarker, GuildMarker, MessageMarker, RoleMarker, UserMarker},
@@ -41,7 +41,7 @@ pub struct Message {
     pub videos: Vec<VideoAttachment>,
     pub files: Vec<FileAttachment>,
     pub embeds: Vec<Embed>,
-    pub reply: Option<MessageReference>,
+    pub reply: Option<Reply>,
     pub forward: Option<ForwardedMessage>,
     /// In Discord's order (first reacted first).
     pub reactions: Vec<Reaction>,
@@ -95,7 +95,7 @@ impl Message {
             videos: Vec::new(),
             files: Vec::new(),
             embeds: Vec::new(),
-            reply: reply_to.map(MessageReference::quoting),
+            reply: reply_to.map(|message| Reply::Quote(MessageReference::quoting(message))),
             forward: None,
             reactions: Vec::new(),
             system: None,
@@ -132,6 +132,18 @@ impl Message {
     /// Long form for the "(edited)" tooltip.
     pub fn edited_label(&self) -> Option<String> {
         self.edited.map(format_local_full)
+    }
+
+    /// Turns a quote of any of `deleted` into the deleted-original line, as
+    /// Discord's client does. Returns whether it changed.
+    pub fn forget_deleted_reply(&mut self, deleted: &[Id<MessageMarker>]) -> bool {
+        match &self.reply {
+            Some(Reply::Quote(quote)) if deleted.contains(&quote.id) => {
+                self.reply = Some(Reply::Deleted);
+                true
+            }
+            _ => false,
+        }
     }
 
     /// For a local edit shown before the server confirms it.
@@ -186,6 +198,13 @@ impl ReactionEmoji {
             Self::Custom { name, .. } => format!(":{name}:"),
         }
     }
+}
+
+#[derive(Clone)]
+pub enum Reply {
+    Quote(MessageReference),
+    /// The original is gone; Discord sends the reply without it.
+    Deleted,
 }
 
 /// The quoted preview above a reply.
@@ -380,10 +399,12 @@ pub(in crate::discord) fn convert_message(message: twilight_model::channel::Mess
         videos,
         files,
         embeds: message.embeds.into_iter().map(convert_embed).collect(),
-        reply: message
-            .referenced_message
-            .filter(|_| !is_forward)
-            .map(|referenced| convert_reference(*referenced)),
+        reply: match message.referenced_message {
+            _ if is_forward => None,
+            Some(referenced) => Some(Reply::Quote(convert_reference(*referenced))),
+            None if message.kind == MessageType::Reply => Some(Reply::Deleted),
+            None => None,
+        },
         forward,
         reactions: message
             .reactions

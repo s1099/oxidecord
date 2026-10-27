@@ -1,6 +1,6 @@
 //! The quoted line shown above a message that replies to another.
 
-use gpui_kit::component::{ActiveTheme as _, h_flex};
+use gpui_kit::component::{ActiveTheme as _, Icon, h_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
@@ -14,6 +14,7 @@ use super::{AVATAR_SIZE, CONTENT_INDENT, REPLY_GAP};
 /// Height of the quoted line, which the spine's corner is centred on.
 const LINE_HEIGHT: f32 = 18.;
 const SPINE_WIDTH: f32 = 2.;
+const QUOTE_AVATAR_SIZE: f32 = 16.;
 /// Clearance between the spine's end and the quoted author's avatar.
 const SPINE_CLEARANCE: f32 = 4.;
 
@@ -32,22 +33,10 @@ impl HomeScreen {
         let avatar = avatar(
             author_name.clone(),
             reference.author_avatar_url.clone(),
-            px(16.),
+            px(QUOTE_AVATAR_SIZE),
         );
 
-        // Runs from the avatar's centre up and over to the quote, overhanging the row's bottom by
-        // the gap so it meets the avatar's top.
-        let spine_left = AVATAR_SIZE / 2. - SPINE_WIDTH / 2.;
-        let spine = div()
-            .absolute()
-            .left(px(spine_left))
-            .w(px(CONTENT_INDENT - spine_left - SPINE_CLEARANCE))
-            .top(px(LINE_HEIGHT / 2. - SPINE_WIDTH / 2.))
-            .bottom(px(-REPLY_GAP))
-            .border_t(px(SPINE_WIDTH))
-            .border_l(px(SPINE_WIDTH))
-            .border_color(theme.border)
-            .rounded_tl(px(6.));
+        let spine = spine(cx);
 
         let original = reference.id;
         h_flex()
@@ -99,4 +88,53 @@ impl HomeScreen {
                 )
             })
     }
+}
+
+/// Stands where the quote would, once the original has been deleted.
+pub(super) fn render_deleted_reply(cx: &App) -> impl IntoElement + use<> {
+    let theme = cx.theme();
+    h_flex()
+        .relative()
+        .w_full()
+        .min_w_0()
+        .h(px(LINE_HEIGHT))
+        .pl(px(CONTENT_INDENT))
+        .gap_1()
+        .items_center()
+        .text_xs()
+        .text_color(theme.muted_foreground)
+        .child(spine(cx))
+        .child(
+            h_flex()
+                .flex_shrink_0()
+                .size(px(QUOTE_AVATAR_SIZE))
+                .justify_center()
+                .rounded_full()
+                .bg(theme.muted)
+                .child(Icon::default().path("icons/reply.svg").size(px(10.))),
+        )
+        .child(
+            div()
+                .flex_1()
+                .min_w_0()
+                .truncate()
+                .italic()
+                .child("Original message was deleted"),
+        )
+}
+
+/// Runs from the avatar's centre up and over to the quote, overhanging the row's bottom by the
+/// gap so it meets the avatar's top.
+fn spine(cx: &App) -> Div {
+    let spine_left = AVATAR_SIZE / 2. - SPINE_WIDTH / 2.;
+    div()
+        .absolute()
+        .left(px(spine_left))
+        .w(px(CONTENT_INDENT - spine_left - SPINE_CLEARANCE))
+        .top(px(LINE_HEIGHT / 2. - SPINE_WIDTH / 2.))
+        .bottom(px(-REPLY_GAP))
+        .border_t(px(SPINE_WIDTH))
+        .border_l(px(SPINE_WIDTH))
+        .border_color(cx.theme().border)
+        .rounded_tl(px(6.))
 }

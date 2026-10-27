@@ -114,6 +114,9 @@ impl HistoryCache {
             history
                 .messages
                 .retain(|message| !ids.contains(&message.id));
+            for message in &mut history.messages {
+                message.forget_deleted_reply(ids);
+            }
         }
     }
 }

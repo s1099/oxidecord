@@ -24,6 +24,7 @@ use crate::screens::home::{HomeScreen, View};
 
 use super::markdown::MarkdownOptions;
 use super::{GROUP_GAP, MESSAGE_PADDING_X};
+use reply::render_deleted_reply;
 use toolbar::Hovered;
 
 const AVATAR_SIZE: f32 = 40.;
@@ -415,8 +416,12 @@ impl HomeScreen {
             .py(px(MESSAGE_PADDING_Y))
             .px(px(MESSAGE_PADDING_X))
             .gap(px(REPLY_GAP))
-            .when_some(message.reply.clone(), |this, reference| {
-                this.child(self.render_reply_preview(message.id.get(), &reference, cx))
+            .map(|this| match &message.reply {
+                Some(discord::Reply::Quote(reference)) => {
+                    this.child(self.render_reply_preview(message.id.get(), reference, cx))
+                }
+                Some(discord::Reply::Deleted) => this.child(render_deleted_reply(cx)),
+                None => this,
             })
             .child(header_row)
             .into_any_element()
