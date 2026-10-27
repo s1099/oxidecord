@@ -2,6 +2,17 @@
 //! ([`crate::platform::video`]). The two keep their own streams and buffering;
 //! only the conversions to whatever the device wants live here.
 
+use cpal::DeviceId;
+use cpal::traits::HostTrait as _;
+
+/// The chosen output device, or the system default when none is chosen or the
+/// chosen one has been unplugged since. `id` is as [`crate::voice`] lists it.
+pub fn chosen_output(host: &cpal::Host, id: Option<&str>) -> Option<cpal::Device> {
+    id.and_then(|id| id.parse::<DeviceId>().ok())
+        .and_then(|id| host.device_by_id(&id))
+        .or_else(|| host.default_output_device())
+}
+
 /// Keeps a sample inside the range the device conversions assume.
 ///
 /// A NaN compares false against every bound, so it has to be caught before the

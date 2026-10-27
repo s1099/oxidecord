@@ -10,22 +10,29 @@ use super::ring::SampleRing;
 use super::{CHANNELS, Shutdown};
 use crate::platform::audio::in_device_format;
 
-/// A microphone the user can pick between, as the menu lists it.
-pub struct InputDevice {
+/// A microphone or speaker the user can pick between, as the menus list it.
+pub struct AudioDevice {
     /// Stable across runs and reboots, so it's what a preference stores.
     pub id: String,
     pub name: String,
 }
 
-pub fn input_devices() -> Vec<InputDevice> {
-    let host = cpal::default_host();
-    let Ok(devices) = host.input_devices() else {
-        return Vec::new();
-    };
+pub fn input_devices() -> Vec<AudioDevice> {
+    cpal::default_host()
+        .input_devices()
+        .map_or_else(|_| Vec::new(), listed)
+}
 
+pub fn output_devices() -> Vec<AudioDevice> {
+    cpal::default_host()
+        .output_devices()
+        .map_or_else(|_| Vec::new(), listed)
+}
+
+fn listed(devices: impl Iterator<Item = cpal::Device>) -> Vec<AudioDevice> {
     devices
         .filter_map(|device| {
-            Some(InputDevice {
+            Some(AudioDevice {
                 id: device.id().ok()?.to_string(),
                 name: device.description().ok()?.name().to_string(),
             })

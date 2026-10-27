@@ -36,7 +36,7 @@ use crate::platform::runtime;
 
 use audio::AudioIo;
 
-pub use audio::{InputDevice, input_devices};
+pub use audio::{input_devices, output_devices};
 
 /// Everything needed to open a voice connection, gathered from the pair of
 /// gateway dispatches that follow a join.
@@ -76,6 +76,8 @@ enum Command {
     Deafen(bool),
     /// Switch to another microphone, by the id [`input_devices`] reported.
     InputDevice(Option<String>),
+    /// Switch to other speakers, by the id [`output_devices`] reported.
+    OutputDevice(Option<String>),
 }
 
 impl VoiceEngine {
@@ -112,6 +114,12 @@ impl VoiceEngine {
         self.send(Command::InputDevice(device));
     }
 
+    /// Picks the speakers the call plays through, taking effect immediately
+    /// if a call is already up. `None` follows the system default.
+    pub fn set_output_device(&self, device: Option<String>) {
+        self.send(Command::OutputDevice(device));
+    }
+
     fn send(&self, command: Command) {
         let _ = self.commands.unbounded_send(command);
     }
@@ -140,7 +148,7 @@ impl Drop for Call {
 
 /// The call's audio devices, as everything that touches them holds them.
 ///
-/// Switching microphone reopens both devices, and the driver's tick handler
+/// Switching either device reopens both, and the driver's tick handler
 /// has to reach whichever pair is current — its own clone would otherwise go
 /// on filling a closed one, and playback would stop at the first switch.
 type SharedAudio = Arc<Mutex<Arc<AudioIo>>>;
@@ -161,7 +169,7 @@ async fn run(mut commands: UnboundedReceiver<Command>, events: UnboundedSender<V
     let mut call: Option<Call> = None;
     let mut muted = false;
     let mut deafened = false;
-    let mut input_device: Option<String> = None;
+    let mut devices = Devices::default();
 
     while let Some(command) = commands.next().await {
         match command {
@@ -170,15 +178,7 @@ async fn run(mut commands: UnboundedReceiver<Command>, events: UnboundedSender<V
                 // devices before the new one opens them.
                 call = None;
 
-                match connect(
-                    *connection,
-                    events.clone(),
-                    muted,
-                    deafened,
-                    input_device.as_deref(),
-                )
-                .await
-                {
+                match connect(*connection, events.clone(), muted, deafened, &devices).await {
                     Ok(new) => {
                         call = Some(new);
                         let _ = events.unbounded_send(VoiceEvent::Connected);
@@ -209,9 +209,15 @@ async fn run(mut commands: UnboundedReceiver<Command>, events: UnboundedSender<V
                 }
             }
             Command::InputDevice(device) => {
-                input_device = device;
+                devices.input = device;
                 if let Some(call) = &mut call {
-                    swap_microphone(call, input_device.as_deref(), deafened);
+                    reopen_devices(call, &devices, deafened);
+                }
+            }
+            Command::OutputDevice(device) => {
+                devices.output = device;
+                if let Some(call) = &mut call {
+                    reopen_devices(call, &devices, deafened);
                 }
             }
         }
@@ -223,14 +229,14 @@ async fn connect(
     events: UnboundedSender<VoiceEvent>,
     muted: bool,
     deafened: bool,
-    input_device: Option<&str>,
+    devices: &Devices,
 ) -> Result<Call, ConnectionError> {
     // Decryption is off by default, since a bot usually only sends. Decoding
     // stays off: packets are decoded in `audio`, for the reasons given there.
     let config = Config::default().decode_mode(DecodeMode::Decrypt);
     let mut driver = Driver::new(config);
 
-    let audio = Arc::new(AudioIo::start(input_device));
+    let audio = Arc::new(devices.open());
     audio.set_deafened(deafened);
     let mic_input = audio.mic_input();
     let audio: SharedAudio = Arc::new(Mutex::new(audio));
@@ -278,19 +284,36 @@ async fn connect(
     Ok(Call { driver, audio, mic })
 }
 
-/// Reopens the devices on another microphone and hands the call the new one.
+/// The microphone and speakers the user picked, by the ids
+/// [`input_devices`] and [`output_devices`] reported. `None` follows the
+/// system default.
+#[derive(Default)]
+struct Devices {
+    input: Option<String>,
+    output: Option<String>,
+}
+
+impl Devices {
+    fn open(&self) -> AudioIo {
+        AudioIo::start(self.input.as_deref(), self.output.as_deref())
+    }
+}
+
+/// Reopens both devices, after either has been switched, and hands the call
+/// the new microphone.
 ///
 /// The old track can't simply be repointed: it declared the old device's
 /// sample rate to the mixer, and the new device rarely runs at the same one.
-/// Reopening takes the speakers with it, which costs a few milliseconds of
-/// playback — only when the user switches, and simpler than rebuilding half of
-/// the audio thread underneath a live track.
-fn swap_microphone(call: &mut Call, input_device: Option<&str>, deafened: bool) {
+/// The pair is opened together on one thread, so switching either reopens
+/// both, which costs a few milliseconds of playback — only when the user
+/// switches, and simpler than rebuilding half of the audio thread underneath a
+/// live track.
+fn reopen_devices(call: &mut Call, devices: &Devices, deafened: bool) {
     let Ok(mut current) = call.audio.lock() else {
         return;
     };
 
-    let audio = Arc::new(AudioIo::start(input_device));
+    let audio = Arc::new(devices.open());
     audio.set_deafened(deafened);
     let mic_input = audio.mic_input();
 

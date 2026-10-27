@@ -434,6 +434,9 @@ pub struct HomeScreen {
     /// Id of the chosen microphone, remembered between runs. `None` follows
     /// the system default.
     pub(super) voice_input_device: Option<String>,
+    /// Id of the chosen speakers, remembered between runs. `None` follows
+    /// the system default.
+    pub(super) voice_output_device: Option<String>,
     /// Everyone the gateway has reported in a voice channel, by user. This is
     /// what fills every participant list: the tiles on the call stage, and the
     /// names under each voice channel in the sidebar.
@@ -630,6 +633,7 @@ impl HomeScreen {
         });
         let typing_dots = cx.new(|_| TypingDots);
 
+        let prefs = prefs::load();
         let mut this = Self {
             view: View::Guild,
             guilds: Vec::new(),
@@ -685,7 +689,8 @@ impl HomeScreen {
             voice_muted: false,
             voice_deafened: false,
             voice_mute_before_deafen: false,
-            voice_input_device: prefs::load().input_device,
+            voice_input_device: prefs.input_device,
+            voice_output_device: prefs.output_device,
             voice_states: HashMap::new(),
             voice_speaking: HashSet::new(),
             call_ringing: HashMap::new(),
@@ -717,7 +722,7 @@ impl HomeScreen {
             image_viewer: None,
             member_list: None,
             member_list_cache: MemberListCache::default(),
-            member_list_hidden: prefs::load().member_list_hidden,
+            member_list_hidden: prefs.member_list_hidden,
             search_input,
             revealed_spoilers: HashSet::new(),
             text_selection: None,

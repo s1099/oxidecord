@@ -12,7 +12,6 @@ use gpui_kit::*;
 use crate::discord::PresenceStatus;
 use crate::screens::home::HomeScreen;
 use crate::screens::home::view::avatar;
-use crate::screens::home::view::voice::output_menu;
 use crate::ui::button::Button;
 use crate::ui::depth::radius;
 use crate::ui::settings;
@@ -155,7 +154,7 @@ impl HomeScreen {
                 .tooltip(if deafened { "Undeafen" } else { "Deafen" })
                 .on_click(cx.listener(|this, _, _, cx| this.toggle_voice_deafen(cx))),
             "Output Options",
-            output_menu,
+            self.output_menu(cx),
             cx,
         );
 

@@ -53,7 +53,7 @@ older than the installed Visual Studio, build through Ninja: `CMAKE_GENERATOR=Ni
   playback, decoded by the OS), `capture/` (screen capture and H.264 encoding for
   Go Live, also by the OS), and `h264/` (decoding a watched stream, also by the OS).
 - `platform/prefs.rs` — user preferences persisted to `prefs.json` in the config dir (theme,
-  input device, collapsed channel categories per guild). Reads/writes never fail — a bad file
+  input and output devices, collapsed channel categories per guild). Reads/writes never fail — a bad file
   reads as defaults. Use `prefs::update` to change one field without clobbering the rest; it
   does disk I/O, so call it on discrete events (a pick, a switch), not every frame or toggle.
   Collapsed categories load when a guild is opened and save on channel/guild switches.

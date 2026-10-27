@@ -185,6 +185,24 @@ impl HomeScreen {
         cx.notify();
     }
 
+    /// Picks the speakers calls play through, for this call and every later
+    /// one. Videos read the choice as each one starts.
+    ///
+    /// `None` means whichever device the system calls the default, which is
+    /// also where an unplugged choice falls back to.
+    pub(in crate::screens::home) fn set_output_device(
+        &mut self,
+        device: Option<String>,
+        cx: &mut Context<Self>,
+    ) {
+        self.voice_output_device = device.clone();
+        prefs::update(|prefs| prefs.output_device = device.clone());
+        if let Some(engine) = &self.voice_engine {
+            engine.set_output_device(device);
+        }
+        cx.notify();
+    }
+
     /// Pushes mute and deafen to the call and to the gateway. The gateway half
     /// is what everyone else sees on the user's tile.
     fn apply_voice_flags(&mut self, cx: &mut Context<Self>) {

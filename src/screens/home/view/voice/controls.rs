@@ -59,7 +59,7 @@ impl HomeScreen {
                         )
                         .on_click(cx.listener(|this, _, _, cx| this.toggle_voice_deafen(cx))),
                     )
-                    .context_menu(output_menu),
+                    .context_menu(self.output_menu(cx)),
             )
             .child(
                 control(
@@ -110,44 +110,71 @@ impl HomeScreen {
         cx: &Context<Self>,
     ) -> impl Fn(PopupMenu, &mut Window, &mut Context<PopupMenu>) -> PopupMenu + Clone + 'static
     {
-        let screen = cx.entity().downgrade();
-        move |menu, _, cx| {
-            let Some(screen) = screen.upgrade() else {
-                return menu;
-            };
-            let chosen = screen.read(cx).voice_input_device.clone();
+        device_menu(Direction::Input, cx)
+    }
 
-            // Enumerated as the menu opens, so a microphone plugged in since
-            // the app started is in the list.
-            let devices: Vec<voice::InputDevice> = voice::input_devices();
-            let menu = menu.label("Input Device").item(device_item(
-                "System Default",
-                None,
-                chosen.is_none(),
-                &screen,
-            ));
-
-            devices.into_iter().fold(menu, |menu, device| {
-                let selected = chosen.as_deref() == Some(device.id.as_str());
-                menu.item(device_item(device.name, Some(device.id), selected, &screen))
-            })
-        }
+    /// Builds the speaker picker, for a right-click or a dropdown to open.
+    pub(in crate::screens::home) fn output_menu(
+        &self,
+        cx: &Context<Self>,
+    ) -> impl Fn(PopupMenu, &mut Window, &mut Context<PopupMenu>) -> PopupMenu + Clone + 'static
+    {
+        device_menu(Direction::Output, cx)
     }
 }
 
-/// The speaker picker behind the deafen buttons. Audio always plays through
-/// the system default for now, so that's all it offers.
-pub(in crate::screens::home) fn output_menu(
-    menu: PopupMenu,
-    _: &mut Window,
-    _: &mut Context<PopupMenu>,
-) -> PopupMenu {
-    menu.label("Output Device")
-        .item(PopupMenuItem::new("System Default").icon(Icon::new(IconName::Check)))
+/// Which way the devices in a picker carry sound.
+#[derive(Clone, Copy)]
+enum Direction {
+    Input,
+    Output,
 }
 
-/// One microphone in the picker, ticked when it's the one in use.
+fn device_menu(
+    direction: Direction,
+    cx: &Context<HomeScreen>,
+) -> impl Fn(PopupMenu, &mut Window, &mut Context<PopupMenu>) -> PopupMenu + Clone + 'static {
+    let screen = cx.entity().downgrade();
+    move |menu, _, cx| {
+        let Some(screen) = screen.upgrade() else {
+            return menu;
+        };
+        let home = screen.read(cx);
+        let (label, chosen) = match direction {
+            Direction::Input => ("Input Device", home.voice_input_device.clone()),
+            Direction::Output => ("Output Device", home.voice_output_device.clone()),
+        };
+
+        // Enumerated as the menu opens, so a device plugged in since the app
+        // started is in the list.
+        let devices = match direction {
+            Direction::Input => voice::input_devices(),
+            Direction::Output => voice::output_devices(),
+        };
+        let menu = menu.label(label).item(device_item(
+            direction,
+            "System Default",
+            None,
+            chosen.is_none(),
+            &screen,
+        ));
+
+        devices.into_iter().fold(menu, |menu, device| {
+            let selected = chosen.as_deref() == Some(device.id.as_str());
+            menu.item(device_item(
+                direction,
+                device.name,
+                Some(device.id),
+                selected,
+                &screen,
+            ))
+        })
+    }
+}
+
+/// One device in a picker, ticked when it's the one in use.
 fn device_item(
+    direction: Direction,
     label: impl Into<SharedString>,
     id: Option<String>,
     selected: bool,
@@ -156,7 +183,10 @@ fn device_item(
     let screen = screen.downgrade();
     let item = PopupMenuItem::new(label.into()).on_click(move |_, _, cx| {
         if let Some(screen) = screen.upgrade() {
-            screen.update(cx, |this, cx| this.set_input_device(id.clone(), cx));
+            screen.update(cx, |this, cx| match direction {
+                Direction::Input => this.set_input_device(id.clone(), cx),
+                Direction::Output => this.set_output_device(id.clone(), cx),
+            });
         }
     });
 

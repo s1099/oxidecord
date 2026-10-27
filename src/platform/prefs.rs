@@ -31,6 +31,10 @@ pub struct Prefs {
     /// the system calls the default.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub input_device: Option<String>,
+    /// Id of the speakers calls and videos play through. `None` follows
+    /// whichever device the system calls the default.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_device: Option<String>,
     /// Channel categories the user has collapsed, keyed by guild id. Raw ids
     /// keep this module free of Discord types.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]

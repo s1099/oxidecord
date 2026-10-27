@@ -12,18 +12,20 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
-use cpal::traits::{DeviceTrait as _, HostTrait as _, StreamTrait as _};
+use cpal::traits::{DeviceTrait as _, StreamTrait as _};
 use cpal::{FromSample, SizedSample, StreamConfig};
 
 use super::clock::{AudioRing, CHANNELS};
-use crate::platform::audio::{in_device_format, sanitize};
+use crate::platform::audio::{chosen_output, in_device_format, sanitize};
+use crate::platform::prefs;
 
 /// How often the holder thread checks whether playback has ended. The stream
 /// stops when it is dropped, so this only bounds teardown, and nothing is
 /// audible in the meantime.
 const STOP_POLL: Duration = Duration::from_millis(50);
 
-/// Opens the default output device and returns the ring the decoder fills.
+/// Opens the output device the user picked, or the system default, and
+/// returns the ring the decoder fills.
 ///
 /// The device's own sample rate comes back with it, because the decoder asks
 /// Media Foundation to resample to exactly that — letting the OS do it costs
@@ -35,7 +37,10 @@ pub(super) fn start(stop: Arc<AtomicBool>) -> Option<(Arc<AudioRing>, u32)> {
     let host = cpal::default_host();
     // Picked here, on the caller's thread, because the decoder needs the rate
     // before it can configure its audio output — only the stream is `!Send`.
-    let device = host.default_output_device()?;
+    // Read fresh for each clip, off the UI thread, so a switch made since the
+    // last one applies.
+    let chosen = prefs::load().output_device;
+    let device = chosen_output(&host, chosen.as_deref())?;
     let config = device.default_output_config().ok()?;
     let sample_rate = config.sample_rate();
 
