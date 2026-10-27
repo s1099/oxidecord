@@ -19,6 +19,10 @@ const NEWEST_MESSAGE_GAP: f32 = 12.;
 
 const UNREAD_BAR_HEIGHT: f32 = 28.;
 
+/// Discord ends an author group this long after its first message, however
+/// steadily the author kept posting.
+const GROUP_WINDOW_SECS: i64 = 8 * 60;
+
 /// A new day's date, the first unread message's red NEW line, or both in one line where they
 /// fall on the same message, as Discord merges them.
 fn divider(day: Option<String>, unread: bool, cx: &App) -> impl IntoElement {
@@ -330,6 +334,37 @@ impl HomeScreen {
             )
     }
 
+    /// Consecutive messages from one author share a header, except replies always show theirs so
+    /// the quoted preview fits above, and a divider or a system notice breaks a group.
+    fn breaks_group(&self, ix: usize) -> bool {
+        let Some(previous) = ix.checked_sub(1).and_then(|ix| self.messages.get(ix)) else {
+            return true;
+        };
+        let message = &self.messages[ix];
+        self.unread_divider_index() == Some(ix)
+            || message.starts_day_after(previous)
+            || message.reply.is_some()
+            || message.system.is_some()
+            || previous.system.is_some()
+            || previous.author_id != message.author_id
+    }
+
+    /// The time limit counts from where a group began, so this walks back to the run's start
+    /// and replays it.
+    fn heads_group(&self, ix: usize) -> bool {
+        let mut start = ix;
+        while !self.breaks_group(start) {
+            start -= 1;
+        }
+        let mut head = start;
+        for next in start + 1..=ix {
+            if self.messages[next].timestamp - self.messages[head].timestamp >= GROUP_WINDOW_SECS {
+                head = next;
+            }
+        }
+        head == ix
+    }
+
     fn render_message_item(&mut self, ix: usize, cx: &mut Context<Self>) -> AnyElement {
         let Some(message) = self.messages.get(ix) else {
             return div().into_any_element();
@@ -338,15 +373,7 @@ impl HomeScreen {
         let previous = ix.checked_sub(1).and_then(|ix| self.messages.get(ix));
         // Unknown for the oldest loaded message, whose day may have begun further back.
         let new_day = previous.is_some_and(|previous| message.starts_day_after(previous));
-        // Consecutive messages from one author share a header, except replies always show theirs so
-        // the quoted preview fits above, and a divider or a system notice breaks a group.
-        let show_header = unread_divider
-            || new_day
-            || message.reply.is_some()
-            || message.system.is_some()
-            || previous.is_none_or(|previous| {
-                previous.system.is_some() || previous.author_id != message.author_id
-            });
+        let show_header = self.heads_group(ix);
         let row = self.render_message(message, show_header, cx);
         let row = if unread_divider || new_day {
             v_flex()
