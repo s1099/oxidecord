@@ -5,6 +5,11 @@
 //! streamer's RTP; this reorders it, asks for what was lost, rebuilds each
 //! frame, decrypts it with DAVE, and hands it to the platform decoder.
 //!
+//! A stream shared with its sound carries that as Opus too, on an SSRC of
+//! its own. Each packet is a whole frame, so it skips the assembler: it's
+//! decrypted and handed straight to the call's speakers, which decode and
+//! conceal losses the same way they do for anyone talking in the call.
+//!
 //! Nothing can be decoded until a keyframe, and nothing after a lost frame
 //! decodes cleanly until the next, so frames are skipped until one arrives
 //! and the streamer is asked for one (a picture loss indication) whenever
@@ -12,14 +17,16 @@
 
 use std::time::{Duration, Instant};
 
+use davey::MediaType;
 use futures::channel::mpsc::UnboundedSender;
 use futures::channel::oneshot;
 use twilight_model::id::{Id, marker::UserMarker};
 
 use crate::platform::h264::{self, DecoderEvent, DecoderInput, LiveDecoder};
 use crate::platform::runtime;
+use crate::voice::StreamAudio;
 
-use super::media::{H264_PAYLOAD, Media, RTX_PAYLOAD, RtpPacket};
+use super::media::{H264_PAYLOAD, Media, OPUS_PAYLOAD, RTX_PAYLOAD, RtpPacket};
 use super::receive::{Assembled, Assembler};
 use super::signalling::{Signal, Signalling};
 use super::{StreamConnection, StreamEvent};
@@ -43,11 +50,13 @@ pub struct WatchStream {
 
 impl WatchStream {
     /// Connects to `streamer`'s stream. Decoded pictures arrive on `frames`,
-    /// scaled to fit `target`; the connection's end arrives on `events`.
+    /// scaled to fit `target`, and its sound plays through `audio`; the
+    /// connection's end arrives on `events`.
     pub fn start(
         connection: StreamConnection,
         streamer: Id<UserMarker>,
         target: (u32, u32),
+        audio: StreamAudio,
         events: UnboundedSender<StreamEvent>,
         frames: UnboundedSender<DecoderEvent>,
     ) -> Self {
@@ -55,7 +64,7 @@ impl WatchStream {
         let (stop, stopped) = oneshot::channel();
         runtime::handle().spawn(async move {
             let stream_key = connection.stream_key.clone();
-            let error = match run(connection, streamer.get(), input, stopped).await {
+            let error = match run(connection, streamer.get(), input, audio, stopped).await {
                 Ok(Outcome::Stopped) => return,
                 Ok(Outcome::Ended) => None,
                 Err(err) => Some(err),
@@ -90,6 +99,7 @@ async fn run(
     connection: StreamConnection,
     streamer: u64,
     decoder: DecoderInput,
+    audio: StreamAudio,
     mut stopped: oneshot::Receiver<()>,
 ) -> Result<Outcome, String> {
     let (mut signalling, ready) = Signalling::connect(&connection).await?;
@@ -106,6 +116,7 @@ async fn run(
         streamer,
         assembler: Assembler::default(),
         guessed_ssrc: None,
+        audio_ssrc: None,
         needs_keyframe: true,
         last_request: None,
     };
@@ -130,6 +141,10 @@ async fn run(
             received = media.recv(&mut buffer) => {
                 let Ok(length) = received else { continue };
                 let Some(packet) = media.open_rtp(&buffer[..length]) else { continue };
+                if packet.payload_type == OPUS_PAYLOAD {
+                    viewer.play(packet, &mut signalling, &audio);
+                    continue;
+                }
                 viewer.receive(packet, &signalling);
                 viewer.assembler.assemble(Instant::now())
             }
@@ -149,6 +164,9 @@ async fn run(
         }
     };
 
+    if let Some(ssrc) = viewer.audio_ssrc {
+        audio.forget(ssrc);
+    }
     signalling.close().await;
     Ok(outcome)
 }
@@ -160,6 +178,9 @@ struct Viewer {
     /// The video SSRC taken from the first H.264 packet, for a server that
     /// forwards video before it says whose it is.
     guessed_ssrc: Option<u32>,
+    /// Where the stream's sound arrived from, so it can be stopped when the
+    /// watching ends.
+    audio_ssrc: Option<u32>,
     /// Nothing decodable has arrived since the start or the last loss.
     needs_keyframe: bool,
     last_request: Option<Instant>,
@@ -214,6 +235,26 @@ impl Viewer {
         }
     }
 
+    /// Plays a packet of the stream's sound.
+    ///
+    /// Taken by payload type rather than by the `VIDEO` message's audio SSRC:
+    /// only the streamer sends anything on a stream's connection, so any Opus
+    /// that arrives is theirs, and it can arrive before the server has said.
+    fn play(&mut self, packet: RtpPacket, signalling: &mut Signalling, audio: &StreamAudio) {
+        let Some(opus) = signalling
+            .dave
+            .unprotect(self.streamer, MediaType::AUDIO, packet.payload)
+        else {
+            return;
+        };
+        if let Some(previous) = self.audio_ssrc.replace(packet.ssrc)
+            && previous != packet.ssrc
+        {
+            audio.forget(previous);
+        }
+        audio.receive(packet.ssrc, packet.sequence, &opus);
+    }
+
     /// Decrypts and decodes what came out of the assembler, skipping what
     /// can't be decoded yet. Returns false once the decoder is gone.
     fn decode(
@@ -229,7 +270,11 @@ impl Viewer {
             if self.needs_keyframe && !frame.keyframe {
                 continue;
             }
-            let Some(plain) = signalling.dave.unprotect(self.streamer, frame.data) else {
+            let Some(plain) =
+                signalling
+                    .dave
+                    .unprotect(self.streamer, MediaType::VIDEO, frame.data)
+            else {
                 // A frame that won't decrypt leaves the decoder without its
                 // reference; the next keyframe after the group forms is
                 // where to start.

@@ -54,6 +54,16 @@ use ring::SampleRing;
 
 use crate::platform::audio::chosen_output;
 
+/// Whose packets a playback ring holds.
+///
+/// A watched stream is a connection of its own, and its server hands out
+/// SSRCs from its own count, so a stream's can match someone's in the call.
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Sender {
+    Call(u32),
+    Stream(u32),
+}
+
 /// Packets are decoded to stereo, which is the layout the playback rings carry.
 const CHANNELS: usize = 2;
 
@@ -105,10 +115,10 @@ pub struct AudioIo {
     capture: Arc<SampleRing>,
     /// What the speakers play: every sender's ring.
     mixer: Arc<Mixer>,
-    /// Every sender's decoder, keyed by SSRC. Only the call's event handlers
-    /// touch these, so they're kept apart from the rings the audio callback
-    /// locks.
-    incoming: Mutex<HashMap<u32, Incoming>>,
+    /// Every sender's decoder. Only the call's event handlers and a watched
+    /// stream touch these, so they're kept apart from the rings the audio
+    /// callback locks.
+    incoming: Mutex<HashMap<Sender, Incoming>>,
     /// Set when the call ends, which stops the device thread and every
     /// callback still running on it.
     shutdown: Arc<Shutdown>,
@@ -187,34 +197,36 @@ impl AudioIo {
         .into()
     }
 
-    /// Queues one Opus packet from the call for playback. `opus` is the
-    /// frame alone, with every layer of encryption already taken off.
-    pub fn receive(&self, ssrc: u32, sequence: u16, opus: &[u8]) {
+    /// Queues one Opus packet, from the call or a watched stream, for
+    /// playback. `opus` is the frame alone, with every layer of encryption
+    /// already taken off.
+    pub fn receive(&self, sender: Sender, sequence: u16, opus: &[u8]) {
         if self.deafened.load(Ordering::Relaxed) || self.shutdown.is_stopped() {
             return;
         }
         let Ok(mut incoming) = self.incoming.lock() else {
             return;
         };
-        let stream = match incoming.entry(ssrc) {
+        let stream = match incoming.entry(sender) {
             Entry::Occupied(entry) => entry.into_mut(),
             Entry::Vacant(entry) => {
                 let Some(stream) = Incoming::new() else {
                     return;
                 };
-                self.mixer.add(ssrc, stream.ring.clone());
+                self.mixer.add(sender, stream.ring.clone());
                 entry.insert(stream)
             }
         };
         stream.receive(sequence, opus);
     }
 
-    /// Stops playing a sender who has left the call.
-    pub fn forget(&self, ssrc: u32) {
+    /// Stops playing a sender who has left the call, or a stream no longer
+    /// watched.
+    pub fn forget(&self, sender: Sender) {
         if let Ok(mut incoming) = self.incoming.lock() {
-            incoming.remove(&ssrc);
+            incoming.remove(&sender);
         }
-        self.mixer.remove(ssrc);
+        self.mixer.remove(sender);
     }
 
     /// Stops playing everyone. Whoever is still talking starts over with a

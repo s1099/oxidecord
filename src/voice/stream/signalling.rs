@@ -721,9 +721,15 @@ impl Dave {
         self.protocol_version == 0 || self.session.as_ref().is_some_and(DaveSession::is_ready)
     }
 
-    /// Undoes [`Self::protect`] on a frame from `sender`. `None` when it can't
-    /// be decrypted — most often because the group hasn't formed yet.
-    pub(super) fn unprotect(&mut self, sender: u64, frame: Vec<u8>) -> Option<Vec<u8>> {
+    /// Undoes [`Self::protect`] on a frame from `sender`: a picture, or the
+    /// Opus of the stream's sound. `None` when it can't be decrypted — most
+    /// often because the group hasn't formed yet.
+    pub(super) fn unprotect(
+        &mut self,
+        sender: u64,
+        media: MediaType,
+        frame: Vec<u8>,
+    ) -> Option<Vec<u8>> {
         if self.protocol_version == 0 {
             return Some(frame);
         }
@@ -733,7 +739,7 @@ impl Dave {
         if !session.is_ready() {
             return None;
         }
-        match session.decrypt(sender, MediaType::VIDEO, &frame) {
+        match session.decrypt(sender, media, &frame) {
             Ok(frame) => Some(frame),
             Err(err) => {
                 eprintln!("DAVE: couldn't decrypt a frame: {err}");

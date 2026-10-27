@@ -5,8 +5,8 @@ use std::sync::{Arc, Mutex};
 use cpal::{FromSample, SizedSample};
 use songbird::constants::SAMPLE_RATE;
 
-use super::CHANNELS;
 use super::ring::SampleRing;
+use super::{CHANNELS, Sender};
 use crate::platform::audio::sanitize;
 
 /// Eases a mix that has run past full scale back inside it.
@@ -41,9 +41,9 @@ fn limit(sample: f32) -> f32 {
 /// stalling doesn't cut out everyone else.
 #[derive(Default)]
 pub(super) struct Mixer {
-    /// Keyed by SSRC. A list rather than a map because the audio callback
+    /// Keyed by sender. A list rather than a map because the audio callback
     /// walks all of it every time and looks nothing up.
-    rings: Mutex<Vec<(u32, Arc<SampleRing>)>>,
+    rings: Mutex<Vec<(Sender, Arc<SampleRing>)>>,
 }
 
 impl Mixer {
@@ -69,15 +69,15 @@ impl Mixer {
         }
     }
 
-    pub(super) fn add(&self, ssrc: u32, ring: Arc<SampleRing>) {
+    pub(super) fn add(&self, sender: Sender, ring: Arc<SampleRing>) {
         if let Ok(mut rings) = self.rings.lock() {
-            rings.push((ssrc, ring));
+            rings.push((sender, ring));
         }
     }
 
-    pub(super) fn remove(&self, ssrc: u32) {
+    pub(super) fn remove(&self, sender: Sender) {
         if let Ok(mut rings) = self.rings.lock() {
-            rings.retain(|(id, _)| *id != ssrc);
+            rings.retain(|(id, _)| *id != sender);
         }
     }
 

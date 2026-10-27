@@ -19,6 +19,7 @@ use crate::discord;
 use crate::platform::h264::{DecodedFrame, DecoderEvent};
 use crate::screens::home::HomeScreen;
 use crate::screens::home::voice::{StreamWatch, VoiceStatus};
+use crate::voice::VoiceEngine;
 use crate::voice::stream::{StreamConnection, WatchStream};
 
 /// The size pictures are decoded at before the stage has been drawn and
@@ -200,11 +201,13 @@ impl HomeScreen {
     /// Opens the connection once the gateway has delivered every part of it.
     fn try_start_watch(&mut self, cx: &mut Context<Self>) {
         let session_id = self.voice.as_ref().and_then(|call| call.session_id.clone());
-        let (Some(watch), Some(session_id), Some(user_id), Some(events)) = (
+        let audio = self.voice_engine.as_ref().map(VoiceEngine::stream_audio);
+        let (Some(watch), Some(session_id), Some(user_id), Some(events), Some(audio)) = (
             self.watching.as_mut(),
             session_id,
             self.self_user_id,
             self.stream_events.clone(),
+            audio,
         ) else {
             return;
         };
@@ -236,6 +239,7 @@ impl HomeScreen {
             },
             watch.streamer_id,
             DEFAULT_TARGET,
+            audio,
             events,
             watch.frames.clone(),
         ));

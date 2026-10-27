@@ -34,7 +34,7 @@ use twilight_model::id::{
 
 use crate::platform::runtime;
 
-use audio::AudioIo;
+use audio::{AudioIo, Sender};
 
 pub use audio::{input_devices, output_devices};
 
@@ -67,6 +67,7 @@ pub enum VoiceEvent {
 /// tears down whatever call was live.
 pub struct VoiceEngine {
     commands: UnboundedSender<Command>,
+    speakers: CurrentAudio,
 }
 
 enum Command {
@@ -85,8 +86,17 @@ impl VoiceEngine {
     /// is dropped.
     pub fn start(events: UnboundedSender<VoiceEvent>) -> Self {
         let (commands, rx) = unbounded();
-        runtime::handle().spawn(run(rx, events));
-        Self { commands }
+        let speakers = CurrentAudio::default();
+        runtime::handle().spawn(run(rx, events, speakers.clone()));
+        Self { commands, speakers }
+    }
+
+    /// Somewhere for a watched stream's sound to go: the call's speakers,
+    /// whichever pair is open, and nowhere while there's no call.
+    pub fn stream_audio(&self) -> StreamAudio {
+        StreamAudio {
+            speakers: self.speakers.clone(),
+        }
     }
 
     pub fn connect(&self, connection: VoiceConnection) {
@@ -153,6 +163,48 @@ impl Drop for Call {
 /// on filling a closed one, and playback would stop at the first switch.
 type SharedAudio = Arc<Mutex<Arc<AudioIo>>>;
 
+/// The current call's devices, as reached from outside the engine task.
+type CurrentAudio = Arc<Mutex<Option<SharedAudio>>>;
+
+/// A watched stream's way into the call's speakers.
+///
+/// Stream audio plays through the call's devices and mixer rather than a
+/// stream of its own: it then follows the output device the user picked,
+/// falls silent while deafened, and mixes with the call like another voice.
+/// A stream can only be watched from inside a call, so there's always one to
+/// play through.
+#[derive(Clone)]
+pub struct StreamAudio {
+    speakers: CurrentAudio,
+}
+
+impl StreamAudio {
+    /// Plays one Opus frame from the stream, every layer of encryption
+    /// already off.
+    pub fn receive(&self, ssrc: u32, sequence: u16, opus: &[u8]) {
+        self.with_audio(|audio| audio.receive(Sender::Stream(ssrc), sequence, opus));
+    }
+
+    /// Stops playing the stream's sound, once it's no longer watched.
+    pub fn forget(&self, ssrc: u32) {
+        self.with_audio(|audio| audio.forget(Sender::Stream(ssrc)));
+    }
+
+    fn with_audio(&self, act: impl FnOnce(&AudioIo)) {
+        let Some(shared) = self
+            .speakers
+            .lock()
+            .ok()
+            .and_then(|current| current.clone())
+        else {
+            return;
+        };
+        if let Ok(audio) = shared.lock() {
+            act(&audio);
+        }
+    }
+}
+
 /// Who owns which RTP stream, and who was audible on the last tick.
 ///
 /// Packets identify their sender by SSRC only; the mapping to a user arrives
@@ -163,7 +215,11 @@ struct Speakers {
     audible: HashSet<Id<UserMarker>>,
 }
 
-async fn run(mut commands: UnboundedReceiver<Command>, events: UnboundedSender<VoiceEvent>) {
+async fn run(
+    mut commands: UnboundedReceiver<Command>,
+    events: UnboundedSender<VoiceEvent>,
+    current: CurrentAudio,
+) {
     use futures::StreamExt as _;
 
     let mut call: Option<Call> = None;
@@ -220,6 +276,10 @@ async fn run(mut commands: UnboundedReceiver<Command>, events: UnboundedSender<V
                     reopen_devices(call, &devices, deafened);
                 }
             }
+        }
+
+        if let Ok(mut current) = current.lock() {
+            *current = call.as_ref().map(|call| call.audio.clone());
         }
     }
 }
@@ -400,7 +460,7 @@ impl EventHandler for DisconnectHandler {
 
         if let Ok(audio) = self.audio.lock() {
             for ssrc in streams {
-                audio.forget(ssrc);
+                audio.forget(Sender::Call(ssrc));
             }
         }
         None
@@ -434,7 +494,7 @@ impl EventHandler for PacketHandler {
         let opus = payload.get(packet.payload_offset..end)?;
 
         if let Ok(audio) = self.audio.lock() {
-            audio.receive(ssrc, sequence, opus);
+            audio.receive(Sender::Call(ssrc), sequence, opus);
         }
         None
     }
