@@ -22,6 +22,12 @@ pub(super) fn format_message_time(unix: i64) -> String {
     }
 }
 
+/// Just the local time of day, `11:02 AM`, whatever the date: what Discord
+/// shows beside a continuation message, whose header above carries the date.
+pub(super) fn format_message_clock(unix: i64) -> String {
+    local(unix).map_or_else(String::new, |time| time.format("%-I:%M %p").to_string())
+}
+
 /// `Saturday, September 26, 2026 4:20 PM`, in local time.
 pub(super) fn format_local_full(unix: i64) -> String {
     local(unix).map_or_else(String::new, |time| {

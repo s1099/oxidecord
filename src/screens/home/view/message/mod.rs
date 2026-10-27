@@ -189,10 +189,11 @@ impl HomeScreen {
             )
             .into_any_element();
 
+        let lit = self.toolbar_shown(message.id);
         let inner = if show_header {
             self.render_with_header(message, content, cx)
         } else {
-            render_continuation(content)
+            render_continuation(content, lit.then(|| message.clock_label()), cx)
         };
 
         // Hovering anywhere over the row highlights its whole width and reveals
@@ -213,7 +214,6 @@ impl HomeScreen {
         } else {
             mentioned.then_some(theme.warning)
         };
-        let lit = self.toolbar_shown(message_id);
         let row = div()
             .id(("message", message_id.get()))
             .relative()
@@ -427,18 +427,40 @@ impl HomeScreen {
 }
 
 /// A message continuing the author group above it: just the content, indented
-/// to sit under the first message's.
+/// to sit under the first message's, with its send time in the gutter while
+/// the row is lit, as Discord shows it on hover.
 ///
 /// The list can't pad its items, so each message carries its own padding, plus
 /// a full width with `min_w_0` so long lines wrap rather than overflow.
-fn render_continuation(content: AnyElement) -> AnyElement {
+fn render_continuation(
+    content: AnyElement,
+    time: Option<String>,
+    cx: &Context<HomeScreen>,
+) -> AnyElement {
     div()
+        .relative()
         .w_full()
         .min_w_0()
         .pl(px(MESSAGE_PADDING_X + CONTENT_INDENT))
         .pr(px(MESSAGE_PADDING_X))
         .py(px(MESSAGE_PADDING_Y))
         .text_sm()
+        .when_some(time, |this, time| {
+            // Centered on the content's first line, whose height is
+            // `text_sm`'s line height, rather than on the whole message.
+            this.child(
+                h_flex()
+                    .absolute()
+                    .top(px(MESSAGE_PADDING_Y))
+                    .left(px(MESSAGE_PADDING_X))
+                    .w(px(CONTENT_INDENT))
+                    .h(rems(1.25))
+                    .justify_center()
+                    .text_size(rems(0.6875))
+                    .text_color(cx.theme().muted_foreground)
+                    .child(time),
+            )
+        })
         .child(content)
         .into_any_element()
 }

@@ -14,7 +14,7 @@ use super::cdn;
 use super::embed::{Embed, EmbedLayout, convert_embed};
 use super::guild::GuildMember;
 use super::markdown::{self, Inline, Markdown};
-use super::time::{format_local_full, format_message_time};
+use super::time::{format_local_full, format_message_clock, format_message_time};
 use super::user::{CurrentUser, small_avatar_url};
 
 #[derive(Clone)]
@@ -139,6 +139,12 @@ impl Message {
     /// today, the short date and time before that.
     pub fn timestamp_label(&self) -> String {
         format_message_time(self.timestamp)
+    }
+
+    /// When the message was sent, as the gutter of a continuation message
+    /// shows it on hover: the time of day alone.
+    pub fn clock_label(&self) -> String {
+        format_message_clock(self.timestamp)
     }
 
     /// When the message was last edited, in the long form the "(edited)"
