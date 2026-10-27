@@ -315,12 +315,14 @@ impl HomeScreen {
         };
         let unread_divider = self.unread_divider_index() == Some(ix);
         // Consecutive messages from one author share a header, except replies always show theirs so
-        // the quoted preview fits above, and the divider breaks a group.
+        // the quoted preview fits above, and the divider or a system notice breaks a group.
         let show_header = ix == 0
             || unread_divider
             || message.reply.is_some()
-            || self.messages.get(ix - 1).map(|previous| previous.author_id)
-                != Some(message.author_id);
+            || message.system.is_some()
+            || self.messages.get(ix - 1).is_none_or(|previous| {
+                previous.system.is_some() || previous.author_id != message.author_id
+            });
         let row = self.render_message(message, show_header, cx);
         let row = if unread_divider {
             v_flex()

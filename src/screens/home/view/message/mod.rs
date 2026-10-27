@@ -9,6 +9,7 @@ mod pins;
 mod reactions;
 mod reactors;
 mod reply;
+mod system;
 mod toolbar;
 
 use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
@@ -17,7 +18,7 @@ use gpui_kit::*;
 
 use crate::discord;
 use crate::screens::home::selection::TextPart;
-use crate::screens::home::state::MediaKey;
+use crate::screens::home::state::{EditingMessage, MediaKey};
 use crate::screens::home::view::{avatar, bot_tag};
 use crate::screens::home::{HomeScreen, View};
 
@@ -112,7 +113,103 @@ impl HomeScreen {
             .as_ref()
             .filter(|editing| editing.message_id == message.id);
 
-        let mentioned = self.mentions_me(message);
+        // A system notice names the users it's about; it doesn't ping them.
+        let mentioned = message.system.is_none() && self.mentions_me(message);
+        let lit = self.toolbar_shown(message.id);
+        let inner = if let Some(event) = &message.system {
+            self.render_system_message(message, event, cx)
+        } else {
+            let content = self.render_message_body(message, editing, cx);
+            if show_header {
+                self.render_with_header(message, content, cx)
+            } else {
+                render_continuation(content, lit.then(|| message.clock_label()), cx)
+            }
+        };
+
+        // Hovering highlights the whole row and reveals the toolbar; using the toolbar counts as
+        // hovering though it hangs over the row above.
+        let message_id = message.id;
+        // The message being replied to wears the reply's colour over any mention tint.
+        let replying = self
+            .replying_to
+            .as_ref()
+            .is_some_and(|target| target.message_id == message_id);
+        // A just-jumped-to message is lit the same way briefly.
+        let flashed = self.flashed_message == Some(message_id);
+        let tint = if replying || flashed {
+            Some(theme.primary)
+        } else {
+            mentioned.then_some(theme.warning)
+        };
+        let row = div()
+            .id(("message", message_id.get()))
+            .relative()
+            .w_full()
+            .min_w_0()
+            .on_hover(cx.listener(move |this, hovered: &bool, _, cx| {
+                this.set_hovered(Hovered::Message, message_id, *hovered, cx);
+            }))
+            .map(|this| match tint {
+                // Deepens under the pointer rather than vanishing, so mentions stay visible.
+                Some(tint) => this
+                    .bg(tint.opacity(if lit { 0.16 } else { 0.1 }))
+                    .hover(|this| this.bg(tint.opacity(0.16)))
+                    .child(
+                        div()
+                            .absolute()
+                            .top_0()
+                            .bottom_0()
+                            .left_0()
+                            .w(px(MENTION_BAR_WIDTH))
+                            .bg(tint),
+                    ),
+                None => this
+                    .when(lit, |this| this.bg(theme.accent.opacity(0.4)))
+                    .hover(|this| this.bg(theme.accent.opacity(0.4))),
+            })
+            // A message open for editing stays lit, so it's clear which one the box belongs to.
+            .when(editing.is_some(), |this| this.bg(theme.accent.opacity(0.4)))
+            // Alt-click marks the conversation unread from here.
+            .when(message.delivery == discord::Delivery::Sent, |this| {
+                this.on_click(cx.listener(move |this, event: &ClickEvent, _, cx| {
+                    if event.modifiers().alt {
+                        this.mark_unread(message_id, cx);
+                    }
+                }))
+            })
+            .child(inner);
+        // Nothing on the toolbar or menu applies until the server knows the message. The toolbar is
+        // built only for its own message: hidden on every other row it would be dozens of elements
+        // thrown away each frame.
+        let row = if message.delivery == discord::Delivery::Sent {
+            // A system notice can only be reacted to, which its menu covers.
+            let row = row.when(lit && message.system.is_none(), |row| {
+                row.child(self.render_message_toolbar(message, cx))
+            });
+            self.message_context_menu(row, message_id, cx)
+                .into_any_element()
+        } else {
+            row.into_any_element()
+        };
+
+        // The gap between author groups is outside the row, so the highlight stays tight.
+        div()
+            .w_full()
+            .min_w_0()
+            .when(show_header, |this| this.pt(px(GROUP_GAP)))
+            .child(row)
+            .into_any_element()
+    }
+
+    /// A regular message's text, media, reactions and delivery state.
+    fn render_message_body(
+        &self,
+        message: &discord::Message,
+        editing: Option<&EditingMessage>,
+        cx: &Context<Self>,
+    ) -> AnyElement {
+        let theme = cx.theme();
         let media = Media::of(message);
         let uploads = match &message.delivery {
             discord::Delivery::Sending { uploads } => uploads.as_slice(),
@@ -181,86 +278,7 @@ impl HomeScreen {
                 |this| this.opacity(0.5),
             )
             .into_any_element();
-
-        let lit = self.toolbar_shown(message.id);
-        let inner = if show_header {
-            self.render_with_header(message, content, cx)
-        } else {
-            render_continuation(content, lit.then(|| message.clock_label()), cx)
-        };
-
-        // Hovering highlights the whole row and reveals the toolbar; using the toolbar counts as
-        // hovering though it hangs over the row above.
-        let message_id = message.id;
-        // The message being replied to wears the reply's colour over any mention tint.
-        let replying = self
-            .replying_to
-            .as_ref()
-            .is_some_and(|target| target.message_id == message_id);
-        // A just-jumped-to message is lit the same way briefly.
-        let flashed = self.flashed_message == Some(message_id);
-        let tint = if replying || flashed {
-            Some(theme.primary)
-        } else {
-            mentioned.then_some(theme.warning)
-        };
-        let row = div()
-            .id(("message", message_id.get()))
-            .relative()
-            .w_full()
-            .min_w_0()
-            .on_hover(cx.listener(move |this, hovered: &bool, _, cx| {
-                this.set_hovered(Hovered::Message, message_id, *hovered, cx);
-            }))
-            .map(|this| match tint {
-                // Deepens under the pointer rather than vanishing, so mentions stay visible.
-                Some(tint) => this
-                    .bg(tint.opacity(if lit { 0.16 } else { 0.1 }))
-                    .hover(|this| this.bg(tint.opacity(0.16)))
-                    .child(
-                        div()
-                            .absolute()
-                            .top_0()
-                            .bottom_0()
-                            .left_0()
-                            .w(px(MENTION_BAR_WIDTH))
-                            .bg(tint),
-                    ),
-                None => this
-                    .when(lit, |this| this.bg(theme.accent.opacity(0.4)))
-                    .hover(|this| this.bg(theme.accent.opacity(0.4))),
-            })
-            // A message open for editing stays lit, so it's clear which one the box belongs to.
-            .when(editing.is_some(), |this| this.bg(theme.accent.opacity(0.4)))
-            // Alt-click marks the conversation unread from here.
-            .when(message.delivery == discord::Delivery::Sent, |this| {
-                this.on_click(cx.listener(move |this, event: &ClickEvent, _, cx| {
-                    if event.modifiers().alt {
-                        this.mark_unread(message_id, cx);
-                    }
-                }))
-            })
-            .child(inner);
-        // Nothing on the toolbar or menu applies until the server knows the message. The toolbar is
-        // built only for its own message: hidden on every other row it would be dozens of elements
-        // thrown away each frame.
-        let row = if message.delivery == discord::Delivery::Sent {
-            let row = row.when(lit, |row| {
-                row.child(self.render_message_toolbar(message, cx))
-            });
-            self.message_context_menu(row, message_id, cx)
-                .into_any_element()
-        } else {
-            row.into_any_element()
-        };
-
-        // The gap between author groups is outside the row, so the highlight stays tight.
-        div()
-            .w_full()
-            .min_w_0()
-            .when(show_header, |this| this.pt(px(GROUP_GAP)))
-            .child(row)
-            .into_any_element()
+        content
     }
 
     /// A message's images, videos, files, and embeds, stacked under its text.

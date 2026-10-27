@@ -17,6 +17,7 @@ pub(super) struct MessageMenu {
     pub message_id: Id<MessageMarker>,
     pub reply: ReplyTarget,
     pub can_edit: bool,
+    pub can_reply: bool,
     pub can_delete: bool,
     pub has_reactions: bool,
 }
@@ -32,11 +33,12 @@ impl MessageMenu {
                     .to_owned(),
             },
             // Already open for editing, the action would do nothing.
-            can_edit: screen.is_own_message(message)
+            can_edit: screen.can_edit_message(message)
                 && screen
                     .editing
                     .as_ref()
                     .is_none_or(|editing| editing.message_id != message.id),
+            can_reply: message.system.is_none(),
             can_delete: screen.can_delete_message(message),
             has_reactions: !message.reactions.is_empty(),
         }
@@ -98,7 +100,7 @@ impl MessageMenu {
                         })),
                 )
             })
-            .when(full, |menu| {
+            .when(full && self.can_reply, |menu| {
                 let screen = screen.clone();
                 let reply = self.reply.clone();
                 menu.item(PopupMenuItem::new("Reply").icon(IconName::Undo2).on_click(

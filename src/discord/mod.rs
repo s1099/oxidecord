@@ -17,9 +17,9 @@ pub use model::{
     ImageAttachment, Inline, List, ListMember, MAX_UPLOAD_TOTAL, Markdown, MemberGroupKind,
     MemberListGroup, MemberListItem, MemberListOp, MemberListUpdate, Mention, MentionedUser,
     Message, MessageLink, MessageReference, MuteSettings, PresenceStatus, Reaction, ReactionEmoji,
-    Reactor, ReadState, Role, SPOILER_PREFIX, SpoilerCover, StreamServerInfo, UnreadChannel,
-    UnreadSetting, UserProfile, VideoAttachment, VoiceServerInfo, VoiceUserState, animated_webp,
-    scaled_url, stream_key,
+    Reactor, ReadState, Role, SPOILER_PREFIX, SpoilerCover, StreamServerInfo, SystemEvent,
+    UnreadChannel, UnreadSetting, UserProfile, VideoAttachment, VoiceServerInfo, VoiceUserState,
+    WELCOMES, animated_webp, call_duration, scaled_url, stream_key,
 };
 pub use rest::{
     MESSAGE_PAGE_SIZE, MessagePage, REACTORS_PAGE_SIZE, ack_message, delete_message, edit_message,

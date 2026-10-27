@@ -24,7 +24,6 @@
 | Drag and drop of files onto the chat | Missing | Picker and paste only |
 | Upload progress and cancelling an upload | Missing | |
 | Attachment alt text and descriptions | Missing | |
-| System messages (joins, pins, boosts, calls, thread created, and so on) | Missing | |
 | Pinning and unpinning messages, and the pinned-messages panel | Partial | The header's pin button opens the pinned-messages popout; pinning, unpinning, and jumping to a pin aren't done yet |
 | Message search (with filters: from, in, has, before, after) | Missing | The header has a search box, but typing in it does nothing yet |
 | Jump to a message (from a reply, a link, or search) | Partial | Reply quotes, the composer's "Replying to" strip, and discord.com message links jump there; search and a forward's source don't yet |

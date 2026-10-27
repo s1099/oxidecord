@@ -26,6 +26,14 @@ impl HomeScreen {
             == Some(message.author_id)
     }
 
+    /// A message still sending has no id on the server to edit yet, and a
+    /// system message's text is the client's, not the author's.
+    pub(in crate::screens::home) fn can_edit_message(&self, message: &discord::Message) -> bool {
+        self.is_own_message(message)
+            && message.delivery == discord::Delivery::Sent
+            && message.system.is_none()
+    }
+
     pub(in crate::screens::home) fn start_editing(
         &mut self,
         message_id: Id<MessageMarker>,
@@ -48,8 +56,7 @@ impl HomeScreen {
             return;
         };
         let message = &self.messages[ix];
-        // A message still sending has no id on the server to edit yet.
-        if !self.is_own_message(message) || message.delivery != discord::Delivery::Sent {
+        if !self.can_edit_message(message) {
             return;
         }
 
@@ -209,9 +216,7 @@ impl HomeScreen {
             .messages
             .iter()
             .rev()
-            .find(|message| {
-                self.is_own_message(message) && message.delivery == discord::Delivery::Sent
-            })
+            .find(|message| self.can_edit_message(message))
             .map(|message| message.id)
         else {
             cx.propagate();

@@ -121,20 +121,24 @@ impl HomeScreen {
         message_id: Id<MessageMarker>,
         cx: &mut App,
     ) {
-        let Some(channel_id) = self.selected_channel else {
-            return;
-        };
+        if let Some(link) = self.message_link(message_id) {
+            cx.write_to_clipboard(ClipboardItem::new_string(link));
+        }
+    }
+
+    /// A link to a message in the open channel.
+    pub(in crate::screens::home) fn message_link(
+        &self,
+        message_id: Id<MessageMarker>,
+    ) -> Option<String> {
+        let channel_id = self.selected_channel?;
         // DMs have no guild, and use the literal `@me` in its place.
         let guild = match self.view {
             View::DirectMessages => "@me".to_string(),
-            View::Guild => match self.selected_guild {
-                Some(guild_id) => guild_id.to_string(),
-                None => return,
-            },
+            View::Guild => self.selected_guild?.to_string(),
         };
-
-        cx.write_to_clipboard(ClipboardItem::new_string(format!(
+        Some(format!(
             "https://discord.com/channels/{guild}/{channel_id}/{message_id}"
-        )));
+        ))
     }
 }

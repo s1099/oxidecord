@@ -14,6 +14,7 @@ use super::cdn;
 use super::embed::{Embed, EmbedLayout, convert_embed};
 use super::guild::GuildMember;
 use super::markdown::{self, Inline, Markdown};
+use super::system::{SystemEvent, convert_system};
 use super::time::{format_local_full, format_message_clock, format_message_time};
 use super::user::{CurrentUser, small_avatar_url};
 
@@ -44,6 +45,8 @@ pub struct Message {
     pub forward: Option<ForwardedMessage>,
     /// In Discord's order (first reacted first).
     pub reactions: Vec<Reaction>,
+    /// Drawn as a one-line notice instead of the author's message.
+    pub system: Option<SystemEvent>,
     pub delivery: Delivery,
 }
 
@@ -95,6 +98,7 @@ impl Message {
             reply: reply_to.map(MessageReference::quoting),
             forward: None,
             reactions: Vec::new(),
+            system: None,
             delivery: Delivery::Sending { uploads },
         }
     }
@@ -338,6 +342,7 @@ pub(in crate::discord) fn author_member(
 
 pub(in crate::discord) fn convert_message(message: twilight_model::channel::Message) -> Message {
     let author_avatar_url = small_avatar_url(&message.author);
+    let system = convert_system(&message);
     // Nickname, then global name, then username. Only gateway dispatches carry
     // `member`; fetched history and send responses don't, so the view names
     // authors by the guild's members where it can.
@@ -389,6 +394,7 @@ pub(in crate::discord) fn convert_message(message: twilight_model::channel::Mess
                 me: reaction.me,
             })
             .collect(),
+        system,
         delivery: Delivery::Sent,
     }
 }
