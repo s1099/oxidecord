@@ -15,7 +15,9 @@ use super::embed::{Embed, EmbedLayout, convert_embed};
 use super::guild::GuildMember;
 use super::markdown::{self, Inline, Markdown};
 use super::system::{SystemEvent, convert_system};
-use super::time::{format_local_full, format_message_clock, format_message_time};
+use super::time::{
+    format_local_day, format_local_full, format_message_clock, format_message_time, local_day,
+};
 use super::user::{CurrentUser, small_avatar_url};
 
 #[derive(Clone)]
@@ -127,6 +129,16 @@ impl Message {
     /// Time of day alone, for a continuation message's gutter.
     pub fn clock_label(&self) -> String {
         format_message_clock(self.timestamp)
+    }
+
+    /// Whether `previous` was sent on an earlier local day, which a divider marks.
+    pub fn starts_day_after(&self, previous: &Message) -> bool {
+        local_day(self.timestamp) != local_day(previous.timestamp)
+    }
+
+    /// The divider's `October 27, 2026`.
+    pub fn day_label(&self) -> String {
+        format_local_day(self.timestamp)
     }
 
     /// Long form for the "(edited)" tooltip.

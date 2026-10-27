@@ -19,24 +19,45 @@ const NEWEST_MESSAGE_GAP: f32 = 12.;
 
 const UNREAD_BAR_HEIGHT: f32 = 28.;
 
-fn new_messages_divider(cx: &App) -> impl IntoElement {
+/// A new day's date, the first unread message's red NEW line, or both in one line where they
+/// fall on the same message, as Discord merges them.
+fn divider(day: Option<String>, unread: bool, cx: &App) -> impl IntoElement {
     let theme = cx.theme();
+    let color = if unread { theme.danger } else { theme.border };
     h_flex()
         .w_full()
         .pt(px(GROUP_GAP))
         .px(px(MESSAGE_PADDING_X))
         .items_center()
-        .child(div().flex_1().h(px(1.)).bg(theme.danger))
-        .child(
-            div()
-                .px(px(4.))
-                .rounded(px(4.))
-                .bg(theme.danger)
-                .text_color(theme.danger_foreground)
-                .text_xs()
-                .font_weight(FontWeight::BOLD)
-                .child("NEW"),
-        )
+        .child(div().flex_1().h(px(1.)).bg(color))
+        .when_some(day, |this, day| {
+            this.child(
+                div()
+                    .px_1()
+                    .text_xs()
+                    .font_weight(FontWeight::SEMIBOLD)
+                    .text_color(if unread {
+                        theme.danger
+                    } else {
+                        theme.muted_foreground
+                    })
+                    .child(day),
+            )
+            .child(div().flex_1().h(px(1.)).bg(color))
+        })
+        .when(unread, |this| this.child(new_pill(cx)))
+}
+
+fn new_pill(cx: &App) -> impl IntoElement {
+    let theme = cx.theme();
+    div()
+        .px(px(4.))
+        .rounded(px(4.))
+        .bg(theme.danger)
+        .text_color(theme.danger_foreground)
+        .text_xs()
+        .font_weight(FontWeight::BOLD)
+        .child("NEW")
 }
 
 /// Widths are fixed, not random, so the skeleton doesn't reshuffle every frame.
@@ -314,20 +335,27 @@ impl HomeScreen {
             return div().into_any_element();
         };
         let unread_divider = self.unread_divider_index() == Some(ix);
+        let previous = ix.checked_sub(1).and_then(|ix| self.messages.get(ix));
+        // Unknown for the oldest loaded message, whose day may have begun further back.
+        let new_day = previous.is_some_and(|previous| message.starts_day_after(previous));
         // Consecutive messages from one author share a header, except replies always show theirs so
-        // the quoted preview fits above, and the divider or a system notice breaks a group.
-        let show_header = ix == 0
-            || unread_divider
+        // the quoted preview fits above, and a divider or a system notice breaks a group.
+        let show_header = unread_divider
+            || new_day
             || message.reply.is_some()
             || message.system.is_some()
-            || self.messages.get(ix - 1).is_none_or(|previous| {
+            || previous.is_none_or(|previous| {
                 previous.system.is_some() || previous.author_id != message.author_id
             });
         let row = self.render_message(message, show_header, cx);
-        let row = if unread_divider {
+        let row = if unread_divider || new_day {
             v_flex()
                 .w_full()
-                .child(new_messages_divider(cx))
+                .child(divider(
+                    new_day.then(|| message.day_label()),
+                    unread_divider,
+                    cx,
+                ))
                 .child(row)
                 .into_any_element()
         } else {

@@ -26,6 +26,16 @@ pub(super) fn format_message_clock(unix: i64) -> String {
     local(unix).map_or_else(String::new, |time| time.format("%-I:%M %p").to_string())
 }
 
+/// The local calendar day, to tell where a new day starts in a conversation.
+pub(super) fn local_day(unix: i64) -> Option<chrono::NaiveDate> {
+    local(unix).map(|time| time.date_naive())
+}
+
+/// `October 27, 2026`, in local time, as the divider between days reads.
+pub(super) fn format_local_day(unix: i64) -> String {
+    local(unix).map_or_else(String::new, |time| time.format("%B %-d, %Y").to_string())
+}
+
 /// `Saturday, September 26, 2026 4:20 PM`, in local time.
 pub(super) fn format_local_full(unix: i64) -> String {
     local(unix).map_or_else(String::new, |time| {
