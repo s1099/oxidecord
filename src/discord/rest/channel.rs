@@ -31,8 +31,24 @@ pub async fn fetch_dms() -> Result<Vec<DirectMessage>, String> {
 /// Joining a DM's voice channel only starts the call; nobody is rung until a
 /// client asks, as Discord's own does right after joining. A user-client
 /// endpoint with no twilight helper. A `null` recipient list rings them all.
+///
+/// Being able to call someone doesn't mean being allowed to ring them, so it
+/// first asks `GET /channels/{id}/call`, as Discord's client does. A user
+/// who isn't `ringable` would only be refused with a 403 (50013); the call
+/// still goes ahead without the ring, as it does in Discord's client.
 pub async fn ring_call(channel_id: Id<ChannelMarker>) -> Result<(), String> {
     request(move |client| async move {
+        let request =
+            RequestBuilder::raw(Method::Get, format!("channels/{channel_id}/call")).build()?;
+        let eligibility = client
+            .request::<CallEligibility>(request)
+            .await?
+            .model()
+            .await?;
+        if !eligibility.ringable {
+            return Ok(());
+        }
+
         let request = RequestBuilder::raw(Method::Post, format!("channels/{channel_id}/call/ring"))
             .json(&serde_json::json!({ "recipients": null }))
             .build()?;
@@ -40,6 +56,12 @@ pub async fn ring_call(channel_id: Id<ChannelMarker>) -> Result<(), String> {
         Ok(())
     })
     .await
+}
+
+/// `GET /channels/{id}/call`: whether the user may ring the DM's other members.
+#[derive(serde::Deserialize)]
+struct CallEligibility {
+    ringable: bool,
 }
 
 /// Stops a DM's call ringing the current user
