@@ -36,6 +36,12 @@ const MESSAGE_PADDING_Y: f32 = 2.;
 /// up with the content column beside the avatar.
 const CONTENT_INDENT: f32 = 52.;
 
+/// How far the hover time in a continuation's gutter is shifted from the
+/// content's first line box. Tuned by eye against the rendered text: with the
+/// baselines level the smaller time still reads low beside the lowercase
+/// text, so it sits a touch above, as Discord's does.
+const GUTTER_TIME_NUDGE: f32 = -0.6;
+
 /// The box inline media is fitted into, attachments and embeds alike. Discord
 /// uses similar bounds; the aspect ratio is preserved within them.
 const MEDIA_MAX_WIDTH: f32 = 400.;
@@ -446,17 +452,19 @@ fn render_continuation(
         .py(px(MESSAGE_PADDING_Y))
         .text_sm()
         .when_some(time, |this, time| {
-            // Centered on the content's first line, whose height is
-            // `text_sm`'s line height, rather than on the whole message.
+            // Given the content's first line box, rather than the whole
+            // message: `text_sm` at gpui's default line height of phi. Text
+            // centers in its line box, so the smaller time's baseline would
+            // sit above the content's; the nudge down closes that gap.
             this.child(
-                h_flex()
+                div()
                     .absolute()
-                    .top(px(MESSAGE_PADDING_Y))
+                    .top(px(MESSAGE_PADDING_Y + GUTTER_TIME_NUDGE))
                     .left(px(MESSAGE_PADDING_X))
                     .w(px(CONTENT_INDENT))
-                    .h(rems(1.25))
-                    .justify_center()
+                    .text_center()
                     .text_size(rems(0.6875))
+                    .line_height(rems(0.875 * 1.618_034))
                     .text_color(cx.theme().muted_foreground)
                     .child(time),
             )
