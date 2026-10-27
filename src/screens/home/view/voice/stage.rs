@@ -154,8 +154,13 @@ impl HomeScreen {
         cx: &Context<Self>,
     ) -> impl IntoElement {
         let picture = match &watch.frame {
-            // Raw pixels, so it never touches the image cache.
+            // Raw pixels, so it never touches the image cache. Pinned to the
+            // box rather than laid out in it: `img` takes the picture's aspect
+            // ratio, and in flow that sized it from the box's width alone, so a
+            // wide stage cut the bottom of the picture off.
             Some(frame) => img(frame.clone())
+                .absolute()
+                .inset_0()
                 .size_full()
                 .object_fit(ObjectFit::Contain)
                 .into_any_element(),
