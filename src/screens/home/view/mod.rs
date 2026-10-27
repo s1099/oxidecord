@@ -12,6 +12,8 @@ mod sidebar;
 mod user_panel;
 mod voice;
 
+pub(super) use sidebar::sidebar_width;
+
 use gpui_kit::component::{ActiveTheme as _, Sizable as _, avatar::Avatar, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
@@ -65,7 +67,8 @@ impl Render for HomeScreen {
             View::DirectMessages => Some(self.render_dm_sidebar(cx).into_any_element()),
             View::Guild => (self.selected_guild.is_some() || self.loading)
                 .then(|| self.render_channel_sidebar(cx).into_any_element()),
-        };
+        }
+        .map(|sidebar| self.render_sidebar_frame(sidebar, cx));
 
         let image_viewer = self.render_image_viewer(window, cx);
 
@@ -85,6 +88,8 @@ impl Render for HomeScreen {
                 }
             }))
             .on_action(cx.listener(Self::on_copy_selection))
+            // On the root, since the pointer can be anywhere when the drag ends.
+            .on_drop(cx.listener(Self::on_sidebar_resized))
             // After the bindings, so only keystrokes no shortcut took.
             .on_key_down(cx.listener(Self::on_type_to_compose))
             // gpui leaves focus where it was when a click lands on nothing focusable; Discord lets

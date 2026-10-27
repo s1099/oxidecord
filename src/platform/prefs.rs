@@ -34,6 +34,9 @@ pub struct Prefs {
     pub recent_emojis: Vec<RecentEmoji>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub member_list_hidden: bool,
+    /// `None` is the default width.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sidebar_width: Option<f32>,
 }
 
 /// Untagged, so the JSON is just a number (custom) or a string (unicode).

@@ -389,6 +389,8 @@ pub struct HomeScreen {
     pub(super) member_list_cache: MemberListCache,
     /// Persisted in prefs.
     pub(super) member_list_hidden: bool,
+    /// The channel/DM sidebar's dragged width, persisted in prefs.
+    pub(super) sidebar_width: Pixels,
     /// The message search box in the conversation header. Not wired up yet.
     pub(super) search_input: Entity<InputState>,
     /// Cleared with the conversation, as Discord re-hides them on leaving.
@@ -565,6 +567,7 @@ impl HomeScreen {
             member_list: None,
             member_list_cache: MemberListCache::default(),
             member_list_hidden: prefs.member_list_hidden,
+            sidebar_width: super::view::sidebar_width(prefs.sidebar_width),
             search_input,
             revealed_spoilers: HashSet::new(),
             text_selection: None,
