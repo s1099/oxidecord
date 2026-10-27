@@ -1,13 +1,8 @@
-//! User preferences that outlive a run, kept in a small JSON file in the
-//! platform's config directory.
+//! User preferences in a JSON file in the config directory.
 //!
-//! Nothing here is essential to the app working, so every operation degrades to
-//! a default instead of failing: an unreadable or malformed file reads as "no
-//! preferences set", and a failed write is dropped.
-//!
-//! The file is read once and kept in memory, since some reads happen on every
-//! channel switch on the foreground thread. Writes go through that copy, so
-//! the file is only touched when something changes.
+//! Nothing here is essential, so a bad file reads as defaults and a failed
+//! write is dropped. The file is cached in memory because some reads happen on
+//! every channel switch on the foreground thread.
 
 use std::{
     collections::BTreeMap,
@@ -23,32 +18,25 @@ const FILE_NAME: &str = "prefs.json";
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct Prefs {
-    /// Name of the selected theme, as it appears in the theme's JSON. `None`
-    /// until the user picks one, which leaves the system appearance in charge.
+    /// `None` leaves the system appearance in charge.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub theme: Option<String>,
-    /// Id of the microphone calls should use. `None` follows whichever device
-    /// the system calls the default.
+    /// `None` follows the system default device.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub input_device: Option<String>,
-    /// Id of the speakers calls and videos play through. `None` follows
-    /// whichever device the system calls the default.
+    /// `None` follows the system default device.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub output_device: Option<String>,
-    /// Channel categories the user has collapsed, keyed by guild id. Raw ids
-    /// keep this module free of Discord types.
+    /// Keyed by guild id. Raw ids keep this module free of Discord types.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub collapsed_categories: BTreeMap<u64, Vec<u64>>,
-    /// Emoji the user last chose from the picker, newest first.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub recent_emojis: Vec<RecentEmoji>,
-    /// The user closed the member list beside guild conversations.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub member_list_hidden: bool,
 }
 
-/// An emoji in [`Prefs::recent_emojis`]: a custom one by id, a unicode one as
-/// its text. Untagged, so the JSON is just a number or a string.
+/// Untagged, so the JSON is just a number (custom) or a string (unicode).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum RecentEmoji {
@@ -67,8 +55,7 @@ pub fn save(prefs: &Prefs) {
     write_file(prefs);
 }
 
-/// Loads, edits, and saves in one step, so a caller changing one field doesn't
-/// clear the ones it doesn't know about.
+/// Edits one field without clobbering the rest.
 pub fn update(edit: impl FnOnce(&mut Prefs)) {
     let mut cache = cached();
     let prefs = cache.get_or_insert_with(read_file);
@@ -77,7 +64,7 @@ pub fn update(edit: impl FnOnce(&mut Prefs)) {
 }
 
 fn cached() -> MutexGuard<'static, Option<Prefs>> {
-    // A panic mid-edit leaves at worst a half-edited copy, still better than none
+    // A panic mid-edit leaves a half-edited copy at worst, better than none.
     CACHE
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())

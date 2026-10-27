@@ -1,57 +1,48 @@
-//! Depth: the UI is lit from above. Things you click sit *on* the page and
-//! floating layers hover *over* it; everything else, inputs included, is flat.
+//! Depth: the UI is lit from above. Clickable things sit *on* the page, floating
+//! layers hover *over* it, everything else (inputs included) is flat.
 //!
-//! Each [`Level`] is built from the same ingredients: a lit top edge, sometimes
-//! a shaded bottom edge, and drop shadows that grow with elevation. All of it
-//! is kept faint — enough to tell a control from a label, not so much that the
-//! UI looks embossed. Small controls get the most and big surfaces the least,
-//! since on a large area a sheen reads as a smudge and a shadow as a heavy box.
+//! Each [`Level`] is a lit top edge, sometimes a shaded bottom edge, and drop
+//! shadows that grow with elevation, all kept faint. Small controls get the most
+//! and big surfaces the least, since on a large area a sheen reads as a smudge.
 //!
-//! gpui has no inset shadows and its gradients take two stops, so the edges and
-//! sheens are painted as absolutely positioned layers over the element's fill
-//! rather than as part of its shadow. [`Lit::lit`] wires both up at once.
+//! gpui has no inset shadows and its gradients take two stops, so edges and
+//! sheens are absolutely positioned layers over the fill. [`Lit::lit`] wires
+//! both up.
 //!
-//! Plain black and white at low alpha throughout, rather than theme colours, so
-//! the light and shade read the same on every preset. Dark themes get stronger
-//! shadows and much fainter highlights, which is how light actually falls on a
-//! dark surface.
+//! Black and white at low alpha rather than theme colours, so the light reads
+//! the same on every preset. Dark themes get stronger shadows and fainter highlights.
 
 use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::*;
 
-/// How far above or into the page something sits.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Level {
-    /// Sits on the page: outline and secondary buttons, chips, active rows.
+    /// Outline and secondary buttons, chips, active rows.
     Raised,
-    /// A filled, prominent control: the primary button, tooltips.
+    /// The primary button, tooltips.
     RaisedStrong,
-    /// Pushed in: a button held down, or a toggle that's on.
+    /// A button held down, or a toggle that's on.
     Pressed,
-    /// A large resting panel: cards and the content pane.
+    /// Cards and the content pane.
     Surface,
-    /// Floats above everything: dialogs, menus, popovers.
+    /// Dialogs, menus, popovers.
     Overlay,
 }
 
-/// The sheen over a fill, on top of its level's edges.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Finish {
-    /// No sheen. Big surfaces always use this.
+    /// Big surfaces always use this.
     Matte,
-    /// A faint highlight fading out by 70%: small controls.
+    /// Fades out by 70%; for small controls.
     Subtle,
 }
 
-/// Group name the lighting layers use to follow a control's pressed state.
 pub const PRESS_GROUP: &str = "depth-press";
 
-/// How far a lit edge fades in, in pixels. A hard 1px line can't follow a
-/// rounded corner, so the edge is a short gradient over the whole element,
-/// which the element's own rounding clips.
+/// Lit edge fade, in pixels. A hard 1px line can't follow a rounded corner, so
+/// the edge is a gradient over the whole element, clipped by its rounding.
 const EDGE: f32 = 2.;
 
-/// How far a pressed element's inner shadow reaches.
 const INNER_SHADOW: f32 = 3.;
 
 pub fn shadow(level: Level, cx: &App) -> Vec<BoxShadow> {
@@ -77,9 +68,8 @@ pub fn shadow(level: Level, cx: &App) -> Vec<BoxShadow> {
     }
 }
 
-/// The painted layers for `level` and `finish`, for an element about `height`
-/// tall with corners of `radius`. Goes first among the element's children,
-/// which must be positioned `relative`, so its content paints over them.
+/// Painted layers for an element about `height` tall. Put them first among the
+/// children of a `relative` element so content paints over them.
 pub fn layers(level: Level, finish: Finish, height: Pixels, radius: Pixels, cx: &App) -> Vec<Div> {
     let dark = cx.theme().mode.is_dark();
     let mut layers = Vec::new();
@@ -116,16 +106,13 @@ pub fn layers(level: Level, finish: Finish, height: Pixels, radius: Pixels, cx: 
     layers
 }
 
-/// The inner shadow of a pushed-in control, as a layer of its own so it can be
-/// shown only while the control is held (see [`PRESS_GROUP`]).
+/// Separate layer so it shows only while held (see [`PRESS_GROUP`]).
 pub fn pressed(height: Pixels, radius: Pixels, cx: &App) -> Div {
     let alpha = if cx.theme().mode.is_dark() { 0.2 } else { 0.06 };
     let reach = (INNER_SHADOW / f32::from(height)).min(0.5);
     top_fade(black_a(alpha), reach, radius)
 }
 
-/// A layer shading from `color` at the top to nothing at `until` (a fraction of
-/// the height).
 fn top_fade(color: Hsla, until: f32, radius: Pixels) -> Div {
     layer(radius).bg(linear_gradient(
         180.,
@@ -134,8 +121,6 @@ fn top_fade(color: Hsla, until: f32, radius: Pixels) -> Div {
     ))
 }
 
-/// A layer shading from nothing at `from` (a fraction of the height) to `color`
-/// at the bottom.
 fn bottom_fade(color: Hsla, from: f32, radius: Pixels) -> Div {
     layer(radius).bg(linear_gradient(
         180.,
@@ -156,12 +141,9 @@ fn white_a(alpha: f32) -> Hsla {
     hsla(0., 0., 1., alpha)
 }
 
-/// Gives any element a depth level: its drop shadows, its painted edges and
-/// sheen, and the rounding they're clipped to.
 pub trait Lit: Styled + ParentElement + Sized {
-    /// Call before adding the element's content, so the content paints over
-    /// the layers. `height` only needs to be roughly right — it sets how far
-    /// the edges fade in.
+    /// Call before adding content so it paints over the layers. `height` only
+    /// needs to be roughly right.
     fn lit(self, level: Level, finish: Finish, height: Pixels, radius: Pixels, cx: &App) -> Self {
         self.relative()
             .rounded(radius)
@@ -172,8 +154,8 @@ pub trait Lit: Styled + ParentElement + Sized {
 
 impl<T: Styled + ParentElement> Lit for T {}
 
-/// The pressed layer, shown only while an element in [`PRESS_GROUP`] is held
-/// down. It needs an id of its own for gpui to track the press.
+/// Shown only while an element in [`PRESS_GROUP`] is held. Needs its own id for
+/// gpui to track the press.
 pub fn press_layer(height: Pixels, radius: Pixels, cx: &App) -> Stateful<Div> {
     pressed(height, radius, cx)
         .id("press-layer")
@@ -181,17 +163,13 @@ pub fn press_layer(height: Pixels, radius: Pixels, cx: &App) -> Stateful<Div> {
         .group_active(PRESS_GROUP, |this| this.visible())
 }
 
-/// The fine outline cards and overlays draw around themselves: the foreground
-/// at a tenth, so it's a hairline on any theme.
+/// Hairline outline for cards and overlays: foreground at 10%.
 pub fn ring(cx: &App) -> Hsla {
     cx.theme().foreground.opacity(0.1)
 }
 
-/// The shadow under an image, a video card, or an embed.
-///
-/// Two layers, the way Discord's own elevation tokens are built: a tight
-/// contact shadow that draws the edge against the background, and a wider,
-/// softer one that does the lifting.
+/// Shadow under an image, video card or embed: a tight contact shadow for the
+/// edge plus a wider, softer one for lift, as in Discord's elevation tokens.
 pub fn media_shadow() -> Vec<BoxShadow> {
     vec![
         BoxShadow {
@@ -211,8 +189,8 @@ pub fn media_shadow() -> Vec<BoxShadow> {
     ]
 }
 
-/// A card: the page colour lifted onto a surface with a hairline ring. No sheen
-/// — see the module docs. Like [`Lit::lit`], call before adding content.
+/// A surface with a hairline ring and no sheen. Like [`Lit::lit`], call before
+/// adding content.
 pub fn card(radius: Pixels, cx: &App) -> Div {
     div()
         .bg(cx.theme().background)
@@ -222,14 +200,10 @@ pub fn card(radius: Pixels, cx: &App) -> Div {
         .rounded(radius)
 }
 
-/// Corner radii, one per kind of thing, so everything of a kind matches.
 pub mod radius {
     use gpui_kit::{Pixels, px};
 
-    /// Buttons, inputs, and other controls at their default size.
     pub const CONTROL: Pixels = px(10.);
-    /// Small controls, menu items, and sidebar rows.
     pub const ITEM: Pixels = px(8.);
-    /// Cards, dialogs, and the content pane.
     pub const CARD: Pixels = px(14.);
 }

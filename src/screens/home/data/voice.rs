@@ -27,8 +27,6 @@ impl HomeScreen {
             .is_some_and(|call| call.channel_id == channel_id)
     }
 
-    /// Joins a guild voice channel, or leaves it if it's the one already
-    /// joined — clicking the connected channel again toggles, like Discord.
     pub(in crate::screens::home) fn join_voice_channel(
         &mut self,
         channel_id: Id<ChannelMarker>,
@@ -64,13 +62,10 @@ impl HomeScreen {
             },
             cx,
         );
-        // Opening the channel puts its stage in the content pane.
         self.show_voice_channel(channel_id, window, cx);
     }
 
-    /// Places a call in the open DM conversation, or joins the one already
-    /// going there. Discord treats a DM call as a guildless voice channel, so
-    /// it joins the same way.
+    /// A DM call is a guildless voice channel, so it joins the same way.
     pub(in crate::screens::home) fn start_dm_call(&mut self, cx: &mut Context<Self>) {
         let Some(dm) = self.selected_dm_info().cloned() else {
             return;
@@ -98,7 +93,6 @@ impl HomeScreen {
         );
     }
 
-    /// Announces the join on the gateway and waits for the voice server.
     fn open_call(&mut self, call: VoiceCall, cx: &mut Context<Self>) {
         let Some(gateway) = self.gateway.clone() else {
             return;
@@ -128,8 +122,6 @@ impl HomeScreen {
         cx.notify();
     }
 
-    /// Tears down this side of the call: the connection and everything waiting
-    /// on or drawn from it.
     fn end_call_locally(&mut self) {
         if let Some(engine) = &self.voice_engine {
             engine.disconnect();
@@ -141,10 +133,8 @@ impl HomeScreen {
         self.voice_speaking.clear();
     }
 
-    /// Toggles self-mute: whether the microphone is sent.
-    ///
-    /// Unmuting while deafened undeafens as well, since deafening is what
-    /// muted the microphone in the first place.
+    /// Unmuting while deafened undeafens too, since deafening is what muted the
+    /// microphone.
     pub(in crate::screens::home) fn toggle_voice_mute(&mut self, cx: &mut Context<Self>) {
         self.voice_muted = !self.voice_muted;
         if !self.voice_muted {
@@ -154,9 +144,8 @@ impl HomeScreen {
         self.apply_voice_flags(cx);
     }
 
-    /// Toggles self-deafen: whether everyone else is played. Deafening stops
-    /// the microphone too, and undeafening hands back whatever mute state the
-    /// user had before.
+    /// Deafening stops the microphone too; undeafening restores the user's previous
+    /// mute state.
     pub(in crate::screens::home) fn toggle_voice_deafen(&mut self, cx: &mut Context<Self>) {
         self.voice_deafened = !self.voice_deafened;
         if self.voice_deafened {
@@ -168,10 +157,8 @@ impl HomeScreen {
         self.apply_voice_flags(cx);
     }
 
-    /// Picks the microphone to use, for this call and every later one.
-    ///
-    /// `None` means whichever device the system calls the default, which is
-    /// also where an unplugged choice falls back to.
+    /// `None` is the system default device, which an unplugged choice also falls
+    /// back to.
     pub(in crate::screens::home) fn set_input_device(
         &mut self,
         device: Option<String>,
@@ -185,11 +172,8 @@ impl HomeScreen {
         cx.notify();
     }
 
-    /// Picks the speakers calls play through, for this call and every later
-    /// one. Videos read the choice as each one starts.
-    ///
-    /// `None` means whichever device the system calls the default, which is
-    /// also where an unplugged choice falls back to.
+    /// Videos read the choice as each one starts. `None` is the system default
+    /// device, which an unplugged choice also falls back to.
     pub(in crate::screens::home) fn set_output_device(
         &mut self,
         device: Option<String>,
@@ -203,8 +187,7 @@ impl HomeScreen {
         cx.notify();
     }
 
-    /// Pushes mute and deafen to the call and to the gateway. The gateway half
-    /// is what everyone else sees on the user's tile.
+    /// The gateway half is what shows on the user's tile for everyone else.
     fn apply_voice_flags(&mut self, cx: &mut Context<Self>) {
         if let Some(engine) = &self.voice_engine {
             engine.set_muted(self.voice_muted);
@@ -223,9 +206,8 @@ impl HomeScreen {
         cx.notify();
     }
 
-    /// Records where someone is in voice. The user's own state also carries
-    /// the session id a connection needs, and says when they've been moved or
-    /// disconnected from the far end.
+    /// The user's own state also carries the session id a connection needs, and says
+    /// when they've been moved or disconnected remotely.
     pub(in crate::screens::home) fn handle_voice_state(
         &mut self,
         state: discord::VoiceUserState,
@@ -239,7 +221,6 @@ impl HomeScreen {
         if channel_id.is_some() {
             self.voice_states.insert(user_id, state.clone());
         } else {
-            // No channel means they left voice entirely.
             self.voice_states.remove(&user_id);
         }
 
@@ -278,12 +259,9 @@ impl HomeScreen {
         cx.notify();
     }
 
-    /// Replaces everyone known to be in voice in `guild_id`, or everywhere
-    /// when it's `None`, with a fresh list. Anyone missing from it has left.
-    ///
-    /// Only the participant lists are touched. The open call follows the
-    /// `VOICE_STATE_UPDATE`s that answer its own join, which a snapshot taken
-    /// before that join could only contradict.
+    /// Anyone missing from the fresh list has left. Only participant lists are
+    /// touched: the open call follows the `VOICE_STATE_UPDATE`s answering its own
+    /// join, which a snapshot taken before that join could only contradict.
     pub(in crate::screens::home) fn replace_voice_states(
         &mut self,
         guild_id: Option<Id<GuildMarker>>,
@@ -308,8 +286,6 @@ impl HomeScreen {
         cx.notify();
     }
 
-    /// Points the open call at a channel the user was moved to, and starts
-    /// waiting for that channel's voice server.
     fn follow_move(&mut self, channel_id: Id<ChannelMarker>, guild_id: Option<Id<GuildMarker>>) {
         // A move within the guild is the common case; a name the app hasn't
         // loaded keeps the one already on the call rather than blanking it.
@@ -343,9 +319,8 @@ impl HomeScreen {
         }
     }
 
-    /// Rings the DM's other members once the user is connected to a call they
-    /// placed, so there's a call on Discord's side to ring and someone in it
-    /// to answer. Only the first connection rings; a reconnect doesn't.
+    /// Once the user is connected to a call they placed, so there's a call to ring.
+    /// Only the first connection rings; a reconnect doesn't.
     fn ring_if_placed(&mut self, channel_id: Id<ChannelMarker>, cx: &mut Context<Self>) {
         let Some(call) = self
             .voice
@@ -375,8 +350,6 @@ impl HomeScreen {
         .detach();
     }
 
-    /// Records a DM's call as the gateway reports it on starting, or when
-    /// asked after: everyone in it replaces whoever was thought to be.
     pub(in crate::screens::home) fn handle_call_create(
         &mut self,
         channel_id: Id<ChannelMarker>,
@@ -414,8 +387,7 @@ impl HomeScreen {
         cx.notify();
     }
 
-    /// Declines the call ringing the user in the open DM. Only the ringing
-    /// stops; the caller is left in the call, as Discord leaves them.
+    /// Only the ringing stops; the caller stays in the call, as in Discord.
     pub(in crate::screens::home) fn decline_dm_call(&mut self, cx: &mut Context<Self>) {
         let (Some(dm), Some(self_id)) = (self.selected_dm_info(), self.self_user_id) else {
             return;
@@ -435,7 +407,6 @@ impl HomeScreen {
         cx.notify();
     }
 
-    /// Who an ongoing DM call is ringing, minus anyone who has since joined.
     pub(in crate::screens::home) fn call_ringing(
         &self,
         channel_id: Id<ChannelMarker>,
@@ -453,7 +424,6 @@ impl HomeScreen {
             .collect()
     }
 
-    /// Records the voice server for the join in flight.
     pub(in crate::screens::home) fn handle_voice_server(
         &mut self,
         server: discord::VoiceServerInfo,
@@ -483,7 +453,6 @@ impl HomeScreen {
         self.try_connect_voice(cx);
     }
 
-    /// Opens the connection once the gateway has delivered every part of it.
     fn try_connect_voice(&mut self, cx: &mut Context<Self>) {
         let (Some(call), Some(pending), Some(user_id)) =
             (&self.voice, &self.pending_voice, self.self_user_id)

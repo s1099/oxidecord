@@ -1,5 +1,5 @@
-//! The line-level rules: quotes, headings, subtext, lists and code blocks.
-//! Everything between them is a paragraph, handed to [`super::inline`].
+//! Line-level rules: quotes, headings, subtext, lists and code blocks.
+//! Everything else is a paragraph, handed to [`super::inline`].
 
 use super::inline;
 use super::{Block, List, ListItem};
@@ -10,17 +10,14 @@ pub(super) fn parse(source: &str) -> Vec<Block> {
     blocks
 }
 
-/// Parses `source` as a run of blocks. Inside a quote, quote markers are just
-/// text, since quotes don't nest.
+/// Inside a quote, quote markers are plain text since quotes don't nest.
 fn parse_into(source: &str, in_quote: bool, blocks: &mut Vec<Block>) {
     let mut paragraph = String::new();
-    // Always sits at the start of a line, except just after a code block that
-    // closed mid-line.
+    // At the start of a line, except just after a code block closed mid-line.
     let mut rest = source;
 
     while !rest.is_empty() {
         if !in_quote {
-            // `>>> ` quotes everything after it, to the end of the text.
             if let Some(body) = rest
                 .strip_prefix(">>> ")
                 .or_else(|| rest.strip_prefix(">>>\n"))
@@ -71,15 +68,13 @@ fn parse_into(source: &str, in_quote: bool, blocks: &mut Vec<Block>) {
             continue;
         }
 
-        // A code block can open anywhere on a line, and runs to its closing
-        // fence however many lines on.
+        // A code block can open anywhere on a line.
         if let Some((start, block, len)) = find_code_block(rest, line.len()) {
             paragraph.push_str(&rest[..start]);
             flush(&mut paragraph, blocks);
             blocks.push(block);
             rest = &rest[start + len..];
-            // The block ends its own line; a newline straight after it would
-            // otherwise draw as an empty one.
+            // A newline straight after would draw as an empty line.
             rest = rest.strip_prefix('\n').unwrap_or(rest);
             continue;
         }
@@ -93,9 +88,8 @@ fn parse_into(source: &str, in_quote: bool, blocks: &mut Vec<Block>) {
     flush(&mut paragraph, blocks);
 }
 
-/// Ends the paragraph being gathered. The newline that led into the next block
-/// is dropped — the block starts its own line anyway — but any blank lines
-/// before it are kept, as Discord keeps them.
+/// Drops the newline leading into the next block but keeps blank lines before
+/// it, as Discord does.
 fn flush(paragraph: &mut String, blocks: &mut Vec<Block>) {
     let text = paragraph.strip_suffix('\n').unwrap_or(paragraph);
     if !text.is_empty() {
@@ -104,7 +98,6 @@ fn flush(paragraph: &mut String, blocks: &mut Vec<Block>) {
     paragraph.clear();
 }
 
-/// The first line of `text`, and everything after its newline.
 fn split_line(text: &str) -> (&str, &str) {
     match text.find('\n') {
         Some(end) => (&text[..end], &text[end + 1..]),
@@ -112,7 +105,7 @@ fn split_line(text: &str) -> (&str, &str) {
     }
 }
 
-/// A `> ` line's text, without the marker. A bare `>` isn't a quote.
+/// A bare `>` isn't a quote.
 fn quote_line(text: &str) -> Option<&str> {
     let (line, _) = split_line(text);
     if line.starts_with(">>> ") {
@@ -121,7 +114,6 @@ fn quote_line(text: &str) -> Option<&str> {
     line.strip_prefix("> ")
 }
 
-/// `#` to `###`, a space, then something to show.
 fn heading(line: &str) -> Option<(u8, &str)> {
     let level = line.bytes().take_while(|&b| b == b'#').count();
     if !(1..=3).contains(&level) {
@@ -136,8 +128,6 @@ fn subtext(line: &str) -> Option<&str> {
     (!content.is_empty()).then_some(content)
 }
 
-/// One line of a list: its indent, its number (`None` for a bullet), and its
-/// text.
 struct ItemLine<'a> {
     indent: usize,
     number: Option<u64>,
@@ -168,9 +158,8 @@ fn list_item(line: &str) -> Option<ItemLine<'_>> {
     })
 }
 
-/// Parses the run of list lines at the start of `text` into one list or more
-/// — switching between bullets and numbers starts a new one — and returns what
-/// follows the run.
+/// Switching between bullets and numbers starts a new list. Returns the text
+/// after the run.
 fn parse_lists<'a>(mut text: &'a str, blocks: &mut Vec<Block>) -> &'a str {
     let mut lines = Vec::new();
     while !text.is_empty() {
@@ -190,9 +179,8 @@ fn parse_lists<'a>(mut text: &'a str, blocks: &mut Vec<Block>) -> &'a str {
     text
 }
 
-/// Builds one list from `lines[*cursor..]` at `indent`, taking deeper lines
-/// as nested lists under the item above them. Stops at a shallower line, or a
-/// line of the other kind at the same depth.
+/// Deeper lines nest under the item above. Stops at a shallower line, or one
+/// of the other kind at the same depth.
 fn build_list(lines: &[ItemLine], cursor: &mut usize, indent: usize) -> List {
     let ordered = lines[*cursor].number.is_some();
     let mut list = List {
@@ -222,9 +210,8 @@ fn build_list(lines: &[ItemLine], cursor: &mut usize, indent: usize) -> List {
     list
 }
 
-/// Finds a code block opening within the first `line_len` bytes of `text`:
-/// where it starts, the block, and how many bytes it spans. An opening fence
-/// with no closing one is just text.
+/// Returns the start, block and byte length of a code block opening within the
+/// first `line_len` bytes. An unclosed fence is just text.
 fn find_code_block(text: &str, line_len: usize) -> Option<(usize, Block, usize)> {
     let mut from = 0;
     while let Some(offset) = text[from..line_len].find("```") {
@@ -241,10 +228,8 @@ fn find_code_block(text: &str, line_len: usize) -> Option<(usize, Block, usize)>
     None
 }
 
-/// Parses a code block at the start of `text`, which begins with its fence.
-/// The word right after the fence is the language only when a newline follows
-/// it and there is code after that; leading and trailing blank lines are
-/// dropped.
+/// The word after the fence is the language only when a newline and code
+/// follow it. Leading and trailing blank lines are dropped.
 fn code_block(text: &str) -> Option<(Block, usize)> {
     let body = &text[3..];
     let close = body.find("```")?;

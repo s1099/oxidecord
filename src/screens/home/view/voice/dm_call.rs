@@ -14,16 +14,13 @@ use crate::screens::home::voice::VoiceParticipant;
 use crate::ui::button::Button;
 use crate::ui::tooltip;
 
-/// Share of the conversation's height the band takes, like Discord's; the
-/// messages keep the rest.
+/// Share of the conversation's height, like Discord's.
 const BAND_SHARE: f32 = 0.5;
 const BAND_MIN_HEIGHT: f32 = 240.;
 
 const BUBBLE: f32 = 96.;
-/// Space between a bubble and the ring drawn around it while they talk.
 const RING_GAP: f32 = 3.;
 
-/// Someone shown as a bubble: in the call, or being rung into it.
 struct Bubble {
     user_id: Id<UserMarker>,
     name: String,
@@ -50,7 +47,6 @@ impl From<&VoiceParticipant> for Bubble {
 }
 
 impl HomeScreen {
-    /// The call band for the open DM, while there's a call in it at all.
     pub(in crate::screens::home) fn render_dm_stage(
         &self,
         cx: &Context<Self>,
@@ -85,15 +81,13 @@ impl HomeScreen {
             band.flex_shrink_0()
                 .h(relative(BAND_SHARE))
                 .min_h(px(BAND_MIN_HEIGHT))
-                // Black in every theme, as Discord's is: the call reads as a
-                // screen of its own above the conversation.
+                // Black in every theme, as Discord's is.
                 .bg(black())
                 .border_b_1()
                 .border_color(cx.theme().border),
         )
     }
 
-    /// The bubbles, centred in the band, above wherever its controls go.
     fn bubble_stage(
         &self,
         dm: &DirectMessage,
@@ -132,9 +126,8 @@ impl HomeScreen {
         )
     }
 
-    /// A bubble for someone the call is ringing. Only people the app can
-    /// name get one: the other side of a one-on-one DM, the user, and anyone
-    /// whose profile has been opened.
+    /// Only people the app can name get one: the other side of a 1:1 DM, the user, and anyone whose
+    /// profile has been opened.
     fn rung_bubble(&self, dm: &DirectMessage, user_id: Id<UserMarker>) -> Option<Bubble> {
         let (name, avatar_url) = if dm.recipient_id == Some(user_id) {
             (dm.name.clone(), dm.avatar_url.clone())
@@ -157,8 +150,6 @@ impl HomeScreen {
         })
     }
 
-    /// What sits under the bubbles while the user isn't in the call: the way
-    /// in, and the way to send the ringing away when it's for them.
     fn render_join_dm_call(&self, dm: &DirectMessage, cx: &Context<Self>) -> impl IntoElement {
         let rung = self
             .self_user_id
@@ -192,8 +183,6 @@ impl HomeScreen {
     }
 }
 
-/// One person's avatar, ringed green while they talk, with a badge for what
-/// they've silenced.
 fn bubble(bubble: Bubble, cx: &App) -> impl IntoElement {
     let theme = cx.theme();
     let ring = px(BUBBLE + (RING_GAP + 2.) * 2.);

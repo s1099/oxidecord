@@ -7,13 +7,10 @@ use twilight_http::response::marker::EmptyBody;
 use crate::discord::token;
 use crate::platform::runtime;
 
-/// Logs out: forgets the stored token at once, so the app can go straight
-/// back to login, then revokes the session on Discord's side
-/// (`POST /auth/logout`) in the background, as Discord's own clients do.
-/// The token came from this app's own login, so nothing else is using it.
-///
-/// The revoke is fire-and-forget: being offline, or Discord refusing a token
-/// that had already expired, shouldn't keep the user signed in here.
+/// Logs out: forgets the stored token at once so the app returns to login, then revokes
+/// the session in the background (`POST /auth/logout`), as Discord's own clients do.
+/// Fire-and-forget: being offline, or a token already expired, shouldn't keep the user
+/// signed in here.
 pub fn log_out() {
     let Some(token) = token::load_token() else {
         return;

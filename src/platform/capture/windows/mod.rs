@@ -1,16 +1,11 @@
 //! Windows.Graphics.Capture into Media Foundation's H.264 encoder.
 //!
-//! Frames stay on the GPU from capture to encoder where the machine allows
-//! it: the captured BGRA texture is copied into one of ours, the Direct3D
-//! video processor scales and converts it to NV12 in a single pass, and a
-//! hardware encoder takes the NV12 texture as it is. Only the software
-//! encoder, the fallback for a machine without one, reads the frame back to
-//! system memory.
+//! Frames stay on the GPU from capture to a hardware encoder; only the software
+//! fallback reads back to system memory.
 //!
 //! Capture is polled rather than driven by the frame pool's event: the stream
-//! wants frames at a steady rate, and a static screen produces none, so each
-//! tick takes the newest frame if one arrived and re-sends the last one if
-//! not. Encoders make a repeated frame almost free.
+//! wants a steady rate and a static screen produces no frames, so each tick
+//! takes the newest frame or re-sends the last. Encoders make a repeat nearly free.
 
 mod convert;
 mod encode;
@@ -51,7 +46,7 @@ pub struct CaptureSource {
 }
 
 impl CaptureSource {
-    /// What the system calls the source — the window title or display name.
+    /// The window title or display name.
     pub fn name(&self) -> String {
         self.item
             .DisplayName()
@@ -68,8 +63,7 @@ pub(super) fn pick(
     hwnd: isize,
 ) -> Result<impl Future<Output = Option<CaptureSource>> + use<>, String> {
     let picker = GraphicsCapturePicker::new().context("Couldn't open the capture picker")?;
-    // A desktop app has no CoreWindow for the picker to attach to, so it's
-    // told which window to be modal over instead.
+    // A desktop app has no CoreWindow for the picker to attach to.
     let init: IInitializeWithWindow = picker.cast().context("Couldn't open the capture picker")?;
     unsafe { init.Initialize(HWND(hwnd as *mut _)) }.context("Couldn't open the capture picker")?;
     let pick = picker
@@ -79,8 +73,7 @@ pub(super) fn pick(
     Ok(async move {
         // Kept alive until the pick resolves.
         let _picker = picker;
-        // A cancelled pick resolves to a null item, which surfaces as an
-        // error; either way there's nothing to share.
+        // A cancelled pick resolves to a null item, which surfaces as an error.
         pick.await.ok().map(|item| CaptureSource { item })
     })
 }
@@ -108,8 +101,7 @@ pub(super) fn capture(
     let session = pool
         .CreateCaptureSession(&item)
         .context("Couldn't start capturing")?;
-    // Both are newer than capture itself; on a build without them, the yellow
-    // border stays and the cursor is captured anyway.
+    // Newer than capture itself; older builds keep the yellow border and cursor.
     let _ = session.SetIsBorderRequired(false);
     let _ = session.SetIsCursorCaptureEnabled(true);
 
@@ -146,8 +138,7 @@ pub(super) fn capture(
             break;
         }
 
-        // Several frames may have queued since the last tick; only the newest
-        // is worth sending.
+        // Several frames may have queued; only the newest is worth sending.
         let mut newest: Option<Direct3D11CaptureFrame> = None;
         while let Ok(frame) = pool.TryGetNextFrame() {
             newest = Some(frame);
@@ -158,7 +149,7 @@ pub(super) fn capture(
                 .context("Couldn't read a captured frame")?;
             converter.load(&frame, size)?;
             // A resized window keeps arriving in the old buffers, cropped or
-            // padded, until the pool is rebuilt at the new size.
+            // padded, until the pool is recreated.
             if size.Width != pool_size.Width || size.Height != pool_size.Height {
                 pool.Recreate(
                     &rt_device,
@@ -177,8 +168,8 @@ pub(super) fn capture(
         if have_frame {
             let texture = converter.convert()?;
             let keyframe = control.take_keyframe();
-            // Stamped with when it was taken rather than counted, so a tick
-            // the loop fell behind on doesn't put the stream's clock out.
+            // Wall-clock stamp, not a tick count, so falling behind doesn't skew the stream's
+            // clock.
             let taken = started.elapsed();
             for frame in encoder.encode(&texture, taken, keyframe, next_tick)? {
                 if events.unbounded_send(CaptureEvent::Frame(frame)).is_err() {
@@ -190,8 +181,7 @@ pub(super) fn capture(
         let now = Instant::now();
         match next_tick.checked_duration_since(now) {
             Some(wait) => std::thread::sleep(wait),
-            // Running behind — a slow encode, or the machine was asleep.
-            // Start counting again from now rather than racing to catch up.
+            // Behind (slow encode, sleep): restart from now rather than race to catch up.
             None => next_tick = now,
         }
     }
@@ -201,8 +191,7 @@ pub(super) fn capture(
     Ok(())
 }
 
-/// The stream's frame size: the source fitted inside the configured maximum,
-/// rounded down to even dimensions, which NV12's half-size chroma needs.
+/// Source fitted inside the maximum, rounded down to even for NV12's half-size chroma.
 fn output_size(source: SizeInt32, settings: &CaptureSettings) -> (u32, u32) {
     let width = source.Width.max(2) as f64;
     let height = source.Height.max(2) as f64;
@@ -243,7 +232,6 @@ fn create_device() -> Result<(ID3D11Device, ID3D11DeviceContext), String> {
     Ok((device, context))
 }
 
-/// The same device, as the WinRT capture API takes it.
 fn winrt_device(device: &ID3D11Device) -> Result<IDirect3DDevice, String> {
     let dxgi: IDXGIDevice = device
         .cast()
@@ -282,9 +270,8 @@ fn texture(
     texture.ok_or_else(|| "Couldn't allocate a video frame".into())
 }
 
-/// COM and Media Foundation, for the life of the capture thread.
 struct MediaFoundation {
-    /// Whether this thread's COM apartment is ours to close.
+    /// False if the thread already had an apartment of another model.
     owns_com: bool,
 }
 
@@ -314,7 +301,6 @@ impl Drop for MediaFoundation {
     }
 }
 
-/// Attaches a human-readable cause to a Windows error.
 trait Context<T> {
     fn context(self, what: &str) -> Result<T, String>;
 }

@@ -1,9 +1,9 @@
-//! The emoji picker: opening it, choosing from it, and deciding which custom
-//! emoji the user is allowed to send where they're writing.
+//! The emoji picker and the rules for which custom emoji the user may send where
+//! they're writing.
 //!
-//! The rules follow Discord's: without Nitro, only the open guild's own static
-//! emoji; with it, animated ones and every guild's, the latter only where the
-//! channel grants `USE_EXTERNAL_EMOJIS`. Unicode emoji are always free.
+//! Without Nitro: only the open guild's static emoji. With it: animated ones and
+//! every guild's, the latter only where the channel grants `USE_EXTERNAL_EMOJIS`.
+//! Unicode emoji are always free.
 
 use std::collections::HashSet;
 use std::rc::Rc;
@@ -21,12 +21,9 @@ use crate::screens::home::emoji::{
 use crate::screens::home::{EmojiPicker, EmojiTarget, HomeScreen, View};
 use crate::ui::smooth_scroll::SmoothScroll;
 
-/// Whether a custom emoji can be sent in the open conversation.
 enum Access {
     Usable,
-    /// Shown in the picker but can't be chosen, with the reason why.
     Locked(&'static str),
-    /// Not offered at all.
     Hidden,
 }
 
@@ -64,7 +61,6 @@ impl HomeScreen {
         self.refresh_emoji_picker(cx);
     }
 
-    /// Closes the picker and hands the keyboard back to the composer.
     pub(in crate::screens::home) fn close_emoji_picker(
         &mut self,
         window: &mut Window,
@@ -76,7 +72,6 @@ impl HomeScreen {
         }
     }
 
-    /// Lays the picker's list out again for the current search, from the top.
     fn refresh_emoji_picker(&mut self, cx: &mut Context<Self>) {
         self.relayout_emoji_picker(cx);
         if let Some(picker) = &mut self.emoji_picker {
@@ -100,7 +95,6 @@ impl HomeScreen {
         cx.notify();
     }
 
-    /// Folds a section of the picker down to its header, or opens it again.
     pub(in crate::screens::home) fn toggle_picker_section(
         &mut self,
         kind: SectionKind,
@@ -114,8 +108,7 @@ impl HomeScreen {
         self.relayout_emoji_picker(cx);
     }
 
-    /// Puts the chosen emoji into the composer at the cursor, or reacts with it.
-    /// Shift keeps the picker open for choosing several, as in Discord.
+    /// Shift keeps the picker open for several picks, as in Discord.
     pub(in crate::screens::home) fn pick_emoji(
         &mut self,
         emoji: &PickerEmoji,
@@ -167,8 +160,6 @@ impl HomeScreen {
         });
     }
 
-    /// What putting `emoji` in the composer writes there. `None` for one that's
-    /// locked.
     pub(in crate::screens::home) fn composer_emoji_text(
         &self,
         emoji: &PickerEmoji,
@@ -178,8 +169,8 @@ impl HomeScreen {
             PickerEmoji::Custom {
                 locked: Some(_), ..
             } => return None,
-            // The readable `:name:` when sending will turn it back into this
-            // emoji; markup when another one of the same name would win.
+            // `:name:` is turned back into this emoji on send; markup when another emoji
+            // of the same name would win.
             PickerEmoji::Custom { emoji, .. } => {
                 let usable = self.usable_custom_emoji();
                 match emoji_names(usable).get(emoji.name.as_str()) {
@@ -201,20 +192,15 @@ impl HomeScreen {
         }
     }
 
-    /// `text` with every `:name:` of an emoji the user may send here turned
-    /// into the markup Discord renders.
     pub(in crate::screens::home) fn resolve_emoji_names(&self, text: &str) -> String {
         resolve_custom_emoji(text, &emoji_names(self.usable_custom_emoji()))
     }
 
-    /// The guild whose emoji count as local: the open one, unless the
-    /// conversation is a DM, where every guild's are external.
+    /// The open guild; in a DM none, so every guild's emoji are external.
     fn local_guild(&self) -> Option<Id<GuildMarker>> {
         self.selected_guild.filter(|_| self.view == View::Guild)
     }
 
-    /// Every guild's emoji in picker order: the open guild first, then the
-    /// rest as the guild list has them.
     fn emoji_by_guild(&self) -> impl Iterator<Item = (Id<GuildMarker>, &[GuildEmoji])> {
         let local = self.local_guild();
         let rest = self
@@ -238,8 +224,6 @@ impl HomeScreen {
         })
     }
 
-    /// The recently used emoji that are still offered here, newest first.
-    /// Custom ones the user can't see are skipped.
     fn recent_emojis(&self) -> Vec<PickerEmoji> {
         let custom: Vec<_> = self
             .custom_emoji_sections()
@@ -310,9 +294,8 @@ impl HomeScreen {
             };
         }
 
-        // Another guild's: Nitro, and a channel that allows them. Without
-        // either they're left out, rather than filling the picker with
-        // whole guilds of emoji that can't be sent.
+        // Another guild's emoji need Nitro and a channel that allows them; otherwise
+        // they're left out rather than filling the picker with unsendable ones.
         let channel_allows = self.view == View::DirectMessages
             || self
                 .selected_channel_info()
@@ -325,8 +308,7 @@ impl HomeScreen {
     }
 }
 
-/// Moves `emoji` to the front of the recently used. The open picker keeps the
-/// list it was opened with; the next one shows the change.
+/// The open picker keeps its snapshot; the next one shows the change.
 pub(super) fn remember_emoji(emoji: RecentEmoji) {
     prefs::update(|prefs| {
         let recent = &mut prefs.recent_emojis;

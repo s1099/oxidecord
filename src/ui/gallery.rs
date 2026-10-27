@@ -1,9 +1,7 @@
-//! The debug page: every UI primitive the app builds with, drawn in the active
-//! theme on one scrolling page, as a reference while working on the design.
+//! The debug page: every UI primitive in the active theme on one page.
 //!
-//! Nothing here is wired to real state — the controls keep throwaway state of
-//! their own so they can be clicked through. The page stays hidden until it's
-//! asked for through the settings search; see [`crate::ui::settings`].
+//! Controls keep throwaway state; nothing is wired to the app. Hidden until
+//! unlocked through the settings search (see [`crate::ui::settings`]).
 
 use gpui_kit::component::{
     ActiveTheme as _, Disableable as _, Icon, IconName, Selectable as _, Sizable as _, Size,
@@ -33,7 +31,6 @@ use gpui_kit::*;
 use crate::ui::button::Button;
 use crate::ui::depth::{self, Finish, Level, Lit as _, media_shadow, radius};
 
-/// Every size a [`Sizable`](gpui_kit::component::Sizable) widget comes in, smallest first.
 const SIZES: [(&str, Size); 4] = [
     ("xsmall", Size::XSmall),
     ("small", Size::Small),
@@ -41,10 +38,9 @@ const SIZES: [(&str, Size); 4] = [
     ("large", Size::Large),
 ];
 
-/// Width of a colour swatch, which also bounds its token name.
+/// Also bounds the token name under it.
 const SWATCH_WIDTH: f32 = 104.;
 
-/// Width given to widgets that would otherwise stretch across the page.
 const FIELD_WIDTH: f32 = 260.;
 
 pub fn page() -> SettingPage {
@@ -64,8 +60,7 @@ pub fn page() -> SettingPage {
         ])
 }
 
-/// A titled group holding one custom-rendered block. The page's sidebar lists
-/// the titles, so each section is a jump target.
+/// The page's sidebar lists section titles as jump targets.
 fn section<E: IntoElement>(
     title: &'static str,
     render: impl Fn(&mut Window, &mut App) -> E + 'static,
@@ -75,7 +70,6 @@ fn section<E: IntoElement>(
     ))
 }
 
-/// A captioned sub-block within a section.
 fn specimen(caption: &'static str, content: impl IntoElement, cx: &App) -> Div {
     v_flex()
         .gap_2()
@@ -96,7 +90,6 @@ fn stack() -> Div {
     v_flex().w_full().gap_5()
 }
 
-/// State for a demo control that lives as long as the control is on screen.
 fn demo_state<S: 'static>(
     id: &'static str,
     window: &mut Window,
@@ -106,7 +99,6 @@ fn demo_state<S: 'static>(
     window.use_keyed_state(SharedString::from(id), cx, init)
 }
 
-/// A click handler that stores what the control reports into its state.
 fn store<T: Copy + 'static>(state: &Entity<T>) -> impl Fn(&T, &mut Window, &mut App) + 'static {
     let state = state.clone();
     move |value, _, cx| {
@@ -186,7 +178,7 @@ fn swatch(name: &'static str, color: Hsla, cx: &App) -> Div {
         )
 }
 
-/// A colour as `#rrggbb`, with the alpha byte appended when it isn't opaque.
+/// `#rrggbb`, with the alpha byte appended when not opaque.
 fn hex(color: Hsla) -> SharedString {
     let rgba = color.to_rgb();
     let byte = |channel: f32| (channel * 255.).round() as u8;
@@ -278,8 +270,7 @@ fn shape(_: &mut Window, cx: &mut App) -> Div {
         .child(tile("CARD", filled().rounded(radius::CARD), cx))
         .child(tile("full", filled().rounded_full(), cx));
 
-    // Each level on the fill it's meant for. Padded so the overlay's long
-    // shadow isn't cut off by the section's edge.
+    // Padded so the overlay's long shadow isn't cut off by the section's edge.
     let size = px(64.);
     let lit = |bg: Hsla, level: Level, finish: Finish| {
         div().bg(bg).lit(level, finish, size, radius::CONTROL, cx)
@@ -324,7 +315,6 @@ fn shape(_: &mut Window, cx: &mut App) -> Div {
         .child(specimen("Depth", levels, cx))
 }
 
-/// A square sample of a shape or shadow, named underneath.
 fn tile(name: &'static str, shape: Div, cx: &App) -> Div {
     v_flex()
         .items_center()
@@ -608,7 +598,6 @@ fn feedback(_: &mut Window, cx: &mut App) -> Div {
         .child(specimen("Divider", dividers, cx))
 }
 
-/// Applies one of the tab bar's visual variants.
 type TabStyle = fn(TabBar) -> TabBar;
 
 fn navigation(window: &mut Window, cx: &mut App) -> Div {
@@ -663,8 +652,6 @@ fn avatars(_: &mut Window, cx: &mut App) -> Div {
         .child(specimen("Group", group, cx))
 }
 
-/// Every icon the asset source can serve: gpui-component's bundled set plus the
-/// ones the app ships itself.
 fn icons(_: &mut Window, cx: &mut App) -> Div {
     let mut paths = cx.asset_source().list("icons/").unwrap_or_default();
     paths.sort();

@@ -1,17 +1,13 @@
-//! Rewrites the H.264 SPS into the shape WebRTC's receiver would rewrite it
-//! to anyway.
+//! Rewrites the H.264 SPS the way WebRTC's receiver would anyway.
 //!
-//! A WebRTC receiver (the official clients' included) runs every incoming
-//! SPS through its VUI rewriter, which adds bitstream restrictions saying no
-//! frames are reordered, and drops a video signal type that only repeats the
-//! defaults. Without end-to-end encryption that's harmless. With DAVE the SPS
-//! travels in the clear but authenticated, so a rewritten SPS fails the
-//! frame's tag and the viewer decrypts nothing: a black screen. Sending the
-//! SPS already rewritten makes the receiver's pass a no-op.
+//! WebRTC receivers (the official clients') run every SPS through a VUI
+//! rewriter that adds no-reordering bitstream restrictions and drops a default
+//! video signal type. With DAVE the SPS is sent clear but authenticated, so a
+//! receiver-side rewrite fails the frame's tag and viewers get a black screen.
+//! Sending it pre-rewritten makes that pass a no-op.
 //!
-//! The rewrite always writes bitstream restrictions and never a video signal
-//! type, which is a fixed point of WebRTC's rewriter whatever the encoder
-//! put there. Viewers lose the colour description, which Discord's own
+//! We always write restrictions and never a video signal type, a fixed point of
+//! the rewriter. Viewers lose the colour description, which Discord's own
 //! senders don't set either.
 
 use std::borrow::Cow;
@@ -20,11 +16,9 @@ use crate::platform::capture::nal_units;
 
 const NAL_SPS: u8 = 7;
 
-/// Profiles whose SPS carries the chroma and bit-depth fields.
 const HIGH_PROFILES: [u32; 11] = [100, 110, 122, 244, 44, 83, 86, 118, 128, 138, 144];
 
-/// The frame with its SPS rewritten, or the frame as it was if it has none
-/// (or one this can't parse, which is sent as is rather than not at all).
+/// An SPS that can't be parsed is sent as is rather than dropped.
 pub(super) fn rewrite_frame(frame: &[u8]) -> Cow<'_, [u8]> {
     let units = nal_units(frame);
     if !units.iter().any(|unit| unit[0] & 0x1F == NAL_SPS) {
@@ -45,7 +39,7 @@ pub(super) fn rewrite_frame(frame: &[u8]) -> Cow<'_, [u8]> {
     Cow::Owned(out)
 }
 
-/// One SPS NAL unit, header byte included, rewritten.
+/// `unit` includes the NAL header byte.
 fn rewrite_sps(unit: &[u8]) -> Option<Vec<u8>> {
     let (&header, body) = unit.split_first()?;
     let rbsp = unescape(body);
@@ -184,8 +178,8 @@ fn rewrite_sps(unit: &[u8]) -> Option<Vec<u8>> {
     Some(out)
 }
 
-/// The restrictions WebRTC adds: the spec's defaults, except that no frame
-/// is reordered and the decoder holds no more than the reference frames.
+/// WebRTC's restrictions: spec defaults except no reordering and a decoder
+/// buffer of only the reference frames.
 fn write_restrictions(w: &mut Writer, max_num_ref_frames: u32) {
     w.write(1, 1); // motion_vectors_over_pic_boundaries_flag
     w.write_ue(2); // max_bytes_per_pic_denom
@@ -222,7 +216,6 @@ fn copy_hrd(r: &mut Reader, w: &mut Writer) -> Option<()> {
     Some(())
 }
 
-/// Strips emulation prevention bytes.
 fn unescape(data: &[u8]) -> Vec<u8> {
     let mut out = Vec::with_capacity(data.len());
     let mut zeros = 0;
@@ -237,7 +230,6 @@ fn unescape(data: &[u8]) -> Vec<u8> {
     out
 }
 
-/// Adds emulation prevention bytes.
 fn escape(data: &[u8]) -> Vec<u8> {
     let mut out = Vec::with_capacity(data.len() + 4);
     let mut zeros = 0;
@@ -334,7 +326,6 @@ impl Writer {
         }
     }
 
-    /// The RBSP with its stop bit and zero padding.
     fn finish(mut self) -> Vec<u8> {
         self.write(1, 1);
         self.bytes
@@ -345,7 +336,7 @@ impl Writer {
 mod tests {
     use super::*;
 
-    /// A baseline 1280x720 SPS with no VUI, as many encoders write one.
+    /// Baseline 1280x720, no VUI.
     fn bare_sps() -> Vec<u8> {
         let mut w = Writer::default();
         w.write(66, 8); // profile_idc
@@ -367,8 +358,7 @@ mod tests {
         sps
     }
 
-    /// One with a VUI carrying timing, a default video signal type, and
-    /// restrictions that allow reordering.
+    /// VUI with timing, a default video signal type, and reordering allowed.
     fn vui_sps() -> Vec<u8> {
         let mut w = Writer::default();
         w.write(77, 8);

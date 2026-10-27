@@ -12,29 +12,21 @@ use crate::screens::home::view::user_panel::status_indicator;
 use crate::screens::home::{HomeScreen, ProfilePopup};
 use crate::ui::depth::{self, Level, radius};
 
-/// Card width. Discord's small popout is 300px wide.
 pub(in crate::screens::home::view) const CARD_WIDTH: f32 = 300.;
 
-/// Banner height with and without a banner image. The shorter one is the strip
-/// of accent colour Discord draws for users who haven't set a banner.
+/// The shorter height is the accent-colour strip for users without a banner.
 const BANNER_HEIGHT: f32 = 105.;
 const ACCENT_BANNER_HEIGHT: f32 = 60.;
 
 const AVATAR_SIZE: f32 = 80.;
 
-/// The status dot on the avatar, which Discord draws at a fifth of it.
 const STATUS_SIZE: f32 = 16.;
 
-/// Thickness of the ring cut out of the card around the avatar, which is what
-/// makes it read as sitting in front of the banner.
 const AVATAR_RING: f32 = 6.;
 
-/// How far the avatar's left edge sits from the card's, which the content
-/// below it lines up with too.
 const AVATAR_INSET: f32 = 10.;
 
-/// Lines of "About Me" shown before it's cut off with an ellipsis, so a
-/// wall-of-text bio can't stretch the card down the whole window.
+/// Keeps a wall-of-text bio from stretching the card down the window.
 const MAX_BIO_LINES: usize = 3;
 
 impl HomeScreen {
@@ -46,8 +38,7 @@ impl HomeScreen {
         let theme = cx.theme();
         let profile = popup.profile.as_ref();
 
-        // Until the fetch resolves, the banner is a plain strip: the accent
-        // colour and banner image only arrive with the profile.
+        // Accent colour and banner image only arrive with the fetched profile.
         let banner_url = profile.and_then(|profile| profile.banner_url.clone());
         let banner_height = if banner_url.is_some() {
             BANNER_HEIGHT
@@ -58,13 +49,10 @@ impl HomeScreen {
             .and_then(|profile| profile.accent_color)
             .map_or(theme.primary, |color| rgb(color).into());
 
-        // The message that opened the card supplies the avatar and name, so
-        // both are already right while the profile is loading.
+        // The opening message supplies avatar and name while the profile loads.
         let avatar_url = profile
             .and_then(|profile| profile.avatar_url.clone())
             .or_else(|| popup.avatar_url.clone());
-        // Sits where the avatar's edge crosses its bottom-right diagonal,
-        // ringed in the card so it cuts into the avatar.
         let status_inset =
             AVATAR_SIZE / 2. * (1. - std::f32::consts::FRAC_1_SQRT_2) - (STATUS_SIZE + 4.) / 2.;
         let avatar = div()
@@ -84,8 +72,7 @@ impl HomeScreen {
                     )),
             );
 
-        // gpui clips to rectangles, so the banner rounds its own top corners
-        // to stay inside the card's.
+        // gpui clips to rectangles, so the banner rounds its own corners.
         let banner_radius = radius::CARD - px(1.);
 
         div()
@@ -127,7 +114,6 @@ impl HomeScreen {
                 v_flex()
                     .px(px(AVATAR_INSET))
                     .pb(px(AVATAR_INSET))
-                    // Clears the half of the avatar hanging below the banner.
                     .pt(px(AVATAR_SIZE / 2. + AVATAR_RING + 6.))
                     .gap(px(10.))
                     .child(render_identity(popup, cx))
@@ -144,7 +130,6 @@ impl HomeScreen {
     }
 }
 
-/// The display name, `@handle`, and bot tag directly under the avatar.
 fn render_identity(popup: &ProfilePopup, cx: &App) -> impl IntoElement {
     let theme = cx.theme();
     let profile = popup.profile.as_ref();
@@ -205,7 +190,6 @@ fn render_identity(popup: &ProfilePopup, cx: &App) -> impl IntoElement {
         )
 }
 
-/// The inner box holding the "About Me" and "Member Since" sections.
 fn render_details(profile: &UserProfile, cx: &App) -> AnyElement {
     v_flex()
         .p(px(8.))
@@ -232,13 +216,9 @@ fn render_details(profile: &UserProfile, cx: &App) -> AnyElement {
         .into_any_element()
 }
 
-/// Keeps the first `max` lines of `text`, ending the last with an ellipsis if
-/// any were dropped.
-///
-/// gpui's own clamp only places its ellipsis by estimating how much fits in
-/// `max` full-width lines, so it never fires for a bio whose explicit line
-/// breaks run out of lines first; this covers that case and leaves wrapping
-/// overflow to the clamp.
+/// gpui's own clamp estimates how much fits in `max` full-width lines, so its
+/// ellipsis never fires when explicit line breaks run out first; this covers
+/// that and leaves wrapping overflow to the clamp.
 fn clamp_lines(text: &str, max: usize) -> String {
     let mut lines = text.lines();
     let mut kept = lines.by_ref().take(max).collect::<Vec<_>>().join(
@@ -251,8 +231,6 @@ fn clamp_lines(text: &str, max: usize) -> String {
     kept
 }
 
-/// A labelled block inside the card's inner box — an uppercase header over its
-/// content, the way Discord sections the popout.
 fn section(header: &'static str, content: AnyElement, cx: &App) -> impl IntoElement {
     v_flex()
         .gap(px(5.))
@@ -266,8 +244,7 @@ fn section(header: &'static str, content: AnyElement, cx: &App) -> impl IntoElem
         .child(div().text_sm().child(content))
 }
 
-/// Stand-in for the details box while the profile is being fetched, keeping the
-/// card from resizing much once the real content lands.
+/// Keeps the card from resizing much once the real content lands.
 fn render_skeleton() -> impl IntoElement {
     v_flex()
         .gap(px(8.))

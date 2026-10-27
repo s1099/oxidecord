@@ -18,8 +18,6 @@ const SPINE_WIDTH: f32 = 2.;
 const SPINE_CLEARANCE: f32 = 4.;
 
 impl HomeScreen {
-    /// The "<author> <preview>" line, aligned with the message's content
-    /// column, with a curved spine linking it down to the avatar like Discord.
     pub(super) fn render_reply_preview(
         &self,
         message_id: u64,
@@ -37,8 +35,8 @@ impl HomeScreen {
             px(16.),
         );
 
-        // Starts at the avatar's centre and runs up and over to the quote. It
-        // overhangs the row's bottom by the gap so it meets the avatar's top.
+        // Runs from the avatar's centre up and over to the quote, overhanging the row's bottom by
+        // the gap so it meets the avatar's top.
         let spine_left = AVATAR_SIZE / 2. - SPINE_WIDTH / 2.;
         let spine = div()
             .absolute()
@@ -90,9 +88,7 @@ impl HomeScreen {
                     .italic()
                     .child("Click to see attachment")
             } else {
-                // Formatted like the message itself, but squeezed onto one
-                // line and not clickable: the whole line will be what jumps
-                // to the original.
+                // One line and not clickable: the whole line jumps to the original.
                 div().flex_1().min_w_0().truncate().child(
                     self.render_inline_markdown(
                         &reference.preview,

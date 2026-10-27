@@ -8,7 +8,6 @@ use crate::discord::model::{
     CurrentUser, RawProfile, UserProfile, convert_current_user, convert_user_profile,
 };
 
-/// Fetches the signed-in user (`GET /users/@me`).
 pub async fn fetch_current_user() -> Result<CurrentUser, String> {
     request(|client| async move {
         let user = client.current_user().await?.model().await?;
@@ -17,13 +16,10 @@ pub async fn fetch_current_user() -> Result<CurrentUser, String> {
     .await
 }
 
-/// Fetches another user's profile, for the popout opened from their avatar.
-///
-/// Prefers `GET /users/{id}/profile` — the endpoint the Discord client itself
-/// uses, and the only one carrying the bio and the global (non-guild) banner.
-/// It has no twilight helper, so it goes out as a raw request. Tokens that
-/// can't reach it (a bot token, for instance) fall back to the plain user
-/// object, which covers everything but the bio and pronouns.
+/// Fetches another user's profile for the avatar popout. Prefers `GET /users/{id}/profile`,
+/// the only endpoint with the bio and global banner; no twilight helper, so a raw request.
+/// Tokens that can't reach it (a bot's) fall back to the plain user object, which lacks
+/// the bio and pronouns.
 pub async fn fetch_user_profile(user_id: Id<UserMarker>) -> Result<UserProfile, String> {
     request(move |client| async move {
         let request = RequestBuilder::raw(

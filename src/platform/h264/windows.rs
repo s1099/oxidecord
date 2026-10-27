@@ -1,10 +1,9 @@
 //! Media Foundation's H.264 decoder, driven by hand.
 //!
-//! There's no source reader here — the stream is access units arriving off
-//! the network, not a file — so the decoder transform is fed directly. It's
-//! asked for low latency, which makes it hand each picture back as soon as
-//! it's decoded instead of holding a few for reordering a live stream never
-//! does. Output is NV12, converted to BGRA on the way out ([`super::Nv12`]).
+//! No source reader: the stream is network access units, so the transform is
+//! fed directly. Low latency makes it return each picture at once instead of
+//! holding some for reordering, which a live stream never needs. Output is
+//! NV12, converted to BGRA by [`super::Nv12`].
 
 use std::mem::ManuallyDrop;
 use std::sync::mpsc::{Receiver, RecvTimeoutError, TryRecvError};
@@ -18,12 +17,10 @@ use windows::core::Interface as _;
 
 use super::{ColorSpace, Control, DecodedFrame, DecoderEvent, Nv12, fit};
 
-/// How often the thread looks up from an idle stream to check it's still
-/// wanted.
+/// How often an idle thread checks it's still wanted.
 const POLL: Duration = Duration::from_millis(200);
 
-/// A nominal frame duration, in 100ns units. The decoder wants timestamps
-/// that move forward; what they are doesn't matter when nothing is paced.
+/// Nominal duration in 100ns units; the decoder only needs timestamps that advance.
 const FRAME_HNS: i64 = 333_333;
 
 pub(super) fn run(
@@ -48,10 +45,9 @@ pub(super) fn run(
         if control.is_stopped() {
             return Ok(());
         }
-        // With more already waiting, this picture would be stale by the time
-        // it's drawn. Every access unit is still decoded, since later ones
-        // refer back to it, but converting only the newest lets a viewer who
-        // fell behind catch up rather than stay behind for good.
+        // With more waiting, this picture would be stale when drawn. Still
+        // decode it (later units refer back), but convert only the newest so a
+        // lagging viewer catches up.
         let behind = match input.try_recv() {
             Ok(next) => {
                 queued = Some(next);
@@ -85,12 +81,10 @@ pub(super) fn run(
     }
 }
 
-/// What the decoder's output looks like, learned when it settles on a
-/// format after the first keyframe.
+/// Learned when the decoder settles on a format after the first keyframe.
 struct Format {
-    /// The coded size, which pads the picture out to whole macroblocks.
+    /// Padded out to whole macroblocks.
     coded: (u32, u32),
-    /// The part that's meant to be seen.
     visible: (u32, u32),
     color: ColorSpace,
     /// Bytes per output sample, for a decoder that doesn't allocate its own.
@@ -124,9 +118,8 @@ impl Decoder {
         })()
         .context("The H.264 decoder refused the stream")?;
 
-        // The decoder writes into samples the caller allocates, even for the
-        // call that only reports the stream's real format, so there has to be
-        // a format to allocate by from the start: whatever it opens with.
+        // The decoder writes into caller-allocated samples even for the call
+        // that reports the real format, so start with whatever format it opens with.
         let format = read_format(&transform).ok();
         Ok(Self { transform, format })
     }
@@ -149,8 +142,8 @@ impl Decoder {
 
         match unsafe { self.transform.ProcessInput(0, &sample, 0) } {
             Ok(()) => Ok(()),
-            // Full: it wants its output taken first. Nothing is shown from
-            // this drain, which only happens when the UI is already behind.
+            // Full: take its output first. Nothing is shown; this only happens when the UI is
+            // behind.
             Err(err) if err.code() == MF_E_NOTACCEPTING => {
                 self.drain(&mut |_| {})?;
                 unsafe { self.transform.ProcessInput(0, &sample, 0) }
@@ -160,11 +153,10 @@ impl Decoder {
         }
     }
 
-    /// Takes every picture the decoder has finished.
     fn drain(&mut self, show: &mut dyn FnMut(&Nv12)) -> Result<(), String> {
         loop {
             let Some(format) = &self.format else {
-                // No format yet: the first output call is what reports one.
+                // The first output call is what reports a format.
                 if !self.take_output(None, show)? {
                     return Ok(());
                 }
@@ -188,7 +180,7 @@ impl Decoder {
         }
     }
 
-    /// One `ProcessOutput` call. Returns whether there may be more.
+    /// Returns whether there may be more.
     fn take_output(
         &mut self,
         provided: Option<IMFSample>,
@@ -208,15 +200,13 @@ impl Decoder {
         match result {
             Ok(()) => {}
             Err(err) if err.code() == MF_E_TRANSFORM_NEED_MORE_INPUT => return Ok(false),
-            // The decoder has read the stream's parameters and settled on a
-            // size; take its NV12 at that size.
+            // Settled on a size after reading the stream's parameters.
             Err(err) if err.code() == MF_E_TRANSFORM_STREAM_CHANGE => {
                 choose_nv12(&self.transform).context("Decoding failed")?;
                 self.format = Some(read_format(&self.transform).context("Decoding failed")?);
                 return Ok(true);
             }
-            // Before the first keyframe there's no format to allocate for,
-            // and the decoder says so this way.
+            // Before the first keyframe there's no format to allocate for.
             Err(_) if self.format.is_none() => return Ok(false),
             Err(err) => return Err(format!("Decoding failed: {}", err.message())),
         }
@@ -244,7 +234,6 @@ impl Drop for Decoder {
     }
 }
 
-/// Picks NV12 out of the output types the decoder offers.
 fn choose_nv12(transform: &IMFTransform) -> windows::core::Result<()> {
     let mut index = 0;
     loop {
@@ -261,8 +250,8 @@ fn read_format(transform: &IMFTransform) -> windows::core::Result<Format> {
     let size = unsafe { current.GetUINT64(&MF_MT_FRAME_SIZE) }?;
     let coded = ((size >> 32) as u32, size as u32);
 
-    // The aperture is where the picture is cropped back from its padding:
-    // 1080 lines coded as 1088, say. An offset, then a size, as MFVideoArea.
+    // The aperture crops the padding back off (1080 coded as 1088). Laid out
+    // as MFVideoArea: offset, then size.
     let mut area = [0u8; 16];
     let visible = match unsafe { current.GetBlob(&MF_MT_MINIMUM_DISPLAY_APERTURE, &mut area, None) }
     {
@@ -299,7 +288,6 @@ fn read_format(transform: &IMFTransform) -> windows::core::Result<Format> {
     })
 }
 
-/// Locks a decoded NV12 buffer and shows it.
 fn read_picture(
     buffer: &IMFMediaBuffer,
     format: &Format,
@@ -307,7 +295,7 @@ fn read_picture(
 ) -> windows::core::Result<()> {
     let (coded_width, coded_height) = (format.coded.0 as usize, format.coded.1 as usize);
 
-    // A 2D buffer knows its own pitch, which can be wider than the picture.
+    // A 2D buffer knows its pitch, which can exceed the picture width.
     if let Ok(planar) = buffer.cast::<IMF2DBuffer>() {
         let mut scanline = std::ptr::null_mut();
         let mut pitch = 0;
@@ -343,9 +331,8 @@ fn show_planes(data: &[u8], pitch: usize, format: &Format, show: &mut dyn FnMut(
     });
 }
 
-/// COM and Media Foundation, for the life of the decoder thread.
 struct MediaFoundation {
-    /// Whether this thread's COM apartment is ours to close.
+    /// False if the thread already had an apartment of another model.
     owns_com: bool,
 }
 
@@ -375,7 +362,6 @@ impl Drop for MediaFoundation {
     }
 }
 
-/// Attaches a human-readable cause to a Windows error.
 trait Context<T> {
     fn context(self, what: &str) -> Result<T, String>;
 }

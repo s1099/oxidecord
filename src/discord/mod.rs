@@ -1,9 +1,8 @@
-//! The Discord client: the app's data model, the REST calls that populate it,
-//! and the gateway connection that keeps it live.
+//! The Discord client: the app's data model, the REST calls that populate it, and the
+//! gateway connection that keeps it live.
 //!
-//! Every request runs on the shared background Tokio runtime
-//! ([`crate::platform::runtime`]) and is awaited from gpui's executor, so
-//! nothing here blocks the foreground thread.
+//! Every request runs on the shared background Tokio runtime ([`crate::platform::runtime`])
+//! and is awaited from gpui's executor, so nothing blocks the foreground thread.
 
 mod gateway;
 mod model;

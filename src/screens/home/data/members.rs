@@ -1,6 +1,5 @@
-//! Guild members' roles and names: the signed-in user's roles, which decide
-//! what pings them and which emoji they can use, and everyone else's, which
-//! colour their names, along with the names the guild knows them by.
+//! Guild members' roles and names: the signed-in user's roles (what pings them,
+//! which emoji they can use), and everyone else's (name colours and nicknames).
 
 use std::cmp::Reverse;
 use std::iter;
@@ -14,8 +13,6 @@ use crate::discord;
 use crate::screens::home::{HomeScreen, View};
 
 impl HomeScreen {
-    /// The roles the signed-in user holds in a guild, once the gateway has
-    /// said.
     pub(in crate::screens::home) fn self_roles(
         &self,
         guild_id: Id<GuildMarker>,
@@ -24,8 +21,6 @@ impl HomeScreen {
         Some(self.member_roles.get(&guild_id)?.get(&self_id)?)
     }
 
-    /// Whether a message mentions one of the roles the signed-in user holds
-    /// in `guild_id`.
     pub(in crate::screens::home) fn mentions_self_role(
         &self,
         message: &discord::Message,
@@ -39,10 +34,8 @@ impl HomeScreen {
         })
     }
 
-    /// The colour a user's name takes in the open guild, as packed `0xRRGGBB`:
-    /// that of the highest of their roles that has one, ties going to the
-    /// older role as in Discord's own list. `None` in a DM, or while their
-    /// roles aren't known.
+    /// Packed `0xRRGGBB` of the highest role with a colour, ties to the older role
+    /// as in Discord. `None` in a DM or while roles are unknown.
     pub(in crate::screens::home) fn role_color(&self, user_id: Id<UserMarker>) -> Option<u32> {
         let guild_id = self.selected_guild.filter(|_| self.view == View::Guild)?;
         let roles = self.guild_roles.get(&guild_id)?;
@@ -56,21 +49,16 @@ impl HomeScreen {
             .color
     }
 
-    /// The name a user goes by in the open guild — their nickname there, where
-    /// they have one — once the gateway has named them. `None` in a DM.
-    ///
-    /// Messages are drawn by this rather than their own `author_name`, which
-    /// is only the nickname for those that arrived live: fetched history
-    /// carries no members, so the same author would otherwise flip between
-    /// names as cached and fetched messages are merged.
+    /// `None` in a DM. Messages are drawn by this rather than `author_name`, which is
+    /// the nickname only for messages that arrived live: fetched history carries no
+    /// members, so an author would flip between names as cached and fetched messages
+    /// merge.
     pub(in crate::screens::home) fn member_name(&self, user_id: Id<UserMarker>) -> Option<&str> {
         let guild_id = self.selected_guild.filter(|_| self.view == View::Guild)?;
         let member = self.guild_members.get(&guild_id)?.get(&user_id)?;
         Some(&member.name)
     }
 
-    /// What to call a message's author: by [`Self::member_name`] where it's
-    /// known, else the name the message came with.
     pub(in crate::screens::home) fn author_name<'a>(
         &'a self,
         user_id: Id<UserMarker>,
@@ -79,12 +67,10 @@ impl HomeScreen {
         self.member_name(user_id).unwrap_or(fallback)
     }
 
-    /// Asks the gateway for the members behind the open conversation's
-    /// authors, and the authors its replies quote, who haven't been named
-    /// yet. Fetched history carries no members, and a user session is only
-    /// sent a few of a guild's up front, so without this most names would go
-    /// uncoloured, and show global names in place of nicknames. Called as
-    /// each page of history lands.
+    /// Requests members of authors, and of authors replies quote, not yet named.
+    /// Fetched history carries none and a user session is sent only a few up front,
+    /// so without this most names would lack colours and show global names instead of
+    /// nicknames. Called as each page of history lands.
     pub(in crate::screens::home) fn request_author_members(&mut self) {
         let Some(guild_id) = self.selected_guild.filter(|_| self.view == View::Guild) else {
             return;

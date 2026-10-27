@@ -1,6 +1,5 @@
-//! The full-screen image viewer: a clicked image drawn as large as the window
-//! allows, over a scrim, as Discord's lightbox does. The wheel zooms it and
-//! dragging pans it.
+//! The full-screen image viewer: the clicked image over a scrim, zoomed by the wheel and panned by
+//! dragging.
 
 use gpui_kit::component::{Icon, Sizable as _, h_flex};
 use gpui_kit::prelude::FluentBuilder as _;
@@ -21,10 +20,9 @@ impl HomeScreen {
         let viewport = window.viewport_size();
         let (width, height) = (fitted.width * viewer.zoom, fitted.height * viewer.zoom);
 
-        // Sharpest first. The best copy is always drawn, which is what loads
-        // it; until it has, the best one that has loaded sits underneath —
-        // only until then, or a transparent image would show both. The preview
-        // is already decoded for the message, so the viewer never opens empty.
+        // The best copy is always drawn, which is what loads it; until it has, the best loaded one
+        // sits underneath,
+        // and only until then or a transparent image would show both.
         let mut copies: Vec<SharedString> = viewer.zoomed_url.iter().cloned().collect();
         copies.extend([viewer.full_url.clone(), viewer.preview_url.clone()]);
         copies.dedup();
@@ -53,12 +51,11 @@ impl HomeScreen {
                 .inset_0()
                 .size_full()
                 .object_fit(ObjectFit::Contain)
-                // Somewhere for gpui to keep an animated image's frame index;
-                // keyed by copy, since two can be on screen at once.
+                // gpui keeps an animated image's frame index here; keyed by copy since two can be
+                // on screen.
                 .id(ElementId::Name(url))
         };
 
-        // Only an image bigger than the window has anywhere to pan to.
         let pannable = width > viewport.width || height > viewport.height;
         let dragging = viewer.drag.is_some();
         let image = div()
@@ -79,8 +76,7 @@ impl HomeScreen {
             })
             .children(underneath.map(layer))
             .child(layer(copies[0].clone()))
-            // A press on the picture pans it, rather than reaching the scrim,
-            // which would close the viewer under it.
+            // Pans instead of reaching the scrim, which would close the viewer.
             .on_mouse_down(
                 MouseButton::Left,
                 cx.listener(|this, event: &MouseDownEvent, _, cx| {
@@ -132,9 +128,7 @@ impl HomeScreen {
                     .inset_0()
                     .occlude()
                     .overflow_hidden()
-                    // A scrim rather than a theme colour: it has to dim the
-                    // screen in either theme, and the image reads against it
-                    // the way it would in a photo viewer.
+                    // A scrim, not a theme colour: it must dim the screen in either theme.
                     .bg(black().opacity(0.85))
                     .on_mouse_down(
                         MouseButton::Left,

@@ -46,16 +46,11 @@ impl HomeScreen {
     }
 }
 
-/// The bar across the top of the conversation pane.
+/// The bar across the top of the pane, standing in for the missing system title bar: the name
+/// at left, window controls at right, and the space between drags the window.
 ///
-/// The window has no system title bar, so this bar stands in for one: whatever
-/// names the conversation sits at its left, the window controls at its right,
-/// and the space between the two drags the window.
-///
-/// The draggable region is a *sibling* of the controls rather than their
-/// parent. Window-control hitboxes are resolved in paint order, so a region
-/// wrapping the buttons would be found first and swallow every click meant for
-/// them.
+/// The drag region is a *sibling* of the controls, not their parent: window-control hitboxes
+/// resolve in paint order, so a wrapping region would be found first and swallow their clicks.
 pub(super) fn header(content: impl IntoElement, cx: &App) -> impl IntoElement {
     h_flex()
         .h(px(HEADER_HEIGHT))
@@ -68,14 +63,12 @@ pub(super) fn header(content: impl IntoElement, cx: &App) -> impl IntoElement {
         .child(
             WindowControls::default()
                 .corner(radius::CARD - px(1.))
-                // Out through the panel's 1px ring and the inset around it, to
-                // the window's own corner.
+                // Out through the panel's ring and inset, to the window's corner.
                 .reach(px(super::INSET + 1.)),
         )
 }
 
-/// The left half of [`header`], holding whatever names the conversation. Empty
-/// is fine — it still has to be there to drag the window by.
+/// The left half of [`header`]. May be empty; it still has to exist to drag the window by.
 pub(super) fn header_content() -> Stateful<Div> {
     h_flex()
         .id("conversation-header")
@@ -94,10 +87,9 @@ pub(super) fn header_content() -> Stateful<Div> {
 
 /// The buttons at the right of [`header_content`].
 ///
-/// They sit inside the drag region, and Windows asks which window-control
-/// area is under the pointer before a click ever reaches gpui — any drag
-/// hitbox under it answers "caption", and the click becomes a window drag.
-/// Occluding the row keeps the drag region out of that hit test.
+/// They sit inside the drag region, and Windows asks which window-control area is under the
+/// pointer before gpui sees a click: any drag hitbox answers "caption" and the click becomes a
+/// window drag. Occluding the row keeps the region out of that hit test.
 pub(super) fn header_actions() -> Div {
     h_flex().flex_shrink_0().gap_2().items_center().occlude()
 }
@@ -105,9 +97,7 @@ pub(super) fn header_actions() -> Div {
 const SEARCH_WIDTH: f32 = 200.;
 
 impl HomeScreen {
-    /// Toggles the conversation's pinned messages, which hang just below the
-    /// header — anchored to the header's bottom rather than the click, which
-    /// could land anywhere on the button.
+    /// Toggles pinned messages, anchored to the header's bottom rather than the click.
     pub(super) fn render_pins_button(&self, cx: &Context<Self>) -> impl IntoElement {
         let open = self.pins_popup.is_some();
         Button::new("toggle-pins")
@@ -123,8 +113,7 @@ impl HomeScreen {
             }))
     }
 
-    /// The message search box at the right of a conversation's header.
-    /// Only there to be drawn for now: typing in it searches nothing.
+    /// Only drawn for now: typing in it searches nothing.
     pub(super) fn render_search_box(&self, cx: &App) -> impl IntoElement {
         div().w(px(SEARCH_WIDTH)).flex_shrink_0().child(
             Input::new(&self.search_input)
@@ -139,9 +128,8 @@ impl HomeScreen {
     }
 }
 
-/// A conversation pane whose header has nothing to name — while a guild loads,
-/// after an error, or with nothing selected. The window controls live in that
-/// header, so it is drawn either way.
+/// A pane whose header names nothing (loading, error, no selection). The window controls
+/// live in that header, so it is drawn regardless.
 pub(super) fn pane(body: AnyElement, cx: &App) -> AnyElement {
     v_flex()
         .flex_1()

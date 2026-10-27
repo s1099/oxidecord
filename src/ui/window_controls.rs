@@ -1,20 +1,16 @@
 //! The window's minimize, maximize and close buttons.
 //!
-//! The window is opened without a system title bar (see `main`), so these are
-//! the only way left to control it. They aren't given a bar of their own:
-//! [`WindowControls`] is dropped into the right end of a header that's already
-//! there, and the space beside it drags the window (see
+//! The window has no system title bar (see `main`). [`WindowControls`] sits at the
+//! right end of an existing header, whose free space drags the window (see
 //! [`crate::screens::home::view::content::header`]).
 
 use gpui_kit::component::{ActiveTheme as _, Icon, IconName, Sizable as _, h_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
-/// Width of a single control. Matches the Windows shell's own caption buttons,
-/// so the cluster reads as a title bar even though it sits in the app's header.
+/// Matches the Windows shell's caption buttons.
 const CONTROL_WIDTH: f32 = 46.;
 
-/// The three caption buttons, in the platform's order.
 #[derive(IntoElement, Default)]
 pub struct WindowControls {
     corner: Pixels,
@@ -22,17 +18,15 @@ pub struct WindowControls {
 }
 
 impl WindowControls {
-    /// Rounds the close button's outer corner, for controls sitting in the
-    /// corner of a rounded panel — gpui clips to rectangles, so the hover fill
-    /// would otherwise square the panel's corner off.
+    /// Rounds close's outer corner; gpui clips to rectangles, so its hover fill
+    /// would otherwise square off a rounded panel's corner.
     pub fn corner(mut self, radius: Pixels) -> Self {
         self.corner = radius;
         self
     }
 
-    /// Stretches every control's target `distance` past its top edge, and
-    /// close's past its right edge too, so flinging the pointer to the window's
-    /// edge lands on a button rather than the gutter around the panel.
+    /// Extends every control's hit area `distance` past its top edge (close also
+    /// past its right), so flinging the pointer to the window edge hits a button.
     pub fn reach(mut self, distance: Pixels) -> Self {
         self.reach = distance;
         self
@@ -42,8 +36,7 @@ impl WindowControls {
 impl RenderOnce for WindowControls {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let control = |control: Control, window: &mut Window, cx: &mut App| {
-            // Per strip, since moving between them reports enter and leave in
-            // no particular order.
+            // Per strip: moving between them reports enter and leave in no fixed order.
             let reach_hovered = window.use_keyed_state(control.reach_id(), cx, |_, _| [false; 2]);
             let highlight = reach_hovered.read(cx).contains(&true);
             let (hover_bg, hover_fg, _) = control.colors(cx);
@@ -79,8 +72,8 @@ impl RenderOnce for WindowControls {
 
 /// Invisible strips extending a control (see [`WindowControls::reach`]).
 ///
-/// Deferred so the panel's clipping doesn't cut them off, and occluding so the
-/// window's drag strip, painted first, doesn't claim them.
+/// Deferred to escape the panel's clipping; occluding so the drag strip, painted
+/// first, doesn't claim them.
 fn reach(control: Control, distance: Pixels, hovered: Entity<[bool; 2]>) -> impl IntoElement {
     let strip = |index: usize| {
         let hovered = hovered.clone();
@@ -159,7 +152,6 @@ impl Control {
         }
     }
 
-    /// The caption button Windows should treat these bounds as.
     fn area(self) -> WindowControlArea {
         match self {
             Self::Minimize => WindowControlArea::Min,
@@ -172,7 +164,6 @@ impl Control {
         matches!(self, Self::Close)
     }
 
-    /// Hover background and foreground, and pressed background.
     fn colors(self, cx: &App) -> (Hsla, Hsla, Hsla) {
         let theme = cx.theme();
         if self.is_close() {
@@ -210,8 +201,8 @@ impl Control {
             .text_color(cx.theme().muted_foreground)
             .hover(|style| style.bg(hover_bg).text_color(hover_fg))
             .active(|style| style.bg(active_bg).text_color(hover_fg))
-            // Windows does the clicking itself: hit-testing hands these bounds
-            // back as caption buttons, so the click never reaches the element.
+            // Hit-testing reports these bounds as caption buttons, so Windows handles
+            // the click and it never reaches the element.
             .when(cfg!(target_os = "windows"), |this| {
                 this.window_control_area(self.area())
             })

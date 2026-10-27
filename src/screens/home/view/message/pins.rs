@@ -14,23 +14,18 @@ use super::super::markdown::MarkdownOptions;
 use super::{MEDIA_MAX_WIDTH, Media};
 
 const LIST_HEIGHT: f32 = 480.;
-/// Space around and between pins.
 const LIST_GAP: f32 = 8.;
 const AVATAR_SIZE: f32 = 32.;
 const PIN_PADDING: f32 = 12.;
-/// Where a pin's content starts, clear of the avatar in its gutter.
 const CONTENT_INSET: f32 = PIN_PADDING + AVATAR_SIZE + 12.;
-/// Images and videos are laid out at a fixed size up to [`MEDIA_MAX_WIDTH`],
-/// and don't shrink to their column, so the popout is as wide as it takes for
-/// that column to hold them: the borders, the list's padding, and the pin's
-/// padding and avatar gutter.
+/// Media is fixed-size up to [`MEDIA_MAX_WIDTH`] and doesn't shrink to its column, so the
+/// popout is as wide as it takes to hold it: borders, list padding, and the pin's padding
+/// and avatar gutter.
 const WIDTH: f32 =
     MEDIA_MAX_WIDTH + 2. * 1. + 2. * LIST_GAP + 2. * 1. + CONTENT_INSET + PIN_PADDING;
 
 impl HomeScreen {
-    /// The open pins, over the whole app like the emoji picker: a layer that
-    /// closes them on a click outside, with the card hanging below the header
-    /// from the pin button.
+    /// Over the whole app like the emoji picker: a layer closes it on an outside click.
     pub(in crate::screens::home) fn render_pins_popup(
         &self,
         cx: &Context<Self>,
@@ -68,8 +63,8 @@ impl HomeScreen {
                 .child("This conversation doesn't have any pinned messages... yet.")
                 .into_any_element()
         } else {
-            // A list needs a height to fill rather than taking its content's,
-            // so the popout stands at its full height whatever is pinned.
+            // A list needs a height to fill, so the popout keeps its full height whatever is
+            // pinned.
             let entity = cx.entity();
             v_flex()
                 .h(px(LIST_HEIGHT))
@@ -92,8 +87,7 @@ impl HomeScreen {
             .rounded(radius::CARD)
             .shadow(depth::shadow(Level::Overlay, cx))
             .overflow_hidden()
-            // Clicks inside the card are for the card, not the dismiss layer
-            // it sits on.
+            // Clicks inside the card aren't for the dismiss layer under it.
             .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
             .child(
                 h_flex()
@@ -139,9 +133,8 @@ impl HomeScreen {
         )
     }
 
-    /// The list's row for the pin at `ix`. The list can't pad or space its
-    /// items, so each row carries the gap above it, and the last the one
-    /// below too.
+    /// The list can't pad or space items, so each row carries the gap above it, and the last
+    /// the one below too.
     fn render_pin_item(&self, ix: usize, cx: &Context<Self>) -> AnyElement {
         let Some(popup) = &self.pins_popup else {
             return div().into_any_element();
@@ -157,7 +150,6 @@ impl HomeScreen {
             .into_any_element()
     }
 
-    /// One pinned message: who sent it and when, over what it says.
     fn render_pin(&self, message: &discord::Message, cx: &Context<Self>) -> impl IntoElement {
         let theme = cx.theme();
         let media = Media::of(message);

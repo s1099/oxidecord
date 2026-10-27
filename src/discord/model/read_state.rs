@@ -1,10 +1,6 @@
-//! Read states: how far the user has read each channel, how far each channel
-//! has got, and which are muted or set to mark only pings unread — what the
-//! unread marks are worked out from.
-//!
-//! None of this is in twilight, since bots have no read state. Discord's own
-//! client works the marks out itself from the same three things: a channel is
-//! unread when its newest message is past the one the user last acked.
+//! Read states, mutes and unread settings: what unread marks are computed from.
+//! A channel is unread when its newest message is past the one last acked, as
+//! in Discord's own client. Not in twilight, since bots have no read state.
 
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Deserializer};
@@ -21,7 +17,7 @@ use twilight_util::permission_calculator::PermissionCalculator;
 use super::RawRole;
 use super::channel::{Channel, GuildChannelFields, guild_channel};
 
-/// Milliseconds from the Unix epoch to Discord's, which snowflakes count from.
+/// Milliseconds from the Unix epoch to Discord's.
 const DISCORD_EPOCH_MS: i64 = 1_420_070_400_000;
 
 pub struct ReadState {
@@ -31,31 +27,27 @@ pub struct ReadState {
     pub mention_count: u32,
 }
 
-/// The newest message in a channel.
 pub struct ChannelLatest {
     pub channel_id: Id<ChannelMarker>,
     pub last_message_id: Id<MessageMarker>,
 }
 
-/// A guild's channels as far as its unread mark goes: the ones the user can
-/// see that hold messages the app can show.
+/// The channels that count toward a guild's unread mark.
 pub struct GuildUnreads {
     pub guild_id: Id<GuildMarker>,
-    /// When the user joined, as a snowflake. A channel they've never opened
-    /// has no read state, and Discord counts it read up to here.
+    /// Join time as a snowflake. A never-opened channel has no read state, and
+    /// Discord counts it read up to here.
     pub joined: Option<Id<MessageMarker>>,
     pub channels: Vec<UnreadChannel>,
 }
 
 pub struct UnreadChannel {
     pub id: Id<ChannelMarker>,
-    /// The category, whose mute carries down to the channel.
+    /// Its category's mute carries down to the channel.
     pub parent_id: Option<Id<ChannelMarker>>,
     pub last_message_id: Option<Id<MessageMarker>>,
 }
 
-/// Whether new messages mark a channel unread, or only messages that ping
-/// the user.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum UnreadSetting {
     AllMessages,
@@ -63,9 +55,8 @@ pub enum UnreadSetting {
 }
 
 impl UnreadSetting {
-    /// What a notification level means for unreads when no unread setting
-    /// was picked apart from it: only "all messages" marks every message
-    /// unread. `None` for the level that inherits from the guild.
+    /// For when no unread setting was picked apart from the notification level.
+    /// `None` for the level that inherits from the guild.
     fn from_notifications(level: u8) -> Option<Self> {
         match level {
             0 => Some(Self::AllMessages),
@@ -74,8 +65,7 @@ impl UnreadSetting {
         }
     }
 
-    /// The setting picked by `all` or `only_mentions` in `flags`, or else the
-    /// one `notifications` implies.
+    /// A flag outranks the notification level.
     fn resolve(
         flags: u64,
         all: u64,
@@ -91,32 +81,26 @@ impl UnreadSetting {
         }
     }
 
-    /// What a guild's `default_message_notifications` means for unreads.
     pub(in crate::discord) fn guild_default(level: u8) -> Self {
         Self::from_notifications(level).unwrap_or(Self::AllMessages)
     }
 }
 
-/// What the user has muted in one guild, or across their DMs when `guild_id`
-/// is `None`, and what they've set to mark it unread.
+/// Mutes and unread settings for one guild, or the DMs when `guild_id` is `None`.
 pub struct MuteSettings {
     pub guild_id: Option<Id<GuildMarker>>,
     pub muted: bool,
     pub muted_channels: Vec<Id<ChannelMarker>>,
-    /// What marks the guild's channels unread, unless one says otherwise.
     /// `None` leaves it to the guild's default notifications.
     pub unreads: Option<UnreadSetting>,
     /// Channels and categories with a setting of their own.
     pub channel_unreads: Vec<(Id<ChannelMarker>, UnreadSetting)>,
-    /// Whether `@everyone` and `@here` don't count as pinging the user.
     pub suppress_everyone: bool,
-    /// Whether mentions of the user's roles don't count as pinging them.
     pub suppress_roles: bool,
 }
 
-/// One entry of `READY`'s `read_state`. Only channel read states (type 0) are
-/// kept; the rest are guild events, the notification center, and the like,
-/// whose `id` isn't a channel.
+/// An entry of `READY`'s `read_state`. Only type 0 is a channel; the rest
+/// (guild events, notification center) have non-channel ids.
 #[derive(Deserialize)]
 pub(in crate::discord) struct RawReadState {
     id: Id<ChannelMarker>,
@@ -128,8 +112,7 @@ pub(in crate::discord) struct RawReadState {
     mention_count: Option<u32>,
 }
 
-/// A channel's newest message, as `CHANNEL_UNREAD_UPDATE` and the passive
-/// updates send it.
+/// From `CHANNEL_UNREAD_UPDATE` and the passive updates.
 #[derive(Deserialize)]
 pub(in crate::discord) struct RawChannelUnread {
     id: Id<ChannelMarker>,
@@ -137,8 +120,6 @@ pub(in crate::discord) struct RawChannelUnread {
     last_message_id: Option<Id<MessageMarker>>,
 }
 
-/// A channel in a gateway guild, of which only what the sidebar shows and
-/// what decides its unread mark is read.
 #[derive(Deserialize)]
 pub(in crate::discord) struct RawGuildChannel {
     id: Id<ChannelMarker>,
@@ -158,7 +139,7 @@ pub(in crate::discord) struct RawGuildChannel {
     permission_overwrites: Vec<PermissionOverwrite>,
 }
 
-/// One entry of `user_guild_settings`, or a `USER_GUILD_SETTINGS_UPDATE`.
+/// An entry of `user_guild_settings` or `USER_GUILD_SETTINGS_UPDATE`.
 #[derive(Deserialize)]
 pub(in crate::discord) struct RawGuildSettings {
     #[serde(default)]
@@ -192,12 +173,10 @@ struct RawChannelOverride {
     flags: Option<u64>,
 }
 
-/// `UNREADS_ALL_MESSAGES` and `UNREADS_ONLY_MENTIONS` in a guild's settings'
-/// flags.
+/// `UNREADS_ALL_MESSAGES` / `UNREADS_ONLY_MENTIONS` in guild settings' flags.
 const GUILD_UNREADS_ALL: u64 = 1 << 11;
 const GUILD_UNREADS_ONLY_MENTIONS: u64 = 1 << 12;
-/// The same in a channel override's flags, which number them the other way
-/// round.
+/// Channel overrides number the same flags the other way round.
 const CHANNEL_UNREADS_ONLY_MENTIONS: u64 = 1 << 9;
 const CHANNEL_UNREADS_ALL: u64 = 1 << 10;
 
@@ -207,8 +186,7 @@ struct RawMuteConfig {
     end_time: Option<Timestamp>,
 }
 
-/// Reads an id Discord may send as `0` or `"0"` for "none", which `Id`
-/// itself refuses.
+/// Discord may send `0` or `"0"` for "none", which `Id` refuses.
 fn snowflake<'de, D, T>(deserializer: D) -> Result<Option<Id<T>>, D::Error>
 where
     D: Deserializer<'de>,
@@ -222,9 +200,8 @@ where
     )
 }
 
-/// Reads a list that may come as a plain array, as a versioned
-/// `{entries, partial, version}` object, or keyed by id, depending on the
-/// session's capabilities. Items that don't fit are dropped.
+/// The list may be a plain array, a versioned `{entries, partial, version}`
+/// object, or keyed by id, depending on session capabilities. Misfits are dropped.
 pub(in crate::discord) fn versioned_list<'de, D, T>(deserializer: D) -> Result<Vec<T>, D::Error>
 where
     D: Deserializer<'de>,
@@ -272,16 +249,11 @@ pub(in crate::discord) fn convert_channel_unreads(
         .collect()
 }
 
-/// A guild's channels from a gateway guild: the sidebar's list, and the ones
-/// that count toward its unread mark — text and announcement channels the
-/// user can view. Voice channels' text chats and forum posts are left out of
-/// the latter, since the app can't open them to read them.
-///
-/// This is how Discord's own client gets a guild's channels: they all come
-/// with `READY`, so opening a guild needs no request. Visibility is worked
-/// out from the roles in the same payload. `member_roles` is `None` when the
-/// user's member didn't come with it, which leaves only what `@everyone` can
-/// see.
+/// Returns the unread-counting channels (viewable text and announcement only;
+/// voice text chats and forum posts can't be opened) and the sidebar's list.
+/// Channels all come with `READY`, so opening a guild needs no request, and
+/// visibility is computed from the roles in the same payload. `member_roles`
+/// is `None` when the member didn't come with it, leaving only `@everyone`.
 pub(in crate::discord) fn convert_guild_channels(
     guild_id: Id<GuildMarker>,
     user_id: Id<UserMarker>,
@@ -356,8 +328,8 @@ fn timestamp_snowflake(timestamp: Timestamp) -> Option<Id<MessageMarker>> {
         .and_then(|ms| Id::new_checked(ms << 22))
 }
 
-/// What's muted, with mutes whose time ran out already dropped. One that
-/// runs out during the session stays in force until the settings next change.
+/// Drops mutes already expired. One expiring mid-session stays in force until
+/// the settings next change.
 pub(in crate::discord) fn convert_mute_settings(settings: RawGuildSettings) -> MuteSettings {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -462,8 +434,7 @@ mod tests {
             convert_guild_channels(Id::new(10), Id::new(1), None, None, &roles, None, channels);
         let ids: Vec<_> = unreads.channels.iter().map(|channel| channel.id).collect();
         assert_eq!(ids, [Id::new(100)]);
-        // The sidebar keeps the voice channel and the category, but not the
-        // hidden channel.
+        // The sidebar keeps the voice channel and category, not the hidden one.
         let ids: Vec<_> = visible.iter().map(|channel| channel.id).collect();
         assert_eq!(ids, [Id::new(100), Id::new(102), Id::new(103)]);
     }

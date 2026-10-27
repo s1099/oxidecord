@@ -1,5 +1,4 @@
-//! Fallback for platforms without a capture backend yet. ScreenCaptureKit on
-//! macOS and PipeWire's portal on Linux would fit the same shape.
+//! Fallback for platforms without a capture backend.
 
 use futures::channel::mpsc::UnboundedSender;
 

@@ -1,8 +1,6 @@
-//! The emoji picker's contents, and turning the `:name:` it inserts for a
-//! custom emoji into the `<:name:id>` Discord renders.
-//!
-//! Which custom emoji the user may send is decided by the caller; this module
-//! only lays out and searches what it's handed.
+//! The emoji picker's contents, and turning the `:name:` inserted for a custom
+//! emoji into the `<:name:id>` Discord renders. The caller decides which
+//! custom emoji may be sent.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::LazyLock;
@@ -12,14 +10,11 @@ use twilight_model::id::{Id, marker::GuildMarker};
 use crate::discord::GuildEmoji;
 use crate::platform::prefs::RecentEmoji;
 
-/// Emoji per picker row.
 pub(in crate::screens::home) const COLUMNS: usize = 9;
 
-/// How many recently used emoji are kept: three full rows.
 pub(in crate::screens::home) const RECENT_LIMIT: usize = COLUMNS * 3;
 
-/// The newest emoji version Windows' Segoe UI Emoji draws. Anything later would
-/// show as tofu, so it's left out of the picker rather than offered broken.
+/// Newest emoji version Segoe UI Emoji draws; later ones would show as tofu.
 const NEWEST_EMOJI: emojis::EmojiVersion = emojis::EmojiVersion::new(15, 0);
 
 #[derive(Clone)]
@@ -27,13 +22,12 @@ pub(in crate::screens::home) enum PickerEmoji {
     Unicode(&'static emojis::Emoji),
     Custom {
         emoji: GuildEmoji,
-        /// Why it can't be sent here, for one that's shown but locked.
+        /// Why a shown-but-locked emoji can't be sent here.
         locked: Option<&'static str>,
     },
 }
 
 impl PickerEmoji {
-    /// The `:name:` shown under the picker for the hovered emoji.
     pub fn label(&self) -> String {
         match self {
             Self::Unicode(emoji) => format!(":{}:", emoji.shortcode().unwrap_or(emoji.name())),
@@ -41,7 +35,6 @@ impl PickerEmoji {
         }
     }
 
-    /// How it's remembered among the recently used.
     pub fn recent_key(&self) -> RecentEmoji {
         match self {
             Self::Unicode(emoji) => RecentEmoji::Unicode(emoji.as_str().to_string()),
@@ -50,8 +43,7 @@ impl PickerEmoji {
     }
 }
 
-/// Which run of emoji a section is, and what stands for it in the picker's
-/// category rail. Also how a collapsed section is remembered.
+/// Also the key a collapsed section is remembered by.
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub(in crate::screens::home) enum SectionKind {
     Recent,
@@ -59,16 +51,13 @@ pub(in crate::screens::home) enum SectionKind {
     Unicode(emojis::Group),
 }
 
-/// A titled run of emoji: one guild's, or one unicode category.
 pub(in crate::screens::home) struct PickerSection {
     pub kind: SectionKind,
     pub title: String,
-    /// A guild's icon, drawn in the rail and beside the header.
     pub icon: Option<String>,
     pub emojis: Vec<PickerEmoji>,
 }
 
-/// A section as laid out: its header, and the list line that header is on.
 pub(in crate::screens::home) struct SectionHeader {
     pub kind: SectionKind,
     pub title: String,
@@ -77,10 +66,8 @@ pub(in crate::screens::home) struct SectionHeader {
     pub collapsed: bool,
 }
 
-/// A line of the picker's list. Headers take a whole line so the list stays
-/// uniform in height and can be virtualized.
+/// Headers take a whole line so rows stay uniform in height for virtualization.
 pub(in crate::screens::home) enum PickerRow {
-    /// Index into [`PickerLayout::sections`].
     Header(usize),
     Emojis(Vec<PickerEmoji>),
 }
@@ -92,7 +79,6 @@ pub(in crate::screens::home) struct PickerLayout {
 }
 
 impl PickerLayout {
-    /// The section showing at list line `row`: the last to start at or before it.
     pub fn section_at(&self, row: usize) -> Option<usize> {
         self.sections
             .iter()
@@ -100,8 +86,6 @@ impl PickerLayout {
     }
 }
 
-/// The unicode categories, filtered to what the system font can draw. Built
-/// once: the emoji crate's table is static, so this never changes.
 #[allow(clippy::type_complexity)]
 static UNICODE: LazyLock<Vec<(emojis::Group, &'static str, Vec<&'static emojis::Emoji>)>> =
     LazyLock::new(|| {
@@ -116,7 +100,6 @@ static UNICODE: LazyLock<Vec<(emojis::Group, &'static str, Vec<&'static emojis::
             .collect()
     });
 
-/// Every unicode emoji the system font can draw, in picker order.
 pub(in crate::screens::home) fn unicode_emojis() -> impl Iterator<Item = &'static emojis::Emoji> {
     UNICODE
         .iter()
@@ -138,12 +121,9 @@ fn group_title(group: emojis::Group) -> &'static str {
     }
 }
 
-/// The picker's lines: the recently used, the custom sections handed in, then
-/// every unicode category, all narrowed to `query` (matched against names and
-/// shortcodes, ignoring case). Sections left empty by the search are dropped,
-/// and the recently used are left out of a search, which would only repeat
-/// them. A `collapsed` section keeps only its header, except during a search,
-/// where that would hide matches behind a header that says nothing of them.
+/// Order is recent, custom, then unicode, narrowed to `query`. A search drops
+/// the recents (they'd only repeat matches) and ignores `collapsed`, which
+/// would hide matches.
 pub(in crate::screens::home) fn picker_rows(
     recent: Vec<PickerEmoji>,
     custom: Vec<PickerSection>,
@@ -173,7 +153,6 @@ pub(in crate::screens::home) fn picker_rows(
         if !query.is_empty() {
             section.emojis.retain(|emoji| match emoji {
                 PickerEmoji::Custom { emoji, .. } => emoji.name.to_lowercase().contains(&query),
-                // Already filtered above.
                 PickerEmoji::Unicode(_) => true,
             });
         }
@@ -207,7 +186,6 @@ fn unicode_matches(emoji: &emojis::Emoji, query: &str) -> bool {
         || emoji.shortcodes().any(|code| code.contains(query))
 }
 
-/// Custom emoji the user may send here, by name, for [`resolve_custom_emoji`].
 /// The first of a name wins, so callers list the open guild's own first.
 pub(in crate::screens::home) fn emoji_names<'a>(
     usable: impl IntoIterator<Item = &'a GuildEmoji>,
@@ -219,9 +197,8 @@ pub(in crate::screens::home) fn emoji_names<'a>(
     names
 }
 
-/// Replaces each `:name:` naming a custom emoji in `names` with the markup
-/// Discord renders it from, which is what its own client does on send. Code
-/// spans and blocks are left alone, as is markup that's already resolved.
+/// Replaces each `:name:` naming a custom emoji with its markup, as Discord's
+/// client does on send. Code spans and already-resolved markup are skipped.
 pub(in crate::screens::home) fn resolve_custom_emoji(
     text: &str,
     names: &HashMap<&str, &GuildEmoji>,
@@ -236,7 +213,6 @@ pub(in crate::screens::home) fn resolve_custom_emoji(
     while i < bytes.len() {
         match bytes[i] {
             b'`' => {
-                // A run of n backticks is closed by the next run of exactly n.
                 let run = bytes[i..].iter().take_while(|&&b| b == b'`').count();
                 i += run;
                 if let Some(end) = closing_backticks(&bytes[i..], run) {
@@ -244,8 +220,7 @@ pub(in crate::screens::home) fn resolve_custom_emoji(
                 }
             }
             b'<' => {
-                // `<:name:id>` and `<a:name:id>` are already emoji; skipping
-                // them keeps their inner `:name:` from being resolved again.
+                // Skip existing `<:name:id>` so its inner `:name:` isn't resolved again.
                 i += 1 + existing_markup_len(&bytes[i + 1..]).unwrap_or(0);
             }
             b':' => {
@@ -264,7 +239,6 @@ pub(in crate::screens::home) fn resolve_custom_emoji(
                         i = close + 1;
                         copied = i;
                     }
-                    // The colon may yet open a name that follows it.
                     None => i += 1,
                 }
             }
@@ -275,7 +249,6 @@ pub(in crate::screens::home) fn resolve_custom_emoji(
     out
 }
 
-/// Where a run of exactly `run` backticks starts in `bytes`.
 fn closing_backticks(bytes: &[u8], run: usize) -> Option<usize> {
     let mut i = 0;
     while i < bytes.len() {
@@ -292,7 +265,6 @@ fn closing_backticks(bytes: &[u8], run: usize) -> Option<usize> {
     None
 }
 
-/// The length of `a:name:id>` or `:name:id>` at the start of `bytes`.
 fn existing_markup_len(bytes: &[u8]) -> Option<usize> {
     let mut i = usize::from(bytes.first() == Some(&b'a'));
     (bytes.get(i) == Some(&b':')).then_some(())?;
@@ -372,7 +344,6 @@ mod tests {
         let layout = picker_rows(Vec::new(), custom, "WAVE", &HashSet::new());
         assert!(matches!(layout.rows[0], PickerRow::Header(0)));
         assert_eq!(layout.sections[0].title, "Guild");
-        // The unicode waving hand matches too.
         assert!(layout.rows.len() > 2);
         let none = picker_rows(Vec::new(), Vec::new(), "zzzzqqq", &HashSet::new());
         assert!(none.rows.is_empty());
@@ -386,7 +357,6 @@ mod tests {
         assert_eq!(layout.sections[1].first_row, 1);
         assert_eq!(layout.section_at(0), Some(0));
         assert_eq!(layout.section_at(2), Some(1));
-        // A search shows its matches regardless.
         let search = picker_rows(Vec::new(), Vec::new(), "grin", &HashSet::from([smileys]));
         assert!(!search.sections[0].collapsed);
     }

@@ -17,7 +17,6 @@ impl HomeScreen {
         let theme = cx.theme();
         let message_id = editing.message_id.get();
 
-        // A hint word that does what it names when clicked.
         let action = |id: &'static str, label: &'static str| {
             div()
                 .id((id, message_id))
@@ -31,9 +30,9 @@ impl HomeScreen {
             .w_full()
             .min_w_0()
             .gap_1()
-            // Enter is bound to `SaveEdit` in this context, ahead of the
-            // input's own newline. Escape isn't rebound: the input handles it
-            // first and lets it through, so it bubbles up to here.
+            // Enter is bound to `SaveEdit` in this context ahead of the input's newline. Escape
+            // isn't
+            // rebound: the input lets it through, so it bubbles up here.
             .key_context(EDIT_CONTEXT)
             .on_action(cx.listener(|this, _: &SaveEdit, window, cx| {
                 this.save_edit(window, cx);

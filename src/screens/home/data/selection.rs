@@ -10,10 +10,9 @@ use gpui_kit::*;
 use crate::screens::home::selection::{self, Drag, SelectUnit, Selection};
 use crate::screens::home::{CopySelection, HomeScreen};
 
-/// How often a drag held past the list's top or bottom scrolls it on.
 const AUTOSCROLL_TICK: Duration = Duration::from_millis(16);
-/// How far each tick scrolls for every pixel the pointer is past the edge,
-/// and the most it goes, so pulling further away scrolls faster.
+/// Scroll per tick for every pixel past the edge, capped, so pulling further
+/// scrolls faster.
 const AUTOSCROLL_RATE: f32 = 0.25;
 const AUTOSCROLL_MAX: f32 = 24.;
 
@@ -24,9 +23,8 @@ impl HomeScreen {
             .is_some_and(|selection| !selection.is_empty())
     }
 
-    /// A left press anywhere in the window. On the list's text it starts a
-    /// selection there, or with shift held moves the current one's head
-    /// there; anywhere else it drops the selection.
+    /// On the list's text starts a selection, or with shift moves the head; anywhere
+    /// else drops the selection.
     pub(in crate::screens::home) fn press_text(
         &mut self,
         event: &MouseDownEvent,
@@ -61,8 +59,6 @@ impl HomeScreen {
             .is_some_and(|selection| selection.drag.is_some())
     }
 
-    /// The pointer moving with the button held: the selection follows it,
-    /// and past the list's top or bottom the list scrolls to meet it.
     pub(in crate::screens::home) fn drag_text(
         &mut self,
         position: Point<Pixels>,
@@ -123,9 +119,8 @@ impl HomeScreen {
         self.text_selection.as_mut()?.drag.as_mut()
     }
 
-    /// Carries the dragged end to the pointer, held inside the list's visible
-    /// part, so a pointer past an edge reaches the first or last line
-    /// showing. Returns whether the selection changed.
+    /// Held inside the list's visible part so a pointer past an edge reaches the
+    /// first or last showing line. Returns whether the selection changed.
     fn follow_pointer(&mut self) -> bool {
         let Some(selection) = &mut self.text_selection else {
             return false;
@@ -146,9 +141,7 @@ impl HomeScreen {
         selection.extend(&hit)
     }
 
-    /// Scrolls the list a step at a time for as long as the drag stays past
-    /// its edge. Mouse moves alone can't drive it: a pointer held still past
-    /// the edge sends none.
+    /// Mouse moves alone can't drive it: a pointer held still past the edge sends none.
     fn start_autoscroll(&mut self, cx: &mut Context<Self>) {
         let Some(drag) = self.drag_mut() else {
             return;
@@ -171,7 +164,6 @@ impl HomeScreen {
         .detach();
     }
 
-    /// One tick of autoscroll. Returns whether to keep going.
     fn autoscroll_step(&mut self, cx: &mut Context<Self>) -> bool {
         let Some(drag) = self.drag_mut() else {
             return false;
@@ -197,7 +189,6 @@ impl HomeScreen {
         true
     }
 
-    /// Redraws only the message list, which is all a selection changes.
     fn redraw_messages(&self, cx: &mut Context<Self>) {
         self.message_list_view.update(cx, |_, cx| cx.notify());
     }

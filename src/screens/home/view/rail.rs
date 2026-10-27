@@ -15,12 +15,12 @@ use crate::ui::tooltip;
 
 use super::{mention_badge, unread_pill};
 
-/// Corner radius of the pill behind the selected icon: the icon's own 16px
-/// plus the pill's 4px of padding, so the two curves run parallel.
+/// Corner radius of the selected pill: the icon's 16px plus the pill's 4px padding, so the curves
+/// run parallel.
 const PILL_RADIUS: f32 = 20.;
 
-/// Space between an icon's frame and the rail's edge, which the unread mark
-/// hangs into: the 72px rail less the 56px frame, halved.
+/// Space between an icon's frame and the rail's edge, where the unread mark hangs: (72px rail -
+/// 56px frame) / 2.
 const RAIL_GUTTER: Pixels = px(8.);
 
 impl HomeScreen {
@@ -35,8 +35,7 @@ impl HomeScreen {
             .map(|dm| self.unreads.dm_mentions(dm.id))
             .sum();
 
-        // The whole rail — the DMs icon, its separator, and the guild list —
-        // scrolls as one column, so the icon isn't pinned above the list.
+        // The DMs icon, separator and guild list scroll as one column.
         v_flex()
             .id("server-rail")
             .w(px(72.))
@@ -61,10 +60,9 @@ impl HomeScreen {
                             .justify_center()
                             .rounded(px(16.))
                             .bg(logo_bg)
-                            // `svg` rather than `img`: an image is rasterized
-                            // once at twice the SVG's own size and shrunk on the
+                            // `svg` not `img`: an image is rasterized once at twice the SVG's size
+                            // and shrunk on the
                             // GPU, which has no mipmaps, so it came out jagged.
-                            // `svg` rasterizes at the size it's drawn.
                             .child(
                                 svg()
                                     .path("icons/discord.svg")
@@ -78,9 +76,7 @@ impl HomeScreen {
                         this.open_direct_messages(window, cx);
                     })),
             )
-            // Conversations waiting on the user line up under the DMs icon,
-            // newest first, as in Discord — muted ones never ping, so never
-            // show.
+            // Newest first, as in Discord; muted conversations never ping, so never show.
             .children(
                 self.dms
                     .iter()
@@ -94,8 +90,7 @@ impl HomeScreen {
             }))
     }
 
-    /// An unread DM's icon, which opens the conversation. It's never the one
-    /// open: opening it reads it, and it leaves the rail.
+    /// An unread DM's icon. Never the open one: opening reads it and it leaves the rail.
     fn render_rail_dm(
         &self,
         dm: &DirectMessage,
@@ -134,8 +129,6 @@ impl HomeScreen {
             }))
     }
 
-    /// A folder: a square that toggles between showing its guilds inline and
-    /// standing in for them with a preview of the first few.
     fn render_rail_folder(
         &self,
         folder: &RailFolder,
@@ -191,7 +184,6 @@ impl HomeScreen {
                             .justify_center()
                             .rounded(px(16.))
                             .bg(accent.opacity(0.24))
-                            // Collapsed, the folder stands in for the guild inside it.
                             .when(holds_selected && !expanded, |this| this.bg(selected_bg))
                             .map(|this| {
                                 if expanded {
@@ -226,8 +218,6 @@ impl HomeScreen {
     }
 }
 
-/// The padded frame around a rail icon, which lifts off the rail as a raised
-/// pill while its guild (or the DMs) is the one open.
 fn selection_pill(frame: Stateful<Div>, selected: bool, cx: &App) -> Stateful<Div> {
     let theme = cx.theme();
     frame
@@ -246,8 +236,7 @@ fn selection_pill(frame: Stateful<Div>, selected: bool, cx: &App) -> Stateful<Di
         })
 }
 
-/// A mention badge on a rail icon's bottom-right corner, ringed in the rail's
-/// colour so it reads as cut out of the icon.
+/// Ringed in the rail's colour so it reads as cut out of the icon.
 fn rail_badge(mentions: u32, cx: &App) -> Option<Div> {
     let badge = mention_badge(mentions, cx)?;
     Some(
@@ -264,7 +253,6 @@ fn rail_badge(mentions: u32, cx: &App) -> Option<Div> {
     )
 }
 
-/// The first few of a collapsed folder's guilds, tiled inside its square.
 fn folder_preview(guilds: &[Guild]) -> impl IntoElement + use<> {
     h_flex()
         .flex_wrap()
@@ -280,8 +268,7 @@ fn folder_preview(guilds: &[Guild]) -> impl IntoElement + use<> {
         )
 }
 
-/// Guild icons are rounded squares rather than circles, as in Discord: a
-/// third of the side, so 48px gets its 16px radius and previews scale down.
+/// Rounded squares, as in Discord: radius a third of the side (48px gets 16px).
 fn guild_avatar(guild: &Guild, size: Pixels) -> Avatar {
     super::avatar(guild.name.clone(), guild.icon_url.clone(), size).rounded(size / 3.)
 }

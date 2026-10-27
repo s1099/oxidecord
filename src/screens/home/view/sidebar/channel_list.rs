@@ -22,8 +22,7 @@ impl HomeScreen {
         channel: &Channel,
         cx: &Context<Self>,
     ) -> impl IntoElement {
-        // A voice channel carries the people in it under its own row, the way
-        // Discord nests them — whether or not the user is in there too.
+        // Occupants nest under a voice channel, as in Discord.
         v_flex()
             .gap(px(2.))
             .child(self.channel_row(channel, cx))
@@ -36,8 +35,7 @@ impl HomeScreen {
         let theme = cx.theme();
         let channel_id = channel.id;
         let is_voice = channel.kind.is_voice();
-        // A voice channel is highlighted by being *in* it, not by being the
-        // pane on screen.
+        // A voice channel is highlighted by being *in* it, not by being on screen.
         let is_selected = if is_voice {
             self.in_voice_channel(channel_id)
         } else {
@@ -62,7 +60,6 @@ impl HomeScreen {
             .text_color(if is_selected || unread {
                 theme.sidebar_accent_foreground
             } else if muted {
-                // Muted channels fade back, as Discord's do.
                 theme.muted_foreground.opacity(0.6)
             } else {
                 theme::secondary_text(cx)
@@ -99,8 +96,8 @@ impl HomeScreen {
             }))
     }
 
-    /// Opens a voice channel's text chat without joining it. Shown on hover,
-    /// and on the channel the user is in, as Discord does.
+    /// Opens a voice channel's text chat without joining. Shown on hover and on the user's own
+    /// channel.
     fn voice_chat_button(
         &self,
         channel_id: Id<ChannelMarker>,
@@ -124,13 +121,11 @@ impl HomeScreen {
             }))
     }
 
-    /// Whether a channel shows as unread. Voice channels' text chats are left
-    /// out, as Discord leaves them out of its unread markers.
+    /// Voice text chats don't count, as in Discord's unread markers.
     fn shows_unread(&self, channel: &Channel) -> bool {
         !channel.kind.is_voice() && self.unreads.shows_unread(channel.id, channel.parent_id)
     }
 
-    /// Who's in a voice channel, listed under it.
     fn voice_members(
         &self,
         channel_id: Id<ChannelMarker>,
@@ -162,8 +157,7 @@ impl HomeScreen {
                         theme.muted_foreground
                     })
                     .child(
-                        // Mirrors the ring on the call stage, so the sidebar
-                        // shows who's talking without opening the channel.
+                        // Mirrors the ring on the call stage.
                         div()
                             .rounded_full()
                             .border_1()

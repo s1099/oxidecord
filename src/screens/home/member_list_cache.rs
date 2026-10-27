@@ -1,11 +1,7 @@
-//! Member lists recently shown, kept so that opening a channel draws its list
-//! at once.
-//!
-//! Discord's own client does the same: the list a channel had last time is
-//! drawn straight away, and the sync the subscription brings replaces it when
-//! it lands. Channels the same people can see share one list, and only
-//! Discord says which list a channel has, so each channel's is remembered
-//! from the syncs that come for it.
+//! Member lists recently shown, drawn at once on opening a channel until the
+//! subscription's sync replaces them. Channels visible to the same people share
+//! a list, and only Discord says which, so each channel's list id is learned
+//! from its syncs.
 
 use std::collections::{HashMap, VecDeque};
 
@@ -16,8 +12,8 @@ use twilight_model::id::{
 
 use crate::discord::{self, MemberListItem, MemberListOp};
 
-/// How many lists are kept. A list is held whole so Discord's edits still
-/// line up with it, and a large guild's runs to thousands of rows.
+/// Lists are held whole so Discord's edits still line up; a large guild's runs
+/// to thousands of rows.
 const CACHED_LISTS: usize = 12;
 
 pub(super) struct CachedMemberList {
@@ -28,10 +24,9 @@ pub(super) struct CachedMemberList {
 
 #[derive(Default)]
 pub(super) struct MemberListCache {
-    /// The list each channel was last synced with.
     channel_lists: HashMap<Id<ChannelMarker>, String>,
-    /// Most recently left first. List ids are only unique within a guild:
-    /// `everyone` is every guild's.
+    /// Most recently left first. List ids are unique only within a guild
+    /// (`everyone` is every guild's).
     lists: VecDeque<(Id<GuildMarker>, CachedMemberList)>,
 }
 
@@ -42,12 +37,10 @@ impl MemberListCache {
         }
     }
 
-    /// The list `channel_id` was last synced with, if it's been seen.
     pub(super) fn list_id(&self, channel_id: Id<ChannelMarker>) -> Option<&str> {
         self.channel_lists.get(&channel_id).map(String::as_str)
     }
 
-    /// Keeps a list that's no longer shown.
     pub(super) fn store(&mut self, guild_id: Id<GuildMarker>, list: CachedMemberList) {
         if list.rows.is_empty() {
             return;
@@ -58,7 +51,6 @@ impl MemberListCache {
         self.lists.truncate(CACHED_LISTS);
     }
 
-    /// Whether the list `channel_id` had last time is kept.
     pub(super) fn has(&self, guild_id: Id<GuildMarker>, channel_id: Id<ChannelMarker>) -> bool {
         self.list_id(channel_id).is_some_and(|list_id| {
             self.lists
@@ -67,8 +59,7 @@ impl MemberListCache {
         })
     }
 
-    /// Takes the list `channel_id` had last time out of the cache. It goes
-    /// back in when it's no longer shown.
+    /// Removes the entry; it's stored again when no longer shown.
     pub(super) fn take(
         &mut self,
         guild_id: Id<GuildMarker>,
@@ -82,8 +73,8 @@ impl MemberListCache {
         self.lists.remove(ix).map(|(_, list)| list)
     }
 
-    /// Discord's edits to a list that isn't shown: the guild's subscription
-    /// can outlive a switch to another guild.
+    /// Edits for a list that isn't shown: the guild's subscription can outlive
+    /// a switch to another guild.
     pub(super) fn apply(&mut self, update: &discord::MemberListUpdate) {
         let Some((_, list)) = self
             .lists
@@ -92,9 +83,8 @@ impl MemberListCache {
         else {
             return;
         };
-        // Discord invalidates the ranges it stops sending when the
-        // subscription moves on; what was there is still the best guess
-        // until the list is opened and synced again.
+        // Discord invalidates ranges it stops sending; the old rows are still
+        // the best guess until the list is synced again.
         let ops = update
             .ops
             .iter()
@@ -106,7 +96,6 @@ impl MemberListCache {
     }
 }
 
-/// Applies Discord's edits to a list's rows, at Discord's indices.
 pub(super) fn apply_ops(
     rows: &mut Vec<Option<MemberListItem>>,
     ops: impl IntoIterator<Item = MemberListOp>,
@@ -149,9 +138,7 @@ pub(super) fn apply_ops(
     }
 }
 
-/// How long the groups say the list is: a header for each group with anyone
-/// in it, then its members. Rows past what's been synced are placeholders
-/// until they are.
+/// A header per non-empty group plus its members; unsynced rows are placeholders.
 pub(super) fn list_len(groups: &[discord::MemberListGroup]) -> usize {
     groups
         .iter()

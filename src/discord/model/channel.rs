@@ -35,36 +35,27 @@ pub struct Channel {
     pub kind: ChannelKind,
     pub parent_id: Option<Id<ChannelMarker>>,
     pub position: i32,
-    /// Parsed for the header's one line, so its newlines are already run
-    /// together.
+    /// Newlines are already run together for the header's single line.
     pub topic: Option<Vec<Inline>>,
-    /// Whether the current user may post here, resolved from the channel's
-    /// overwrites when the channel list is built.
+    /// Resolved from the channel's overwrites when the list is built.
     pub can_send: bool,
-    /// Whether the current user holds `MANAGE_MESSAGES` here, which is what
-    /// lets them delete other people's messages.
+    /// `MANAGE_MESSAGES`: lets them delete other people's messages.
     pub can_manage_messages: bool,
-    /// Whether the current user holds `USE_EXTERNAL_EMOJIS` here. Nitro is
-    /// needed as well before another guild's emoji can be sent.
+    /// `USE_EXTERNAL_EMOJIS`; sending another guild's emoji also needs Nitro.
     pub can_use_external_emoji: bool,
-    /// Whether the current user holds `MENTION_EVERYONE` here, without which
-    /// `@everyone` and `@here` don't notify anyone and aren't offered.
+    /// `MENTION_EVERYONE`; without it `@everyone`/`@here` notify no one.
     pub can_mention_everyone: bool,
-    /// The newest message, which decides whether the channel is unread.
     pub last_message_id: Option<Id<MessageMarker>>,
 }
 
-/// A 1:1 or group direct-message conversation from the user's DM list.
 #[derive(Clone)]
 pub struct DirectMessage {
     pub id: Id<ChannelMarker>,
     pub name: String,
     pub avatar_url: Option<String>,
-    /// The other user in a 1:1 conversation, whose status the row shows.
     /// `None` for a group DM.
     pub recipient_id: Option<Id<UserMarker>>,
-    /// Snowflake of the last message, used only to order conversations by
-    /// recency like Discord does. `None` (no messages yet) sorts last.
+    /// Only for ordering by recency; `None` sorts last.
     last_message_id: Option<u64>,
 }
 
@@ -73,16 +64,12 @@ impl DirectMessage {
         self.last_message_id.and_then(Id::new_checked)
     }
 
-    /// Records a newly arrived message, so the conversation sorts as the most
-    /// recently active.
     pub fn record_message(&mut self, message_id: u64) {
         self.last_message_id = self.last_message_id.max(Some(message_id));
     }
 }
 
-/// Converts a guild channel fetched over REST, dropping the types the UI
-/// can't display (threads, directories, ...). `permissions` are the user's in
-/// it, overwrites applied.
+/// Drops channel types the UI can't show. `permissions` are the user's, overwrites applied.
 pub(in crate::discord) fn convert_channel(
     channel: twilight_model::channel::Channel,
     permissions: Permissions,
@@ -99,8 +86,7 @@ pub(in crate::discord) fn convert_channel(
     })
 }
 
-/// A guild channel's fields, wherever they were read from: a REST channel or
-/// one inside a gateway guild.
+/// Shared by REST channels and those inside a gateway guild.
 pub(super) struct GuildChannelFields {
     pub id: Id<ChannelMarker>,
     pub kind: ChannelType,
@@ -142,8 +128,7 @@ pub(super) fn guild_channel(fields: GuildChannelFields) -> Option<Channel> {
     })
 }
 
-/// Converts the raw private-channel list into DM conversations, ordered
-/// most-recently-active first.
+/// Ordered most-recently-active first.
 pub(in crate::discord) fn convert_dms(
     channels: Vec<twilight_model::channel::Channel>,
 ) -> Vec<DirectMessage> {
@@ -178,8 +163,7 @@ fn convert_dm(channel: twilight_model::channel::Channel) -> Option<DirectMessage
     }
 }
 
-/// A group DM's own title, or the recipients' names joined the way Discord
-/// labels an unnamed group.
+/// Falls back to the recipients' names, as Discord labels an unnamed group.
 fn group_dm_name(
     name: Option<String>,
     recipients: Option<&[twilight_model::user::User]>,

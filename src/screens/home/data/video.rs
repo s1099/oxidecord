@@ -1,11 +1,10 @@
-//! Playing a video attachment: starting the decoder, pumping its frames onto
-//! the foreground, and tearing it down again.
+//! Playing a video attachment: starting the decoder, pumping its frames onto the
+//! foreground, and tearing it down.
 //!
-//! Frames arrive from [`crate::platform::video`] on the decoder's own thread
-//! and cross to gpui over a channel, the same way gateway events do. Each one
-//! becomes a [`RenderImage`] and replaces the last, and the last is handed
-//! back to gpui as it goes — see [`HomeScreen::show_frame`] for why that part
-//! isn't optional.
+//! Frames arrive from [`crate::platform::video`] on the decoder's own thread and
+//! cross over a channel, like gateway events. Each becomes a [`RenderImage`]
+//! replacing the last, which is handed back to gpui; see [`HomeScreen::show_frame`]
+//! for why.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -19,12 +18,9 @@ use crate::screens::home::HomeScreen;
 use crate::screens::home::state::{MediaKey, PlaybackState, VideoPlayback};
 
 impl HomeScreen {
-    /// Starts playing one video attachment, stopping whatever was playing.
-    ///
-    /// `target` is the size frames are decoded at, in physical pixels. Asking
-    /// the decoder for the size the card actually draws — rather than the
-    /// source's own — is what keeps a playing video down to a few hundred
-    /// kilobytes of frames instead of tens of megabytes.
+    /// `target` is the decode size in physical pixels. Asking for the size the card
+    /// draws rather than the source's own keeps frames to a few hundred kilobytes
+    /// instead of tens of megabytes.
     pub(in crate::screens::home) fn play_video(
         &mut self,
         key: MediaKey,
@@ -70,8 +66,7 @@ impl HomeScreen {
                 let handled = this.update_in(cx, |this, window, cx| {
                     this.handle_video_event(key, event, window, cx)
                 });
-                // The screen is gone, or this playback was replaced by another;
-                // either way nothing is listening, so let the sender close and
+                // Screen gone or playback replaced: nothing listens, so let the sender close and
                 // the decoder stop.
                 if !matches!(handled, Ok(true)) {
                     break;
@@ -83,7 +78,6 @@ impl HomeScreen {
         cx.notify();
     }
 
-    /// Ends the current playback and releases the frame it left on screen.
     pub(in crate::screens::home) fn stop_video(
         &mut self,
         window: &mut Window,
@@ -116,9 +110,8 @@ impl HomeScreen {
         cx.notify();
     }
 
-    /// Jumps to `fraction` of the way through the clip, from a click on the
-    /// progress bar. A source that never reported a duration can't be seeked
-    /// meaningfully, so the click is ignored rather than guessed at.
+    /// A source that never reported a duration can't be seeked meaningfully, so the
+    /// click is ignored.
     pub(in crate::screens::home) fn seek_video(&mut self, fraction: f32, cx: &mut Context<Self>) {
         let Some(playback) = &mut self.video else {
             return;
@@ -138,8 +131,6 @@ impl HomeScreen {
         cx.notify();
     }
 
-    /// Returns whether the playback this event belongs to is still the current
-    /// one; once it isn't, the pump feeding it stops.
     fn handle_video_event(
         &mut self,
         key: MediaKey,
@@ -147,9 +138,8 @@ impl HomeScreen {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> bool {
-        // A late event from a playback the user has already moved on from.
-        // Dropping it matters: its frames would otherwise be drawn over
-        // whatever is playing now.
+        // A late event from a replaced playback; its frames would be drawn over the
+        // current one.
         if self
             .video
             .as_ref()
@@ -181,12 +171,9 @@ impl HomeScreen {
         true
     }
 
-    /// Puts a decoded frame on screen and gives the previous one back to gpui.
-    ///
-    /// The eviction is the important half. `RenderImage` is uploaded into the
-    /// window's sprite atlas on first paint and kept there against its id, and
-    /// a video mints a new id thirty times a second — so without `drop_image`
-    /// the atlas grows for as long as the clip plays.
+    /// `RenderImage` is uploaded into the window's sprite atlas on first paint and
+    /// kept against its id; a video mints a new id thirty times a second, so without
+    /// `drop_image` the atlas grows as long as the clip plays.
     fn show_frame(&mut self, frame: VideoFrame, window: &mut Window, cx: &mut Context<Self>) {
         let Some(playback) = &mut self.video else {
             return;
@@ -221,12 +208,9 @@ fn fraction_of(position: Duration, duration: Duration) -> f32 {
     (position.as_secs_f32() / duration.as_secs_f32()).clamp(0., 1.)
 }
 
-/// Wraps decoded pixels as something `img()` can draw.
-///
-/// No conversion happens here: the decoder is asked for BGRA, which is the
-/// layout `RenderImage` stores, so this is a move rather than a pass over the
-/// pixels. `None` only when the buffer doesn't match the reported size, which
-/// would mean the decoder contradicted itself.
+/// The decoder is asked for BGRA, which `RenderImage` stores, so this is a move
+/// rather than a pass over the pixels. `None` only when the buffer doesn't match
+/// the reported size.
 fn to_image(frame: VideoFrame) -> Option<Arc<RenderImage>> {
     let buffer = ImageBuffer::from_raw(frame.width, frame.height, frame.bgra)?;
     Some(Arc::new(RenderImage::new(vec![Frame::new(buffer)])))

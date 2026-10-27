@@ -1,7 +1,5 @@
-//! Host-facing plumbing the rest of the app builds on: shared audio-device
-//! helpers, the background Tokio runtime, the HTTP client gpui loads remote images through, the on-disk
-//! preferences file, the self-updater, and the operating system's screen
-//! capture and video decoders.
+//! Host-facing plumbing: audio-device helpers, the Tokio runtime, the HTTP
+//! client, prefs, the updater, and OS screen capture and video decoders.
 
 pub mod audio;
 pub mod capture;

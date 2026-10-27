@@ -6,22 +6,18 @@ use gpui_kit::*;
 use crate::discord;
 use crate::screens::home::{HomeScreen, ImageViewer};
 
-/// The gap the viewer leaves between the image and the window's sides.
 const VIEWER_MARGIN_X: f32 = 80.;
-/// The gap above and below, taller to leave room for the link under the image.
+/// Taller, to leave room for the link under the image.
 const VIEWER_MARGIN_Y: f32 = 64.;
 
-/// The furthest the image zooms in, as a multiple of fitting the window.
 const MAX_ZOOM: f32 = 8.;
-/// How much one wheel notch zooms by. A trackpad's pixel deltas zoom by the
-/// same rate, a notch counted as a line of [`WHEEL_LINE_HEIGHT`] pixels.
+/// A trackpad's pixel deltas zoom at the same rate, a notch counting as
+/// [`WHEEL_LINE_HEIGHT`] pixels.
 const ZOOM_PER_NOTCH: f32 = 1.06;
 const WHEEL_LINE_HEIGHT: f32 = 20.;
-/// The longest side the zoomed copy is asked for at. The original can be any
-/// size, and decoded it costs four bytes a pixel.
+/// The original can be any size and costs four bytes a pixel decoded.
 const ZOOMED_MAX_SIDE: u32 = 4096;
 
-/// The largest box, in logical pixels, the viewer fits an image in.
 fn viewer_bounds(window: &Window) -> (f32, f32) {
     let viewport = window.viewport_size();
     (
@@ -31,9 +27,8 @@ fn viewer_bounds(window: &Window) -> (f32, f32) {
 }
 
 impl ImageViewer {
-    /// The image's size when it fits the window, unzoomed: scaled down into
-    /// the viewer's bounds but never up past its own size. One with no
-    /// reported dimensions gets the whole box, and is contained inside it.
+    /// Scaled down into the viewer's bounds, never up past its own size. With no
+    /// reported dimensions it gets the whole box.
     pub(in crate::screens::home) fn fitted_size(&self, window: &Window) -> Size<Pixels> {
         let (max_width, max_height) = viewer_bounds(window);
         match (self.width, self.height) {
@@ -46,9 +41,8 @@ impl ImageViewer {
         }
     }
 
-    /// Keeps the image from being dragged off screen: it pans only along an
-    /// axis it overflows the window on, and only until its edge meets the
-    /// window's.
+    /// Pans only along an axis the image overflows, and only until its edge meets
+    /// the window's.
     fn clamp_offset(&mut self, window: &Window) {
         let fitted = self.fitted_size(window);
         let viewport = window.viewport_size();
@@ -61,12 +55,9 @@ impl ImageViewer {
     }
 }
 
-/// An image the viewer can open, from an attachment or an embed.
 #[derive(Clone)]
 pub(in crate::screens::home) struct ViewerImage {
-    /// What the message is drawing it from.
     pub preview_url: String,
-    /// The unscaled original.
     pub source_url: String,
     pub width: Option<u32>,
     pub height: Option<u32>,
@@ -104,9 +95,8 @@ impl HomeScreen {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        // Physical pixels, so the picture is sharp on a display above 1x —
-        // but sized to the window, not the original, which can run to tens of
-        // megabytes decoded.
+        // Physical pixels for sharpness above 1x, but sized to the window: the original
+        // can run to tens of megabytes decoded.
         let (width, height) = viewer_bounds(window);
         let scale = window.scale_factor();
         let full_url = discord::scaled_url(
@@ -150,8 +140,7 @@ impl HomeScreen {
         }
     }
 
-    /// Zooms by a wheel turn, keeping the point under the pointer where it is,
-    /// the way a map zooms.
+    /// Keeps the point under the pointer fixed, like a map.
     pub(in crate::screens::home) fn zoom_image_viewer(
         &mut self,
         event: &ScrollWheelEvent,
@@ -225,9 +214,8 @@ impl HomeScreen {
         }
     }
 
-    /// Drops the viewer's own copies from the image cache, which otherwise
-    /// keeps them until the conversation is left. The preview stays: the
-    /// message is still drawing it.
+    /// Drops the viewer's copies from the image cache, which would keep them until
+    /// the conversation is left. The preview stays: the message still draws it.
     fn release_viewer_images(&self, viewer: &ImageViewer, window: &mut Window, cx: &mut App) {
         let urls = std::iter::once(&viewer.full_url).chain(&viewer.zoomed_url);
         for url in urls.filter(|url| **url != viewer.preview_url) {
@@ -238,9 +226,8 @@ impl HomeScreen {
     }
 }
 
-/// The copy to show once the image is zoomed in, if the window-sized one
-/// falls short of the original: the original, capped at a side that keeps the
-/// decoded bitmap bounded.
+/// Once zoomed in, if the window-sized copy falls short: the original, capped at
+/// a side that bounds the decoded bitmap.
 fn zoomed_url(viewer: &ImageViewer, window: &Window) -> Option<String> {
     let fitted = viewer.fitted_size(window);
     let scale = window.scale_factor();

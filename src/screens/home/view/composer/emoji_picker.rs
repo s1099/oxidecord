@@ -15,8 +15,8 @@ use crate::screens::home::{EmojiTarget, HomeScreen};
 use crate::ui::depth::{self, Level, radius};
 use crate::ui::tooltip;
 
-/// Each emoji's square, and every list line's height — headers included, so
-/// the list can be virtualized.
+/// Each emoji's square and every list line's height, headers included, so the
+/// list can be virtualized.
 const CELL: f32 = 44.;
 const EMOJI_SIZE: f32 = 32.;
 const LIST_HEIGHT: f32 = 380.;
@@ -25,10 +25,8 @@ const RAIL_WIDTH: f32 = 48.;
 const RAIL_ICON: f32 = 32.;
 
 impl HomeScreen {
-    /// The open picker, over the whole app like the profile card: a layer that
-    /// closes it on a click outside. From the composer it stands just above
-    /// where its button was clicked; from a message's toolbar it hangs to the
-    /// left of the button, clear of the message being reacted to.
+    /// From a message's toolbar it hangs left of the button, clear of the message
+    /// being reacted to.
     pub(in crate::screens::home) fn render_emoji_picker(
         &self,
         cx: &Context<Self>,
@@ -99,7 +97,6 @@ impl HomeScreen {
             .shadow(depth::shadow(Level::Overlay, cx))
             .overflow_hidden()
             .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-            // Escape in the search box that it doesn't use itself.
             .on_action(cx.listener(|this, _: &Escape, window, cx| {
                 this.close_emoji_picker(window, cx);
             }))
@@ -112,8 +109,7 @@ impl HomeScreen {
                                 .text_color(theme.muted_foreground),
                         )
                         .cleanable(true)
-                        // It's focused whenever the picker is open, so a ring
-                        // would only ever say the picker is open.
+                        // Always focused while open, so a ring says nothing.
                         .focus_bordered(false),
                 ),
             )
@@ -141,8 +137,8 @@ impl HomeScreen {
                     .on_mouse_down(
                         MouseButton::Left,
                         cx.listener(|this, _, window, cx| {
-                            // Consumed, so a click on the picker's own button
-                            // closes it instead of closing and reopening it.
+                            // So a click on the picker's own button closes it rather
+                            // than closing and reopening.
                             cx.stop_propagation();
                             this.close_emoji_picker(window, cx);
                         }),
@@ -160,8 +156,6 @@ impl HomeScreen {
         )
     }
 
-    /// One icon per section down the left side, the one in view lit; a click
-    /// glides the list to that section.
     fn render_picker_rail(&self, cx: &Context<Self>) -> Option<AnyElement> {
         let picker = self.emoji_picker.as_ref()?;
         let theme = cx.theme();
@@ -283,8 +277,6 @@ impl HomeScreen {
     }
 }
 
-/// A section's title line: its icon, its name, and a chevron that folds it
-/// away. The whole line is the toggle, as in Discord.
 fn render_picker_header(
     section: &SectionHeader,
     index: usize,
@@ -316,8 +308,6 @@ fn render_picker_header(
         .into_any_element()
 }
 
-/// What stands for a section: the guild's icon at `avatar` size, or a line
-/// icon at `icon` size that takes the text color.
 fn section_icon(section: &SectionHeader, icon: f32, avatar: f32) -> AnyElement {
     use emojis::Group;
     let path = match section.kind {
@@ -347,8 +337,7 @@ fn section_icon(section: &SectionHeader, icon: f32, avatar: f32) -> AnyElement {
         .into_any_element()
 }
 
-/// The emoji itself at `size`: a glyph for unicode, the CDN image for custom.
-/// A locked one is drawn greyed out.
+/// A locked emoji is drawn greyed out.
 pub(super) fn emoji_glyph(
     emoji: &PickerEmoji,
     size: f32,

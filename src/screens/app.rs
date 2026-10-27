@@ -9,17 +9,13 @@ use crate::ui::{dialogs, update_notice};
 
 enum Route {
     Login(Entity<LoginScreen>),
-    /// Holds the subscription that sends the user back to login when the
-    /// session ends.
+    /// `_ended` sends the user back to login when the session ends.
     Home {
         screen: Entity<HomeScreen>,
         _ended: Subscription,
     },
 }
 
-/// Top-level view for the main window. Owns the current screen and swaps
-/// between login and home so that a successful login can take effect
-/// immediately, without restarting the app.
 pub struct AppScreen {
     route: Route,
     _update_notice: Subscription,
@@ -39,7 +35,6 @@ impl AppScreen {
         }
     }
 
-    /// Switch to the home screen once a token is available.
     pub fn show_home(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.route = Self::home_route(window, cx);
         cx.notify();
@@ -74,10 +69,7 @@ impl Render for AppScreen {
             Route::Home { screen: view, .. } => view.clone().into_any_element(),
         };
 
-        // Every screen sits under the same modal backdrop, so a dialog opened
-        // anywhere in the app is backed by its scrim. The root draws dialogs
-        // and toasts over that, toasts on top, since one can matter while a
-        // dialog is up.
+        // Toasts draw above dialogs since one can matter while a dialog is up.
         dialogs::with_dialog_layer(screen, window, cx)
     }
 }

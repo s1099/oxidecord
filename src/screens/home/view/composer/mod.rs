@@ -36,10 +36,9 @@ impl HomeScreen {
                 .gap_1()
                 .children(self.render_typing_indicator(cx))
                 .child(
-                    // Same surface and metrics as the composer below, so the
-                    // conversation doesn't resize when switching between a
-                    // channel the user can post in and one they can't. The
-                    // `input_*` helpers are what `Input` sizes itself with.
+                    // Same metrics as the composer below, so the conversation doesn't
+                    // resize between channels. The `input_*` helpers are what `Input`
+                    // sizes itself with.
                     surface(h_flex(), cx).pl_1().child(
                         h_flex()
                             .flex_1()
@@ -69,10 +68,8 @@ impl HomeScreen {
                 this.child(div().text_xs().text_color(theme.danger).child(error))
             })
             .child(
-                // Wrap the composer in our own rounded surface so the reply
-                // banner, attachment tray, and input read as one control. The
-                // input's own border and bright focus ring are switched off in
-                // favour of this.
+                // The input's own border and focus ring are off in favour of this
+                // surface, so banner, tray and input read as one control.
                 surface(v_flex(), cx)
                     .when_some(self.replying_to.clone(), |this, target| {
                         this.child(self.render_reply_banner(&target, cx))
@@ -83,8 +80,6 @@ impl HomeScreen {
                     .child(
                         h_flex()
                             .w_full()
-                            // The button stays by the first line as the input
-                            // grows, the way Discord's does.
                             .items_start()
                             .pl_1()
                             .child(
@@ -104,16 +99,12 @@ impl HomeScreen {
                                     ),
                             )
                             .child(
-                                // Gives enter its send binding, and the arrows
-                                // and tab theirs, while the composer is
-                                // focused.
                                 div()
                                     .flex_1()
                                     .min_w_0()
                                     .key_context(COMPOSER_CONTEXT)
                                     .on_action(cx.listener(|this, _: &SendMessage, window, cx| {
-                                        // Enter takes a suggestion, as in
-                                        // Discord, rather than sending the
+                                        // Enter takes a suggestion rather than sending the
                                         // half-typed word.
                                         match this.autocomplete.as_ref() {
                                             Some(autocomplete) => this.accept_suggestion(
@@ -131,11 +122,8 @@ impl HomeScreen {
                                     .child(
                                         Textarea::new(&self.message_input)
                                             .appearance(false)
-                                            // A multi-line input sizes to its
-                                            // padding and rows, not a fixed
-                                            // height. This pads one line out
-                                            // to the composer's height, which
-                                            // the can't-send notice is sized to.
+                                            // A multi-line input has no fixed height; this pads one
+                                            // line out to the height the can't-send notice uses.
                                             .py(COMPOSER_PADDING_Y),
                                     ),
                             )
@@ -172,20 +160,15 @@ impl HomeScreen {
     }
 }
 
-/// A one-line composer's height. Roomier than a medium input's 32px, like
-/// Discord's.
+/// Roomier than a medium input's 32px, like Discord's.
 const COMPOSER_LINE_HEIGHT: Pixels = px(44.);
 
 /// Padding around the input that, on top of the editor's own medium inset,
 /// centres a medium input's 20px line in `COMPOSER_LINE_HEIGHT`.
 const COMPOSER_PADDING_Y: Pixels = px(4.);
 
-/// The composer's surface. Flat, unlike the buttons around it: a shadow made
-/// the input read as a box sitting on the page rather than a field. Dark themes
-/// wash it with the input colour rather than leaving it the page's.
-///
-/// The inline edit box wears it too, so editing a message looks like writing
-/// one.
+/// Flat on purpose: a shadow made the input read as a box on the page. Dark
+/// themes wash it with the input colour. The inline edit box wears it too.
 pub(super) fn surface(base: Div, cx: &App) -> Div {
     let theme = cx.theme();
     base.w_full()

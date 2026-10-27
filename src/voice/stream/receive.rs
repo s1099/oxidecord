@@ -1,28 +1,23 @@
-//! Putting a watched stream's frames back together from RTP.
+//! Rebuilding a watched stream's frames from out-of-order RTP.
 //!
-//! Packets arrive out of order and some not at all. They're held by sequence
-//! number until a frame's run is complete — every packet from the one after
-//! the last frame's marker up to this one's — and only then depacketized
-//! (RFC 6184: single units, STAP-A, FU-A) into the Annex B the DAVE
-//! decryptor and the decoder read. Each unit gets a four-byte start code,
-//! since that's what DAVE's sender assumed the receiver would rebuild.
+//! Packets are held by sequence number until a frame's run is complete, then
+//! depacketized (RFC 6184: single units, STAP-A, FU-A) into Annex B. Every unit
+//! gets a 4-byte start code because DAVE's sender assumed the receiver rebuilds
+//! them that way.
 //!
-//! A gap is reported for retransmission as soon as it's seen. One that's
-//! still open after [`GIVE_UP`] is abandoned: the frames it held are dropped
-//! and the caller is told, so it can ask for a keyframe to start over from.
+//! Gaps are NACKed at once; one still open after [`GIVE_UP`] is abandoned, its
+//! frames dropped and the caller told so it can ask for a keyframe.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::time::{Duration, Instant};
 
-/// How long a gap waits for a retransmission before the frame it's in is
-/// given up on. A few round trips, which is all a resend should take.
+/// A few round trips, which is all a resend should take.
 const GIVE_UP: Duration = Duration::from_millis(300);
 
-/// Packets held at most. A gap this far behind is never closing.
+/// A gap this far behind is never closing.
 const MAX_HELD: usize = 4096;
 
-/// Lost packets reported in one NACK. A burst longer than this is better
-/// recovered from with a keyframe than packet by packet.
+/// A longer burst is better recovered with a keyframe.
 const MAX_NACK: usize = 64;
 
 const NAL_IDR: u8 = 5;
@@ -37,14 +32,11 @@ pub(super) struct Frame {
     pub keyframe: bool,
 }
 
-/// What came of the packets so far.
 #[derive(Default)]
 pub(super) struct Assembled {
     pub frames: Vec<Frame>,
-    /// Packets to ask the sender for again.
     pub nack: Vec<u16>,
-    /// Frames were given up on; what follows can't be decoded until the next
-    /// keyframe.
+    /// Frames were dropped; nothing decodes until the next keyframe.
     pub lost: bool,
 }
 
@@ -57,14 +49,10 @@ struct Packet {
 
 #[derive(Default)]
 pub(super) struct Assembler {
-    /// Held packets, by extended sequence number.
     packets: BTreeMap<u64, Packet>,
-    /// The highest sequence number seen, extended past wrapping.
     highest: Option<u64>,
-    /// Where the next frame starts. `None` until a frame boundary has been
-    /// seen, since a stream joined mid-frame has no start to begin at.
+    /// `None` until a frame boundary is seen; joining mid-frame has no start.
     next: Option<u64>,
-    /// Packets already asked for, so a gap isn't reported on every pass.
     nacked: BTreeSet<u64>,
 }
 
@@ -96,14 +84,12 @@ impl Assembler {
             },
         );
         if self.next.is_none() && marker {
-            // The first boundary: the frame after this one is the first whole
-            // one.
+            // First boundary: the next frame is the first whole one.
             self.packets.retain(|&held, _| held > id);
             self.next = Some(id + 1);
         }
     }
 
-    /// Takes every frame that's complete, and says what's missing.
     pub(super) fn assemble(&mut self, now: Instant) -> Assembled {
         let mut out = Assembled::default();
         while let Some(next) = self.next {
@@ -118,8 +104,6 @@ impl Assembler {
                 continue;
             }
 
-            // Incomplete: there's a gap at or after `next`, if anything at
-            // all is held beyond it.
             let Some((&after, packet)) = self.packets.range(next..).next() else {
                 break;
             };
@@ -139,9 +123,8 @@ impl Assembler {
         out
     }
 
-    /// Where the frame starting at `next` ends, if every packet of it is
-    /// here. A frame ends at its marker — or, for a sender that leaves the
-    /// marker off, where the timestamp changes.
+    /// A frame ends at its marker, or where the timestamp changes for senders
+    /// that omit the marker.
     fn complete_from(&self, next: u64) -> Option<u64> {
         let first = self.packets.get(&next)?;
         let mut id = next;
@@ -157,14 +140,11 @@ impl Assembler {
         }
     }
 
-    /// The first missing packet between `next` and the highest held.
     fn missing_from(&self, next: u64) -> Option<u64> {
         let last = *self.packets.keys().next_back()?;
         (next..last).find(|id| !self.packets.contains_key(id))
     }
 
-    /// Drops everything up to the end of the frame the gap is in, and starts
-    /// again at the frame after it.
     fn skip_gap(&mut self, next: u64) {
         let gap = self.missing_from(next).unwrap_or(next);
         let boundary = self
@@ -181,7 +161,6 @@ impl Assembler {
         }
     }
 
-    /// Lost packets not yet asked for, as sequence numbers.
     fn report_gaps(&mut self, next: u64) -> Vec<u16> {
         let Some(&last) = self.packets.keys().next_back() else {
             return Vec::new();
@@ -204,12 +183,10 @@ impl Assembler {
         self.next = None;
     }
 
-    /// Places a sixteen-bit sequence number on a line that doesn't wrap,
-    /// taking it as whichever is nearer the highest seen.
+    /// Unwraps a 16-bit sequence number to whichever extension is nearest the highest seen.
     fn extend(&mut self, sequence: u16) -> u64 {
         let id = match self.highest {
-            // Started well clear of zero, so a packet from just before the
-            // first can't go negative.
+            // Well clear of zero so an earlier packet can't go negative.
             None => (1 << 32) + u64::from(sequence),
             Some(highest) => {
                 let delta = sequence.wrapping_sub(highest as u16) as i16;
@@ -221,8 +198,6 @@ impl Assembler {
     }
 }
 
-/// Rebuilds a frame from its packets' payloads. `None` if nothing in them
-/// was a NAL unit.
 fn depacketize<'a>(payloads: impl Iterator<Item = &'a [u8]>) -> Option<Frame> {
     let mut data = Vec::new();
     let mut keyframe = false;
@@ -283,8 +258,7 @@ mod tests {
     fn frames_come_out_in_order_once_whole() {
         let now = Instant::now();
         let mut assembler = Assembler::default();
-        // The tail of a frame joined midway, then two whole ones, the second
-        // arriving out of order.
+        // Tail of a frame joined midway, then two whole ones, the second out of order.
         feed(
             &mut assembler,
             &[

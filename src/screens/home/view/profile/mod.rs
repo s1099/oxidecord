@@ -10,12 +10,8 @@ use gpui_kit::*;
 use crate::screens::home::HomeScreen;
 
 impl HomeScreen {
-    /// The open profile card, rendered over the whole app: a transparent layer
-    /// that dismisses on a click outside, with the card anchored where the
-    /// avatar was clicked.
-    ///
-    /// Deferred so it paints above the panes it overlaps — the card is opened
-    /// from inside the message list, which would otherwise clip and occlude it.
+    /// Deferred so it paints above the panes it overlaps; opened from inside the
+    /// message list, it would otherwise be clipped and occluded.
     pub(in crate::screens::home) fn render_profile_popup(
         &self,
         cx: &Context<Self>,
@@ -24,8 +20,6 @@ impl HomeScreen {
 
         let card = div()
             .occlude()
-            // Clicks inside the card are for the card, not the dismiss layer
-            // it sits on.
             .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
             .child(self.render_profile_card(popup, cx));
 
@@ -34,10 +28,8 @@ impl HomeScreen {
                 div()
                     .absolute()
                     .inset_0()
-                    // The layer sees a press before whatever is under it, and
-                    // consuming it means a click outside only dismisses the
-                    // card — so clicking the avatar again reads as a toggle
-                    // rather than a close-and-reopen.
+                    // Consuming the press means clicking the avatar again toggles
+                    // rather than closing and reopening.
                     .on_mouse_down(
                         MouseButton::Left,
                         cx.listener(|this, _, _, cx| {
@@ -47,8 +39,6 @@ impl HomeScreen {
                     )
                     .child(
                         anchored()
-                            // Offset clear of the avatar so the card opens
-                            // beside it rather than under the cursor.
                             .position(popup.position + point(px(24.), px(-12.)))
                             .snap_to_window_with_margin(px(8.))
                             .child(card),

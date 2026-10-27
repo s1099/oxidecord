@@ -12,7 +12,6 @@ use twilight_model::id::{Id, marker::MessageMarker};
 use crate::discord;
 use crate::screens::home::{EmojiTarget, HomeScreen, ReplyTarget};
 
-/// What a message's menu offers, decided as the message renders.
 #[derive(Clone)]
 pub(super) struct MessageMenu {
     pub message_id: Id<MessageMarker>,
@@ -32,7 +31,7 @@ impl MessageMenu {
                     .author_name(message.author_id, &message.author_name)
                     .to_owned(),
             },
-            // Already open for editing, the action would have nothing to do.
+            // Already open for editing, the action would do nothing.
             can_edit: screen.is_own_message(message)
                 && screen
                     .editing
@@ -43,9 +42,8 @@ impl MessageMenu {
         }
     }
 
-    /// Fills `menu`, in Discord's order. `full` adds the actions the toolbar
-    /// already has buttons for — reacting and replying — which the right-click
-    /// menu needs and the toolbar's own "More" menu doesn't.
+    /// Fills `menu` in Discord's order. `full` adds react and reply, which the right-click menu
+    /// needs but the toolbar already has buttons for.
     pub(super) fn build(
         &self,
         menu: PopupMenu,
@@ -55,7 +53,6 @@ impl MessageMenu {
     ) -> PopupMenu {
         let message_id = self.message_id;
         let danger = cx.theme().danger;
-        // Each item runs its action against the screen, if it's still there.
         let action =
             |run: fn(&mut HomeScreen, Id<MessageMarker>, &mut Window, &mut Context<HomeScreen>)| {
                 let screen = screen.clone();
@@ -72,8 +69,7 @@ impl MessageMenu {
                     PopupMenuItem::new("Add Reaction")
                         .icon(Icon::default().path("icons/smile-plus.svg"))
                         .on_click(action(|this, message_id, window, cx| {
-                            // The picker opens beside the item that was picked,
-                            // where the pointer still is.
+                            // Opens beside the picked item, where the pointer still is.
                             this.toggle_emoji_picker(
                                 window.mouse_position(),
                                 EmojiTarget::Reaction(message_id),
@@ -143,8 +139,6 @@ impl MessageMenu {
 }
 
 impl HomeScreen {
-    /// Starts a reply to a message and jumps straight to composing it, like
-    /// Discord.
     pub(super) fn start_reply(
         &mut self,
         target: ReplyTarget,
@@ -156,8 +150,7 @@ impl HomeScreen {
         cx.notify();
     }
 
-    /// Opens a message's menu where it was right-clicked, keeping the message
-    /// lit while the menu is up, as the toolbar's "More" menu does.
+    /// Keeps the message lit while the menu is up, as the toolbar's "More" menu does.
     pub(super) fn message_context_menu(
         &self,
         row: Stateful<Div>,
@@ -168,8 +161,7 @@ impl HomeScreen {
 
         let screen = cx.entity().downgrade();
         row.context_menu(move |popup, _, cx| {
-            // Decided when the menu opens rather than as every row renders,
-            // which also catches anything that changed since.
+            // Decided when the menu opens, not per row render, which also catches later changes.
             let Some(entity) = screen.upgrade() else {
                 return popup;
             };

@@ -1,5 +1,5 @@
-//! Reacting to a message, applied locally first and rolled back if the request
-//! fails, taking reactions made anywhere else, and fetching who reacted.
+//! Reacting to a message (applied locally, rolled back on failure), taking
+//! reactions from elsewhere, and fetching who reacted.
 
 use gpui_kit::*;
 use twilight_model::id::{
@@ -11,8 +11,6 @@ use crate::discord;
 use crate::screens::home::HomeScreen;
 
 impl HomeScreen {
-    /// Toggles the current user's reaction on a message: clicking a pill they
-    /// already reacted with removes it, otherwise it adds theirs.
     pub(in crate::screens::home) fn toggle_reaction(
         &mut self,
         message_id: Id<MessageMarker>,
@@ -36,8 +34,7 @@ impl HomeScreen {
         self.send_reaction(message_id, emoji, add, cx);
     }
 
-    /// Adds the current user's reaction, chosen from the picker. Picking one
-    /// they've already made leaves it be rather than taking it back.
+    /// Picking a reaction already made leaves it rather than taking it back.
     pub(in crate::screens::home) fn add_reaction(
         &mut self,
         message_id: Id<MessageMarker>,
@@ -61,7 +58,6 @@ impl HomeScreen {
         self.send_reaction(message_id, emoji, true, cx);
     }
 
-    /// Applies the current user's reaction locally and sends it.
     fn send_reaction(
         &mut self,
         message_id: Id<MessageMarker>,
@@ -90,7 +86,6 @@ impl HomeScreen {
         .detach();
     }
 
-    /// Applies one reaction of the current user to the local tally.
     fn apply_reaction(
         &mut self,
         message_id: Id<MessageMarker>,
@@ -109,8 +104,7 @@ impl HomeScreen {
         }
     }
 
-    /// Takes a change to the reactions on a message in the open conversation,
-    /// made by anyone — the current user's own come back this way too.
+    /// Includes the current user's own, which come back this way too.
     pub(in crate::screens::home) fn handle_reaction(
         &mut self,
         channel_id: Id<ChannelMarker>,
@@ -170,9 +164,8 @@ fn apply_reaction(
 }
 
 impl HomeScreen {
-    /// Fetches who reacted to a message with `emoji`, unless that's already
-    /// known or on its way. With `more`, fetches the next page of a list that
-    /// was cut short instead.
+    /// Skipped if already known or on its way; `more` fetches the next page of a
+    /// cut-short list.
     pub(in crate::screens::home) fn load_reactors(
         &mut self,
         message_id: Id<MessageMarker>,
@@ -216,9 +209,8 @@ impl HomeScreen {
         cx.notify();
     }
 
-    /// Drops what's known of who reacted to a message with `emoji`, or with
-    /// anything when `None`, once it's changed. Whatever still shows the list
-    /// fetches it again.
+    /// Drops who-reacted for `emoji` (any, on `None`) once it changed. Whatever
+    /// still shows the list fetches it again.
     fn forget_reactors(
         &mut self,
         message_id: Id<MessageMarker>,
@@ -230,12 +222,9 @@ impl HomeScreen {
     }
 }
 
-/// Adds or removes one reactor from a message's reaction tally. A tally that
-/// drops to zero is dropped entirely, like Discord.
-///
-/// The current user's (`own`) reactions are applied optimistically and then
-/// echoed back by the gateway, so one that already matches is skipped rather
-/// than counted twice.
+/// A tally dropping to zero is removed entirely, like Discord. The current
+/// user's (`own`) reactions apply optimistically and are echoed by the gateway,
+/// so one already matching is skipped rather than counted twice.
 fn tally_reaction(
     reactions: &mut Vec<discord::Reaction>,
     emoji: &discord::ReactionEmoji,
@@ -285,7 +274,6 @@ mod tests {
     #[test]
     fn own_reaction_echo_is_not_counted_twice() {
         let mut reactions = Vec::new();
-        // Applied optimistically, then echoed back by the gateway.
         tally_reaction(&mut reactions, &thumbs(), true, true);
         tally_reaction(&mut reactions, &thumbs(), true, true);
         assert_eq!(reactions[0].count, 1);

@@ -5,8 +5,7 @@
 use chrono::{DateTime, Local};
 use twilight_model::util::Timestamp;
 
-/// Milliseconds between the Unix epoch and Discord's (2015-01-01), the offset
-/// the timestamp inside a snowflake is measured from.
+/// Milliseconds from the Unix epoch to Discord's (2015-01-01).
 const DISCORD_EPOCH_MS: u64 = 1_420_070_400_000;
 
 /// A message's send time the way Discord's header shows it, in local time:
@@ -22,8 +21,7 @@ pub(super) fn format_message_time(unix: i64) -> String {
     }
 }
 
-/// Just the local time of day, `11:02 AM`, whatever the date: what Discord
-/// shows beside a continuation message, whose header above carries the date.
+/// `11:02 AM` whatever the date, as shown beside a continuation message.
 pub(super) fn format_message_clock(unix: i64) -> String {
     local(unix).map_or_else(String::new, |time| time.format("%-I:%M %p").to_string())
 }
@@ -43,8 +41,7 @@ const MONTHS: [&str; 12] = [
     "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
 ];
 
-/// Formats an embed's footer timestamp as `Jan 5, 2021 4:56 PM` (UTC), the
-/// long form Discord falls back to for anything older than yesterday.
+/// `Jan 5, 2021 4:56 PM` (UTC).
 pub(super) fn format_embed_timestamp(timestamp: Timestamp) -> String {
     // `2021-08-02T16:56:43.772000+00:00`, so the fields sit at fixed offsets.
     let iso = timestamp.iso_8601().to_string();
@@ -68,20 +65,16 @@ pub(super) fn format_embed_timestamp(timestamp: Timestamp) -> String {
     parsed.unwrap_or(iso)
 }
 
-/// Formats the creation time encoded in a snowflake as `Jan 5, 2021` (UTC),
-/// the form Discord uses for "Member Since".
+/// A snowflake's creation date as `Jan 5, 2021` (UTC), for "Member Since".
 pub(super) fn format_snowflake_date(id: u64) -> String {
-    // The upper 42 bits are milliseconds since the Discord epoch.
     let unix_ms = (id >> 22) + DISCORD_EPOCH_MS;
     let (year, month, day) = civil_from_days((unix_ms / 86_400_000) as i64);
     format!("{} {day}, {year}", MONTHS[(month - 1) as usize])
 }
 
-/// Converts days since the Unix epoch into a `(year, month, day)` civil date,
-/// via Howard Hinnant's `civil_from_days` algorithm.
+/// Howard Hinnant's `civil_from_days`: days since the Unix epoch to a civil date.
 fn civil_from_days(days: i64) -> (i64, u32, u32) {
-    // Shift the era to start on 0000-03-01, so the leap day lands at the end of
-    // the year and every era is exactly 146097 days.
+    // Eras start on 0000-03-01 so the leap day ends the year.
     let shifted = days + 719_468;
     let era = shifted.div_euclid(146_097);
     let day_of_era = shifted.rem_euclid(146_097);
@@ -177,8 +170,7 @@ pub(super) fn format_unix_full(unix: i64) -> String {
     )
 }
 
-/// `in 2 hours`, `3 days ago`: the largest whole unit between `unix` and
-/// `now`, both Unix seconds.
+/// `in 2 hours`, `3 days ago`; both arguments are Unix seconds.
 pub(super) fn format_relative(unix: i64, now: i64) -> String {
     let delta = unix - now;
     let seconds = delta.unsigned_abs();

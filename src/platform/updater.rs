@@ -1,19 +1,14 @@
 //! Self-update against the project's GitHub releases.
 //!
-//! Releases publish a single `oxidecord.exe` asset, so an update is a download
-//! of that file next to the running one, followed by a swap. Windows keeps a
-//! running executable's image file locked, so the swap can't happen while the
-//! app is up: the app hands the last step to a second copy of *itself*, started
-//! with [`APPLY_UPDATE_ARG`], and then quits. That helper waits for the app to
-//! go away, renames the old binary aside, moves the downloaded one into its
-//! place, starts it, and exits. The renamed-aside file is deleted by the next launch (see
-//! [`init`]), since the helper can't delete the image it is itself running from.
+//! An update downloads the release's single `oxidecord.exe` next to the running
+//! one, then swaps. Windows locks a running image, so the app starts a second
+//! copy of itself with [`APPLY_UPDATE_ARG`] and quits; that helper waits for the
+//! app to exit, renames the old binary aside, moves the new one in and starts
+//! it. The renamed-aside file is deleted by the next launch ([`init`]) since
+//! the helper can't delete the image it runs from.
 //!
-//! The download is checked against the SHA-256 digest GitHub records for the
-//! asset, and only a match is staged; a release without one isn't installed.
-//!
-//! Only the Windows path exists so far; elsewhere the settings page says as
-//! much and the buttons are inert.
+//! The download must match the SHA-256 digest GitHub records for the asset; a
+//! release without one isn't installed. Windows only so far.
 
 use std::{
     fs,
@@ -29,20 +24,16 @@ use sha2::{Digest as _, Sha256};
 
 use super::{http, runtime};
 
-/// Where releases are published. The API returns the newest one, including its
-/// tag and the download URL for each asset.
 const LATEST_RELEASE_API: &str = "https://api.github.com/repos/s1099/oxidecord/releases/latest";
 
 const ASSET_NAME: &str = "oxidecord.exe";
 
-/// Filename the download is staged under, beside the running binary.
 const STAGED_NAME: &str = "oxidecord.new.exe";
 
-/// What the binary being replaced is renamed to. It outlives the swap because
-/// the helper is running from it, so it's cleaned up on the next launch.
+/// The replaced binary is renamed to this; the helper runs from it, so the next launch cleans it
+/// up.
 const RETIRED_NAME: &str = "oxidecord.old.exe";
 
-/// Argument that turns a launch into the update helper rather than the app.
 pub const APPLY_UPDATE_ARG: &str = "--apply-update";
 
 /// GitHub rejects API requests without one.
@@ -50,15 +41,12 @@ const USER_AGENT: &str = concat!("oxidecord/", env!("CARGO_PKG_VERSION"));
 
 pub const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
-/// Attempts the final rename this many times, in case the app's process is
-/// still winding down when the helper wakes up.
+/// The app's process may still be winding down when the helper wakes up.
 const SWAP_ATTEMPTS: u32 = 40;
 const SWAP_RETRY_DELAY: Duration = Duration::from_millis(250);
 
-/// Where the updater has got to. Drives everything the settings page shows.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub enum Status {
-    /// Nothing has been tried yet this run.
     #[default]
     Idle,
     Checking,
@@ -69,22 +57,19 @@ pub enum Status {
         /// Lowercase hex, as GitHub reports it.
         sha256: SharedString,
     },
-    /// Percentage is only meaningful when the response declared a length; it
-    /// stays at 0 otherwise.
+    /// `percent` stays 0 when the response declared no length.
     Downloading {
         version: SharedString,
         percent: u8,
     },
-    /// Downloaded and staged; the swap happens on the next quit or restart.
     Ready {
         version: SharedString,
     },
     Failed(SharedString),
 }
 
-/// The updater's state, global because the settings page is rebuilt from
-/// scratch on every frame and has nowhere of its own to keep it. Observing it
-/// is how the update toast hears about changes.
+/// Global because the settings page is rebuilt every frame and has nowhere to
+/// keep it; the update toast observes it.
 #[derive(Default)]
 pub struct Updater {
     status: Status,
@@ -92,7 +77,6 @@ pub struct Updater {
 
 impl Global for Updater {}
 
-/// Registers the global and clears the leftovers of a completed update.
 pub fn init(cx: &mut App) {
     cx.default_global::<Updater>();
 
@@ -111,7 +95,6 @@ pub const fn supported() -> bool {
     cfg!(target_os = "windows")
 }
 
-/// Asks GitHub for the newest release and compares it with this build.
 pub fn check(cx: &mut App) {
     if matches!(status(cx), Status::Checking | Status::Downloading { .. }) {
         return;
@@ -138,7 +121,6 @@ pub fn check(cx: &mut App) {
     .detach();
 }
 
-/// Downloads the available release and stages it beside the running binary.
 pub fn download(cx: &mut App) {
     let Status::Available {
         version,
@@ -161,9 +143,7 @@ pub fn download(cx: &mut App) {
     );
 
     cx.spawn(async move |cx| {
-        // The download runs on the Tokio runtime and reports back over a
-        // channel, so progress reaches the UI without the two sides polling
-        // each other; only whole-percent changes are sent.
+        // Runs on Tokio and reports over a channel; only whole-percent changes are sent.
         let (tx, mut rx) = mpsc::unbounded();
         runtime::handle().spawn(download_asset(
             url.to_string(),
@@ -187,8 +167,7 @@ pub fn download(cx: &mut App) {
     .detach();
 }
 
-/// Hands the swap to a helper process and quits so it can go ahead; the helper
-/// starts the new version once it's in place.
+/// Quits so the helper can swap the binary, then it starts the new version.
 pub fn install(cx: &mut App) {
     if !matches!(status(cx), Status::Ready { .. }) {
         return;
@@ -201,20 +180,17 @@ pub fn install(cx: &mut App) {
 }
 
 fn set_status(status: Status, cx: &mut App) {
-    // Read without `default_global`, which counts as a change and would wake
-    // the global's observers for nothing.
+    // Read without `default_global`, which counts as a change and wakes observers.
     if self::status(cx) == status {
         return;
     }
     cx.default_global::<Updater>().status = status;
-    // The settings page reads the global while rendering, so it only reflects
-    // a change once something asks for a new frame.
+    // The settings page reads the global while rendering, so it needs a new frame.
     cx.refresh_windows();
 }
 
-/// Starts this same binary as the update helper, with a pipe as the signal for
-/// "the app is gone": the helper reads until end-of-file, which the OS produces
-/// when this process exits and its end of the pipe closes.
+/// The stdin pipe signals "the app is gone": the helper reads to EOF, which the
+/// OS produces when this process exits.
 fn spawn_helper() -> Result<(), String> {
     let exe = std::env::current_exe().map_err(|error| error.to_string())?;
     let child = Command::new(&exe)
@@ -225,14 +201,12 @@ fn spawn_helper() -> Result<(), String> {
         .spawn()
         .map_err(|error| format!("couldn't start the updater: {error}"))?;
 
-    // Dropping the handle would close the pipe and release the helper before
-    // the app is actually gone; leaking it leaves that to process exit.
+    // Dropping the handle would close the pipe and release the helper early.
     std::mem::forget(child);
     Ok(())
 }
 
-/// The update helper. Called from `main` before any UI is set up, and always
-/// exits the process rather than returning.
+/// Called from `main` before any UI is set up; always exits the process.
 pub fn apply_update() -> ! {
     // Blocks until the app's process exits and closes the write end.
     _ = std::io::stdin().read_to_end(&mut Vec::new());
@@ -249,14 +223,12 @@ pub fn apply_update() -> ! {
         std::process::exit(1);
     }
 
-    // Windows allows renaming a running image but not overwriting one, so the
-    // old binary moves aside first and the new one takes the free name. Both
-    // steps can still lose a race with the app's last moments, hence the retry.
+    // Windows allows renaming a running image but not overwriting it, so the
+    // old binary moves aside first. Either step can lose a race with the app's
+    // last moments, hence the retry.
     for attempt in 0..SWAP_ATTEMPTS {
         _ = fs::remove_file(&retired);
         if fs::rename(&exe, &retired).is_ok() && fs::rename(&staged, &exe).is_ok() {
-            // Bring the app back, now on the new version. Nothing here waits
-            // on it, so this process is gone before it gets far into startup.
             _ = Command::new(&exe)
                 .stdin(Stdio::null())
                 .stdout(Stdio::null())
@@ -264,8 +236,8 @@ pub fn apply_update() -> ! {
                 .spawn();
             std::process::exit(0);
         }
-        // Put the old binary back if only the second rename failed, so a give-up
-        // leaves a working app behind.
+        // Restore the old binary if only the second rename failed, so giving up leaves a working
+        // app.
         if !exe.exists() {
             _ = fs::rename(&retired, &exe);
         }
@@ -277,7 +249,6 @@ pub fn apply_update() -> ! {
     std::process::exit(1);
 }
 
-/// What a download reports back to the UI.
 enum Progress {
     Percent(u8),
     Done(Result<(), String>),
@@ -289,7 +260,7 @@ struct Release {
     sha256: String,
 }
 
-/// Fetches the newest release, or `None` when it isn't newer than this build.
+/// `None` when the newest release isn't newer than this build.
 async fn fetch_latest() -> Result<Option<Release>, String> {
     let response = http::client()
         .get(LATEST_RELEASE_API)
@@ -327,8 +298,7 @@ async fn fetch_latest() -> Result<Option<Release>, String> {
     let url = asset["browser_download_url"]
         .as_str()
         .ok_or(format!("release {tag} has no {ASSET_NAME}"))?;
-    // Without a digest there's nothing to tell a corrupted or substituted
-    // download from the real one, so such a release is refused outright.
+    // Without a digest a corrupted or substituted download is undetectable, so refuse.
     let sha256 = asset["digest"]
         .as_str()
         .and_then(|digest| digest.strip_prefix("sha256:"))
@@ -341,8 +311,7 @@ async fn fetch_latest() -> Result<Option<Release>, String> {
     }))
 }
 
-/// Streams the asset to `staged`, reporting each whole percent along the way,
-/// and keeps it only if it hashes to `sha256`.
+/// Keeps `staged` only if it hashes to `sha256`.
 async fn download_asset(
     url: String,
     sha256: String,
@@ -351,7 +320,7 @@ async fn download_asset(
 ) {
     let result = write_asset(url, &sha256, &staged, &tx).await;
     if result.is_err() {
-        // A partial or mismatched file would be swapped in as if it were a build.
+        // A partial or mismatched file would be swapped in as a build.
         _ = fs::remove_file(&staged);
     }
     _ = tx.unbounded_send(Progress::Done(result));
@@ -389,7 +358,7 @@ async fn write_asset(
         hasher.update(&chunk);
         written += chunk.len() as u64;
 
-        // Nothing to report when the response didn't declare a length.
+        // No length declared means no percentage.
         if let Some(scaled) = (written * 100).checked_div(total) {
             let percent = scaled.min(100) as u8;
             if percent != reported {
@@ -419,9 +388,8 @@ fn sibling_path(name: &str) -> Option<PathBuf> {
     Some(std::env::current_exe().ok()?.parent()?.join(name))
 }
 
-/// Compares two versions by their leading numbers, so a `v` prefix or a
-/// `-beta` suffix doesn't get in the way. Anything unparseable counts as 0,
-/// which keeps a malformed tag from being taken for an upgrade.
+/// Compares leading numbers, ignoring a `v` prefix or `-beta` suffix. Unparseable
+/// parts count as 0 so a malformed tag isn't taken for an upgrade.
 fn is_newer(candidate: &str, current: &str) -> bool {
     numbers(candidate) > numbers(current)
 }

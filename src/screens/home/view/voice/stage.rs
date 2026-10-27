@@ -13,12 +13,9 @@ use crate::ui::depth::radius;
 
 use super::tiles::{STAGE_PADDING, TILE_GAP, fit_tiles};
 
-/// The tiles under a channel's join button, which aren't fitted to anything.
 const JOIN_TILE: Size<Pixels> = size(px(224.), px(126.));
 
 impl HomeScreen {
-    /// A voice channel's pane: the stage when the user is in it, an invitation
-    /// to join when they aren't.
     pub(in crate::screens::home) fn render_voice_stage(&self, cx: &Context<Self>) -> AnyElement {
         let Some(call) = self
             .voice
@@ -36,12 +33,11 @@ impl HomeScreen {
             .into_any_element()
     }
 
-    /// Rounds the stage into the panel's bottom corners: only the left one
-    /// while the chat sits to its right.
+    /// Rounds the stage into the panel's bottom corners (only the left while chat sits to its
+    /// right).
     ///
-    /// Also lets it shrink below its content: the tile grid is sized from the
-    /// stage's last measured width, so otherwise the stage would hold that
-    /// width and push the chat out of the pane rather than make room for it.
+    /// Also lets it shrink below its content: the tile grid is sized from the last measured width,
+    /// which would otherwise push the chat out of the pane.
     fn round_stage_corners(&self, stage: Div) -> Div {
         let stage = stage.min_w_0();
         let corner = radius::CARD - px(1.);
@@ -52,8 +48,6 @@ impl HomeScreen {
         }
     }
 
-    /// The tiles and the control bar under them, shared with a DM's call
-    /// band while there's a stream in it.
     pub(super) fn stage(&self, call: &VoiceCall, cx: &Context<Self>) -> Div {
         let theme = cx.theme();
         let participants = self.voice_participants(call.channel_id);
@@ -61,7 +55,6 @@ impl HomeScreen {
         // draw — say what's happening rather than show an empty stage.
         let waiting = participants.is_empty();
 
-        // A stream being watched takes the stage over from the tiles.
         let watched = self.watching.as_ref().and_then(|watch| {
             participants
                 .iter()
@@ -145,8 +138,6 @@ impl HomeScreen {
             .child(self.render_call_controls(cx))
     }
 
-    /// A watched stream, filling the stage: the picture once it's arrived,
-    /// who it is, and the way out.
     fn stream_view(
         &self,
         watch: &StreamWatch,
@@ -154,10 +145,11 @@ impl HomeScreen {
         cx: &Context<Self>,
     ) -> impl IntoElement {
         let picture = match &watch.frame {
-            // Raw pixels, so it never touches the image cache. Pinned to the
-            // box rather than laid out in it: `img` takes the picture's aspect
-            // ratio, and in flow that sized it from the box's width alone, so a
-            // wide stage cut the bottom of the picture off.
+            // Raw pixels, so it never touches the image cache. Pinned to the box rather than laid
+            // out in
+            // it: in flow, `img` sized from the box's width alone via the picture's aspect ratio,
+            // so a
+            // wide stage cut the bottom off.
             Some(frame) => img(frame.clone())
                 .absolute()
                 .inset_0()
@@ -219,8 +211,6 @@ impl HomeScreen {
         )
     }
 
-    /// The empty state for a voice channel the user hasn't joined: whoever is
-    /// already in there, and the way in.
     fn render_join_prompt(&self, cx: &Context<Self>) -> impl IntoElement {
         let theme = cx.theme();
         let channel_id = self.selected_channel;

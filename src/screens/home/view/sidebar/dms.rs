@@ -13,8 +13,7 @@ use crate::ui::theme;
 
 use super::shell;
 
-/// Row widths for the loading skeleton, fixed so it doesn't reshuffle between
-/// frames.
+/// Skeleton row widths, fixed so it doesn't reshuffle between frames.
 const SKELETON_WIDTHS: [f32; 12] = [
     120., 88., 104., 72., 132., 96., 116., 80., 124., 92., 108., 76.,
 ];
@@ -66,7 +65,6 @@ impl HomeScreen {
             .text_color(if is_selected || unread {
                 theme.sidebar_accent_foreground
             } else if muted {
-                // Muted conversations fade back, as muted channels do.
                 theme.muted_foreground.opacity(0.6)
             } else {
                 theme::secondary_text(cx)

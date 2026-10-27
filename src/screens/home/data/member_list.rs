@@ -19,8 +19,6 @@ const RANGE_SIZE: usize = 100;
 const MAX_RANGES: usize = 3;
 
 impl HomeScreen {
-    /// Whether the open conversation shows a member list, hidden or not:
-    /// a guild's text or announcement channel.
     pub(in crate::screens::home) fn has_member_list(&self) -> bool {
         self.view == View::Guild
             && self.selected_channel_info().is_some_and(|channel| {
@@ -28,10 +26,8 @@ impl HomeScreen {
             })
     }
 
-    /// Subscribes to the open channel's member list when the open channel
-    /// has changed, and drops the list when the conversation has none.
-    /// Called every render, so every path that changes the selection is
-    /// caught; it does nothing unless the channel changed.
+    /// Called every render so every path that changes the selection is caught; does
+    /// nothing unless the channel changed.
     pub(in crate::screens::home) fn sync_member_list(&mut self) {
         let wanted = self
             .has_member_list()
@@ -86,7 +82,6 @@ impl HomeScreen {
         self.resubscribe_member_list();
     }
 
-    /// Puts the shown list away in the cache, leaving none shown.
     fn stash_member_list(&mut self) {
         if let Some(list) = self.member_list.take()
             && let Some(id) = list.id
@@ -102,17 +97,14 @@ impl HomeScreen {
         }
     }
 
-    /// Sends the open list's subscription again — after a new session, which
-    /// starts with none.
+    /// Sends the subscription again after a new session, which starts with none.
     pub(in crate::screens::home) fn resubscribe_member_list(&self) {
         if let (Some(list), Some(gateway)) = (&self.member_list, &self.gateway) {
             gateway.subscribe_member_list(list.guild_id, list.channel_id, &list.ranges);
         }
     }
 
-    /// Follows the list's scroll position with the ranges subscribed to, so
-    /// the rows coming into view get synced. Called with the rows the view is
-    /// about to draw.
+    /// Follows scroll so rows coming into view get synced.
     pub(in crate::screens::home) fn track_member_list_range(&mut self, visible: Range<usize>) {
         let Some(list) = &mut self.member_list else {
             return;

@@ -1,14 +1,11 @@
 //! Discord's flavour of markdown, parsed once when a message or embed arrives.
 //!
-//! It isn't CommonMark. Line breaks are kept as typed, `__` underlines rather
-//! than bolds, `||` hides a spoiler, `-#` is subtext, only three heading levels
-//! exist, block quotes can't nest, and a whole family of `<...>` tokens stand in
-//! for mentions, custom emoji and timestamps. The rules here follow Discord's
-//! own parser (a fork of simple-markdown) closely enough to agree on everything
-//! people actually type.
+//! Not CommonMark: line breaks are kept, `__` underlines, `||` is a spoiler,
+//! `-#` is subtext, headings stop at three levels, quotes can't nest, and
+//! `<...>` tokens stand in for mentions, emoji and timestamps. Follows
+//! Discord's own parser (a simple-markdown fork) for everything people type.
 //!
-//! The tree keeps mentions as ids rather than names: who `<@123>` is depends on
-//! what the app has loaded by the time it's drawn, so the view resolves them.
+//! Mentions stay ids: who `<@123>` is depends on what's loaded when it's drawn.
 
 mod block;
 mod inline;
@@ -23,37 +20,30 @@ use twilight_model::id::{
 use super::cdn;
 use super::time;
 
-/// The most emoji a message can hold and still be drawn jumbo, as Discord caps
-/// it.
+/// Discord's cap for drawing emoji-only text jumbo.
 const JUMBO_MAX: usize = 30;
 
-/// A parsed piece of text: message content, or an embed's description or
-/// field value.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Markdown {
     pub blocks: Vec<Block>,
-    /// Whether the text is nothing but emoji — at most [`JUMBO_MAX`] of them —
-    /// which Discord draws large. Only honoured for message content.
+    /// Nothing but up to [`JUMBO_MAX`] emoji. Only honoured for message content.
     pub jumbo: bool,
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Block {
-    /// A run of ordinary lines, newlines and blank lines included.
     Paragraph(Vec<Inline>),
-    /// `#`, `##` or `###`.
     Heading {
         level: u8,
         content: Vec<Inline>,
     },
-    /// `-# ` — small, muted text.
+    /// `-# `
     Subtext(Vec<Inline>),
     List(List),
     /// `> ` lines, or everything after `>>> `. Never holds another quote.
     Quote(Vec<Block>),
     Code {
-        /// The word after the opening fence. Kept though nothing highlights
-        /// it yet.
+        /// The word after the opening fence; nothing highlights it yet.
         language: Option<String>,
         code: String,
     },
@@ -61,7 +51,7 @@ pub enum Block {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct List {
-    /// The first item's number for an ordered list; `None` for bullets.
+    /// `None` for bullets.
     pub start: Option<u64>,
     pub items: Vec<ListItem>,
 }
@@ -69,7 +59,6 @@ pub struct List {
 #[derive(Clone, Debug, PartialEq)]
 pub struct ListItem {
     pub content: Vec<Inline>,
-    /// Lists indented under this item.
     pub children: Vec<List>,
 }
 
@@ -84,8 +73,7 @@ pub enum Inline {
     Code(String),
     Link {
         url: String,
-        /// The text of a `[masked](link)`; `None` for a bare URL, which is
-        /// shown as itself.
+        /// `None` for a bare URL, shown as itself.
         label: Option<Vec<Inline>>,
     },
     Mention(Mention),
@@ -115,7 +103,6 @@ pub enum GuildNavigation {
 }
 
 impl GuildNavigation {
-    /// The label Discord gives the link.
     pub fn label(self) -> &'static str {
         match self {
             Self::Customize => "Channels & Roles",
@@ -165,8 +152,7 @@ pub enum TimestampStyle {
 }
 
 impl Timestamp {
-    /// The text shown in the message. A relative one is measured from `now`,
-    /// in Unix seconds, so it moves on each time it's drawn.
+    /// A relative style is measured from `now` (Unix seconds).
     pub fn display(&self, now: i64) -> String {
         match self.style {
             TimestampStyle::ShortTime => time::format_unix_time(self.unix, false),
@@ -183,14 +169,12 @@ impl Timestamp {
         }
     }
 
-    /// The long form, shown in the timestamp's tooltip.
     pub fn full(&self) -> String {
         time::format_unix_full(self.unix)
     }
 }
 
 impl Markdown {
-    /// Parses message content, or an embed description or field value.
     pub fn parse(source: &str) -> Self {
         let blocks = block::parse(source);
         let jumbo = is_jumbo(&blocks);
@@ -198,14 +182,12 @@ impl Markdown {
     }
 }
 
-/// Parses text that only takes inline formatting, without links: an embed's
-/// title or a field's name.
+/// Inline formatting without links: an embed's title or a field's name.
 pub fn parse_inline(source: &str) -> Vec<Inline> {
     inline::parse(source, false)
 }
 
-/// Parses a message for the one-line quote above a reply to it: inline
-/// formatting only, with its lines run together.
+/// Inline-only with lines run together, for a reply's one-line quote.
 pub fn parse_preview(source: &str) -> Vec<Inline> {
     /// Past this the preview is cut off on screen anyway.
     const MAX_CHARS: usize = 300;
@@ -217,7 +199,6 @@ pub fn parse_preview(source: &str) -> Vec<Inline> {
     inline::parse(&flat, true)
 }
 
-/// Whether the text is only custom and unicode emoji, and few enough of them.
 fn is_jumbo(blocks: &[Block]) -> bool {
     let [Block::Paragraph(inlines)] = blocks else {
         return false;
@@ -236,12 +217,10 @@ fn is_jumbo(blocks: &[Block]) -> bool {
     (1..=JUMBO_MAX).contains(&count)
 }
 
-/// Counts the emoji in text that holds nothing else but whitespace, or `None`
-/// when it holds anything else.
-///
-/// An approximation of the emoji grammar that doesn't need its tables: joiners,
-/// variation selectors, skin tones and tag characters ride along with the emoji
-/// they modify, and a pair of regional indicators is one flag.
+/// `None` if the text holds anything but emoji and whitespace. Approximates
+/// the emoji grammar without its tables: joiners, variation selectors, skin
+/// tones and tags ride along with their emoji, and a regional-indicator pair
+/// is one flag.
 fn count_unicode_emoji(text: &str) -> Option<usize> {
     let mut count = 0;
     let mut regional = 0;
@@ -261,8 +240,7 @@ fn count_unicode_emoji(text: &str) -> Option<usize> {
                 count += 1;
             }
         } else if matches!(c, '0'..='9' | '#' | '*') {
-            // Only a keycap: the digit, maybe a variation selector, then the
-            // enclosing keycap mark.
+            // Only a keycap: digit, optional variation selector, keycap mark.
             if chars.peek() == Some(&'\u{FE0F}') {
                 chars.next();
             }
@@ -282,7 +260,7 @@ fn count_unicode_emoji(text: &str) -> Option<usize> {
     Some(count)
 }
 
-/// The blocks where emoji live, without the full Unicode property table.
+/// The blocks where emoji live, standing in for the Unicode property table.
 fn is_pictographic(code: u32) -> bool {
     matches!(
         code,

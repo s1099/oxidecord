@@ -1,13 +1,8 @@
-//! The app's preset themes.
+//! The app's preset themes, baked in from `themes/` by `build.rs` and parsed at
+//! startup into [`Themes`], the global the settings page picks from.
 //!
-//! `build.rs` bakes every JSON file in `themes/` into the binary, so the
-//! presets travel with it and no theme folder has to sit beside the executable.
-//! They're parsed once at startup into [`Themes`], the global the settings page
-//! lists and picks from.
-//!
-//! gpui-component's own [`ThemeRegistry`] is only used for the two themes it
-//! ships with; it loads from a watched directory and has no way to register a
-//! theme from memory, so the presets are kept alongside it rather than in it.
+//! gpui-component's [`ThemeRegistry`] only loads from a watched directory and
+//! can't register a theme from memory, so presets are kept alongside it.
 
 use std::rc::Rc;
 
@@ -18,33 +13,26 @@ use crate::platform::prefs;
 
 include!(concat!(env!("OUT_DIR"), "/preset_themes.rs"));
 
-/// The preset family used until one is picked, from `themes/zinc.json`.
 const DEFAULT_PRESET: &str = "Zinc";
 
-/// Corners for presets that don't set their own. gpui-component's defaults are
-/// tighter than the rest of the UI (see [`crate::ui::depth::radius`]), and its
-/// widgets — inputs, menus, dialogs — should match the app's own.
+/// Corners for presets that don't set their own; gpui-component's default is
+/// tighter than the app's (see [`crate::ui::depth::radius`]).
 const RADIUS: Pixels = px(8.);
 const RADIUS_LG: Pixels = px(14.);
 
-/// Where the toast stack starts, clear of the window controls drawn into the
-/// top-right of every screen's header.
+/// Toast stack top offset, clear of the window controls.
 const NOTIFICATION_TOP: Pixels = px(68.);
 
-/// Every theme the settings page can switch to, in the order it lists them.
 pub struct Themes {
     presets: Vec<Rc<ThemeConfig>>,
 }
 
 impl Global for Themes {}
 
-/// Parses the baked-in themes and restores the last chosen one.
-///
-/// Must run after `gpui_kit::component::init`, which installs the [`Theme`] and
-/// [`ThemeRegistry`] globals this builds on.
+/// Parses the baked-in themes and restores the last chosen one. Must run after
+/// `gpui_kit::component::init`, which installs the globals this builds on.
 pub fn init(cx: &mut App) {
-    // The built-in light and dark themes first, so there's always a way back to
-    // the stock look.
+    // Built-ins first, so there's always a way back to the stock look.
     let mut presets: Vec<Rc<ThemeConfig>> = vec![
         ThemeRegistry::global(cx).default_light_theme().clone(),
         ThemeRegistry::global(cx).default_dark_theme().clone(),
@@ -52,19 +40,17 @@ pub fn init(cx: &mut App) {
 
     for (file, source) in PRESET_THEME_FILES {
         match serde_json::from_str::<ThemeSet>(source) {
-            // A file holds a set: one JSON file often carries a light and a
-            // dark variant, and each variant is a theme of its own here.
+            // A file is a set: often a light and a dark variant, each its own theme.
             Ok(set) => presets.extend(set.themes.into_iter().map(Rc::new)),
             Err(err) => eprintln!("ignoring invalid preset theme {file}: {err}"),
         }
     }
 
-    // Names are the identity a preference is stored under, so a duplicate would
-    // make the choice ambiguous. First one wins.
+    // Prefs store the name, so duplicates are ambiguous. First wins.
     let mut seen = std::collections::HashSet::new();
     presets.retain(|theme| seen.insert(theme.name.clone()));
 
-    // Light before dark, then by name, so the list reads the same every launch.
+    // Light before dark, then by name, for a stable order.
     presets.sort_by(|a, b| {
         a.mode
             .is_dark()
@@ -74,9 +60,7 @@ pub fn init(cx: &mut App) {
 
     cx.set_global(Themes { presets });
 
-    // Without a stored choice, Zinc — the palette the rest of the UI is designed
-    // around — in whichever mode the system appearance picked during
-    // `gpui_kit::component::init`.
+    // Default: Zinc, in the mode the system appearance picked during init.
     let name = prefs::load().theme.unwrap_or_else(|| {
         let mode = if Theme::global(cx).mode.is_dark() {
             "Dark"
@@ -88,10 +72,8 @@ pub fn init(cx: &mut App) {
     apply(&name, None, cx);
 }
 
-/// Secondary text that's still meant to be read — channel names, a channel's
-/// topic. Presets make `muted_foreground` dim enough for hints and timestamps,
-/// which is too dim for these, so it's pulled part of the way toward the
-/// foreground, stopping short of the messages themselves.
+/// Secondary text that must stay readable (channel names, topics): presets'
+/// `muted_foreground` is too dim, so this pulls it partway toward the foreground.
 pub fn secondary_text(cx: &App) -> Hsla {
     let theme = cx.theme();
     theme.muted_foreground.blend(theme.foreground.opacity(0.35))
@@ -101,26 +83,23 @@ pub fn presets(cx: &App) -> &[Rc<ThemeConfig>] {
     &cx.global::<Themes>().presets
 }
 
-/// Name of the theme currently in use. Matches a preset's name once one has
-/// been picked; before that it's whichever built-in the system appearance chose.
+/// Matches a preset's name once one is picked; before that, a built-in's.
 pub fn active_name(cx: &App) -> SharedString {
     Theme::global(cx).theme_name().clone()
 }
 
-/// Switches to the named preset and remembers it for the next launch.
+/// Switches to the named preset and persists the choice.
 pub fn activate(name: &str, window: &mut Window, cx: &mut App) {
     apply(name, Some(window), cx);
     prefs::update(|prefs| prefs.theme = Some(name.to_string()));
 }
 
-/// Applies a preset by name, ignoring names that aren't among them — a stored
-/// preference can outlive the theme file it points at.
+/// Unknown names are ignored: a stored preference can outlive its theme file.
 fn apply(name: &str, window: Option<&mut Window>, cx: &mut App) {
     let Some(config) = presets(cx).iter().find(|theme| theme.name == name).cloned() else {
         return;
     };
 
-    // `apply_config` also sets the mode, so a dark preset takes the app dark.
     let theme = Theme::global_mut(cx);
     theme.apply_config(&config);
     if config.radius.is_none() {
@@ -131,8 +110,7 @@ fn apply(name: &str, window: Option<&mut Window>, cx: &mut App) {
     }
     theme.notification.margins.top = NOTIFICATION_TOP;
 
-    // Colours are read straight out of the global during render, so every open
-    // window has to be repainted, not just the one the click came from.
+    // Colours are read from the global at render, so repaint every window.
     match window {
         Some(window) => window.refresh(),
         None => cx.refresh_windows(),
@@ -141,14 +119,12 @@ fn apply(name: &str, window: Option<&mut Window>, cx: &mut App) {
 
 #[cfg(test)]
 mod tests {
-    // Named imports rather than a glob: `use super::*` would pull in gpui's own
-    // `test` attribute macro over the standard one.
+    // Not `use super::*`: it would pull in gpui's `test` macro over the standard one.
     use gpui_kit::component::ThemeSet;
 
     use super::PRESET_THEME_FILES;
 
-    /// A theme file that doesn't parse is dropped at startup with only a line on
-    /// stderr to show for it, so catch it here instead.
+    /// A theme file that fails to parse is silently dropped at startup.
     #[test]
     fn every_preset_file_parses() {
         assert!(!PRESET_THEME_FILES.is_empty(), "no themes were baked in");

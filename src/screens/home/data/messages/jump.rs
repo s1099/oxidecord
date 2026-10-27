@@ -1,7 +1,6 @@
-//! Jumping to a message: a reply's original, the message a reply in the
-//! composer is for, or a message link's target. History around it is loaded
-//! when it isn't already, and it lights up once it's on screen, as Discord's
-//! does.
+//! Jumping to a message: a reply's original, the message a composer reply is
+//! for, or a link's target. History around it loads if needed, and it lights up
+//! once on screen, as in Discord.
 
 use std::time::Duration;
 
@@ -14,12 +13,10 @@ use twilight_model::id::{
 use crate::discord::{self, MessageLink, MessagePage};
 use crate::screens::home::HomeScreen;
 
-/// How long a message jumped to stays lit.
 const FLASH: Duration = Duration::from_secs(2);
 
 impl HomeScreen {
-    /// Opens a message link's conversation at its message. Returns false for
-    /// one in a guild the user isn't in, which only the browser can show.
+    /// False for a guild the user isn't in, which only the browser can show.
     pub(in crate::screens::home) fn open_message_link(
         &mut self,
         link: MessageLink,
@@ -74,8 +71,6 @@ impl HomeScreen {
         true
     }
 
-    /// Scrolls the open conversation to `message_id`, loading the history
-    /// around it first when it isn't loaded.
     pub(in crate::screens::home) fn jump_to_message(
         &mut self,
         message_id: Id<MessageMarker>,
@@ -94,8 +89,6 @@ impl HomeScreen {
         self.load_around(channel_id, message_id, window, cx);
     }
 
-    /// Replaces the conversation with the page around `message_id`, as far
-    /// back as it is, to be paged either way from there.
     pub(in crate::screens::home) fn load_around(
         &mut self,
         channel_id: Id<ChannelMarker>,
@@ -169,12 +162,9 @@ impl HomeScreen {
             .rposition(|message| message.id == message_id)
     }
 
-    /// Brings the message at `ix` into the middle of the view, unless it's
-    /// already all in sight, and lights it up.
-    ///
-    /// Centring needs the message's height, which is only known once the list
-    /// has laid it out, so it waits for that: next-frame callbacks run before
-    /// the frame they're queued for is drawn, hence two of them.
+    /// Skipped if already all in sight. Centring needs the row's height, known only
+    /// after layout, so it waits; next-frame callbacks run before the frame they're
+    /// queued for is drawn, hence two.
     fn reveal_message(
         &mut self,
         message_id: Id<MessageMarker>,

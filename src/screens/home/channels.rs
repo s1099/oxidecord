@@ -2,16 +2,14 @@ use std::collections::HashSet;
 
 use crate::discord::{Channel, ChannelKind};
 
-/// A category and its channels (or the uncategorized channels when
-/// `category` is `None`), in Discord's display order.
+/// `category` is `None` for the uncategorized channels.
 pub(in crate::screens::home) struct ChannelGroup {
     pub(in crate::screens::home) category: Option<Channel>,
     pub(in crate::screens::home) channels: Vec<Channel>,
 }
 
-/// Groups a guild's channels for the sidebar in Discord's display order:
-/// uncategorized channels first, then each category (by position) with its
-/// children, text-like channels before voice channels in each group.
+/// Discord's display order: uncategorized first, then categories by position,
+/// text-like channels before voice within each group.
 pub(in crate::screens::home) fn build_channel_groups(channels: Vec<Channel>) -> Vec<ChannelGroup> {
     let (mut categories, mut others): (Vec<_>, Vec<_>) = channels
         .into_iter()
@@ -23,7 +21,6 @@ pub(in crate::screens::home) fn build_channel_groups(channels: Vec<Channel>) -> 
     let category_ids: HashSet<_> = categories.iter().map(|category| category.id).collect();
 
     let mut groups = Vec::new();
-    // Channels with no (known) parent category sit above all categories.
     let uncategorized: Vec<_> = others
         .iter()
         .filter(|channel| {
@@ -45,8 +42,7 @@ pub(in crate::screens::home) fn build_channel_groups(channels: Vec<Channel>) -> 
             .filter(|channel| channel.parent_id == Some(category.id))
             .cloned()
             .collect();
-        // A category whose every channel was filtered out (e.g. the user can't
-        // view any of them) shouldn't appear as an empty header.
+        // Skip categories whose channels were all filtered out (not viewable).
         if channels.is_empty() {
             continue;
         }

@@ -9,8 +9,7 @@ use wry::WebViewBuilder;
 use crate::discord;
 use crate::screens::app::AppScreen;
 
-/// Injected into Discord's login page so it reports the token the moment the
-/// page writes it to `localStorage`, which is the only place it appears.
+/// Injected into Discord's login page; the token only ever appears in `localStorage`.
 const TOKEN_HOOK_SCRIPT: &str = r#"
     (function() {
         const storage = window.localStorage;
@@ -64,14 +63,12 @@ impl LoginWebview {
         let window_handle = window.window_handle();
 
         cx.spawn(async move |this: WeakEntity<Self>, cx| {
-            // Give GPUI a moment to finish creating the OS window the webview
-            // gets parented to.
+            // Lets GPUI finish creating the OS window the webview parents to.
             cx.background_executor()
                 .timer(std::time::Duration::from_millis(100))
                 .await;
 
-            // The webview has to be built on the main thread, inside the
-            // window's context.
+            // Must be built on the main thread, inside the window's context.
             let result = gpui_kit::AsyncApp::update(cx, |cx| {
                 cx.update_window(window_handle, |_, window, cx| {
                     let window_handle_capture = window.window_handle();

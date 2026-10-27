@@ -93,8 +93,7 @@ impl HomeScreen {
         self.fetch_opening_page(channel_id, marker, window, cx);
     }
 
-    /// Leaves history opened further back for the newest page, as Discord's
-    /// "Jump To Present" does.
+    /// Matches Discord's "Jump To Present".
     pub(in crate::screens::home) fn jump_to_present(
         &mut self,
         window: &mut Window,
@@ -119,11 +118,9 @@ impl HomeScreen {
         cx.notify();
     }
 
-    /// Fetches the page a conversation opens on: the newest, scrolled to the
-    /// "new" divider when `unread_after` — the last message read — falls in
-    /// it. When it falls further back, the unread run is longer than a page,
-    /// and the conversation opens where the user left off instead, as
-    /// Discord's does, to be paged forward from there.
+    /// The newest page, scrolled to the "new" divider when `unread_after` falls in it.
+    /// If it falls further back the unread run exceeds a page, so it opens where the
+    /// user left off, as Discord does, to be paged forward.
     fn fetch_opening_page(
         &mut self,
         channel_id: Id<ChannelMarker>,
@@ -146,9 +143,7 @@ impl HomeScreen {
                     .map(|page| (page, false));
             }
             let _ = this.update_in(cx, |this, window, cx| {
-                // The user may have clicked another channel, or jumped to a
-                // message, while this request was in flight; drop the stale
-                // response.
+                // Drop the stale response if the user changed channel or jumped meanwhile.
                 if this.selected_channel != Some(channel_id)
                     || this.messages_generation != generation
                 {
@@ -192,7 +187,6 @@ impl HomeScreen {
                     Ok((messages, latest)) => {
                         this.show_opening_page(messages, latest, unread_after, window, cx);
                     }
-                    // What the cache showed stays up.
                     Err(err) if refreshing => eprintln!("refreshing a conversation failed: {err}"),
                     Err(err) => this.messages_error = Some(err),
                 }
@@ -203,7 +197,6 @@ impl HomeScreen {
         .detach();
     }
 
-    /// Replaces the conversation with the page it opens on.
     fn show_opening_page(
         &mut self,
         messages: Vec<discord::Message>,
@@ -235,11 +228,9 @@ impl HomeScreen {
 
     /// Puts the first unread message at the top of the view.
     ///
-    /// The list stops short of scrolling past its end, so when the unread
-    /// all fit on screen this lands at the bottom after all, and they've been
-    /// read. That's only known once the list has been laid out, so the check
-    /// waits for it: next-frame callbacks run before the frame they're queued
-    /// for is drawn, hence two of them.
+    /// The list won't scroll past its end, so if the unread all fit it lands at the
+    /// bottom, already read. That's only known after layout, hence the wait;
+    /// next-frame callbacks run before the frame they're queued for is drawn, hence two.
     fn scroll_to_unread(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let ix = match self.unread_divider_index() {
             Some(ix) => ix,
@@ -268,8 +259,6 @@ impl HomeScreen {
         });
     }
 
-    /// Empties the message pane and everything tied to the conversation that
-    /// was open, ready for the next one (or none).
     pub(in crate::screens::home) fn reset_conversation(
         &mut self,
         placeholder: Option<String>,
@@ -288,8 +277,8 @@ impl HomeScreen {
         self.messages_list.reset(0);
         self.messages_generation += 1;
         self.reactors.clear();
-        // Release the previous conversation's decoded images instead of letting
-        // them accumulate; the next one repopulates the cache as it renders.
+        // Release the previous conversation's decoded images; the next one repopulates
+        // the cache.
         self.image_cache
             .update(cx, |cache, cx| cache.clear(window, cx));
         self.release_gifs(window, cx);
@@ -299,8 +288,8 @@ impl HomeScreen {
         self.reached_oldest = false;
         self.newer_loading = false;
         self.reached_newest = true;
-        // A freshly opened conversation starts pinned to its newest message, so
-        // live messages should follow along until the user scrolls up.
+        // Starts pinned to the newest message, so live messages follow until the user
+        // scrolls up.
         self.at_bottom = true;
         self.send_error = None;
         self.replying_to = None;
@@ -323,8 +312,6 @@ impl HomeScreen {
         cx.notify();
     }
 
-    /// Fetches the page of messages older than the oldest loaded one and
-    /// prepends it, keeping the current scroll position.
     pub(in crate::screens::home) fn load_older_messages(&mut self, cx: &mut Context<Self>) {
         if self.messages_loading || self.older_loading || self.reached_oldest {
             return;
@@ -341,8 +328,7 @@ impl HomeScreen {
         cx.spawn(async move |this, cx| {
             let result = discord::fetch_messages(channel_id, MessagePage::Before(oldest_id)).await;
             let _ = this.update(cx, |this, cx| {
-                // Drop the response if the channel changed or the messages
-                // were reloaded while this request was in flight.
+                // Drop the response if the channel changed or messages reloaded meanwhile.
                 if this.selected_channel != Some(channel_id)
                     || this.messages.first().map(|message| message.id) != Some(oldest_id)
                 {
@@ -373,8 +359,6 @@ impl HomeScreen {
         .detach();
     }
 
-    /// Fetches the page newer than the newest loaded message and appends it,
-    /// while the conversation is open further back than its present.
     pub(in crate::screens::home) fn load_newer_messages(&mut self, cx: &mut Context<Self>) {
         if self.messages_loading || self.newer_loading || self.reached_newest {
             return;
@@ -405,10 +389,9 @@ impl HomeScreen {
                     }
                     let count = newer.len();
                     if count > 0 {
-                        // Scrolled right to the end, the list is pinned to its
-                        // bottom and would ride the new rows down past every
-                        // one of them. Pin it where it stands instead: a
-                        // viewport up from the end.
+                        // Scrolled to the very end, the list is pinned to the bottom and would ride
+                        // new
+                        // rows down past all of them. Pin it a viewport up from the end instead.
                         let list = &this.messages_list;
                         if list.logical_scroll_top().item_ix >= list.item_count() {
                             list.scroll_by(-list.viewport_bounds().size.height);

@@ -6,22 +6,17 @@ use gpui_kit::*;
 
 use crate::discord;
 
-/// A file staged for sending, picked from disk or pasted from the clipboard
 pub(crate) struct PendingAttachment {
     /// Unique within the composer; keys the card element and targets removal.
     pub id: u64,
-    /// The upload filename: the file's own name, or one derived from the image
-    /// format for a pasted image (e.g. `image-1.png`).
+    /// The upload filename; derived (`image-1.png`) for a pasted image.
     pub filename: String,
-    /// The file's contents, rendered as a preview and uploaded on send.
     pub data: AttachmentData,
-    /// Whether it goes out marked as a spoiler, hidden until clicked.
     pub spoiler: bool,
 }
 
-/// The contents of a staged attachment. An image keeps the decoded [`Image`], so
-/// the same bytes back both its thumbnail and the upload; any other file is held
-/// as raw bytes and previewed as a file card instead.
+/// An image keeps the decoded [`Image`] so one set of bytes backs both the
+/// thumbnail and the upload; anything else is raw bytes shown as a file card.
 pub(crate) enum AttachmentData {
     Image(Arc<Image>),
     File(Arc<Vec<u8>>),
@@ -44,8 +39,7 @@ impl AttachmentData {
 }
 
 impl PendingAttachment {
-    /// The name it's uploaded under. Discord has no spoiler flag on an
-    /// attachment, only the filename prefix every client recognises.
+    /// Discord has no spoiler flag on an attachment, only a filename prefix.
     pub fn upload_filename(&self) -> String {
         if self.spoiler && !self.filename.starts_with(discord::SPOILER_PREFIX) {
             format!("{}{}", discord::SPOILER_PREFIX, self.filename)
@@ -54,11 +48,8 @@ impl PendingAttachment {
         }
     }
 
-    /// Drops the decoded thumbnail gpui kept for this attachment's preview.
-    ///
-    /// `img` decodes an `Arc<Image>` into the global asset cache, which has no
-    /// eviction of its own, so a staged image would stay resident for the rest
-    /// of the session after it is sent or removed.
+    /// `img` decodes into the global asset cache, which never evicts, so a staged
+    /// image would otherwise stay resident after it is sent or removed.
     pub fn release_preview(&self, cx: &mut App) {
         if let Some(image) = self.data.image() {
             ImageSource::Image(image).remove_asset(cx);

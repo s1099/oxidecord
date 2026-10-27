@@ -8,11 +8,8 @@ use twilight_model::id::{Id, marker::ChannelMarker};
 use super::request;
 use crate::discord::model::{DirectMessage, convert_dms};
 
-/// Fetches the current user's open DM and group-DM conversations, ordered
-/// most-recently-active first.
-///
-/// twilight has no typed helper for `GET /users/@me/channels`, so this issues
-/// the route through the client's low-level request path.
+/// Fetches the user's open DMs and group DMs, most recently active first
+/// (`GET /users/@me/channels`; no twilight helper, so a raw request).
 pub async fn fetch_dms() -> Result<Vec<DirectMessage>, String> {
     request(|client| async move {
         let request = Request::from_route(&Route::GetUserPrivateChannels);
@@ -26,16 +23,12 @@ pub async fn fetch_dms() -> Result<Vec<DirectMessage>, String> {
     .await
 }
 
-/// Rings everyone in a DM's call (`POST /channels/{id}/call/ring`).
+/// Rings everyone in a DM's call (`POST /channels/{id}/call/ring`). Joining only starts
+/// the call; nobody is rung until a client asks. A `null` recipient list rings them all.
 ///
-/// Joining a DM's voice channel only starts the call; nobody is rung until a
-/// client asks, as Discord's own does right after joining. A user-client
-/// endpoint with no twilight helper. A `null` recipient list rings them all.
-///
-/// Being able to call someone doesn't mean being allowed to ring them, so it
-/// first asks `GET /channels/{id}/call`, as Discord's client does. A user
-/// who isn't `ringable` would only be refused with a 403 (50013); the call
-/// still goes ahead without the ring, as it does in Discord's client.
+/// Being able to call someone doesn't mean being allowed to ring them, so it first asks
+/// `GET /channels/{id}/call`, as Discord's client does. A user who isn't `ringable` would
+/// get a 403 (50013); the call still goes ahead without the ring.
 pub async fn ring_call(channel_id: Id<ChannelMarker>) -> Result<(), String> {
     request(move |client| async move {
         let request =

@@ -1,39 +1,30 @@
-//! The user's server ordering and online status, as they come out of
-//! Discord's `settings-proto`.
+//! Server ordering and online status from Discord's `settings-proto`.
 //!
 //! `GET /users/@me/settings-proto/1` returns `PreloadedUserSettings` as a
-//! base64-encoded protobuf. Field 14 of it is `GuildFolders`, which is where
-//! the client keeps the rail's order: `folders` holds every top-level entry —
-//! a real folder when it has an id, or a lone guild when it doesn't — and
-//! `guild_positions` is the flattened order of every guild inside them.
-//! Field 11 is `StatusSettings`, whose `status` is the status the user picked
-//! — it's stored here, not in the presence, so it survives restarts and
-//! follows the user to their other clients.
+//! base64 protobuf. Field 14 is `GuildFolders`: `folders` holds every top-level
+//! entry (a real folder when it has an id, else a lone guild) and
+//! `guild_positions` the flattened guild order. Field 11 is `StatusSettings`;
+//! the chosen status lives here rather than in presence so it survives
+//! restarts and follows the user across clients.
 //!
-//! Pulling in a protobuf runtime for one message isn't worth it, so the wire
-//! format is walked by hand below, skipping every field this file doesn't
-//! name.
+//! The wire format is walked by hand; a protobuf runtime isn't worth it for
+//! one message.
 
 use serde::Deserialize;
 use twilight_model::id::{Id, marker::GuildMarker};
 
-/// The envelope the settings-proto endpoints answer with.
 #[derive(Deserialize)]
 pub(in crate::discord) struct RawSettingsProto {
-    /// The base64-encoded `PreloadedUserSettings` message.
     pub settings: String,
 }
 
-/// What `settings-proto` holds that the app reads.
 #[derive(Debug, Default, Clone)]
 pub struct UserSettings {
     pub guild_folders: GuildFolders,
-    /// `None` when the user has never picked one, which Discord treats as
-    /// online.
+    /// `None` when never picked; Discord treats it as online.
     pub status: Option<PresenceStatus>,
 }
 
-/// The status the user picks for themselves, as Discord names it on the wire.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub enum PresenceStatus {
     #[default]
@@ -61,8 +52,7 @@ impl PresenceStatus {
         }
     }
 
-    /// Reads another user's status from a presence. Discord sends `offline`
-    /// for anyone offline or invisible, which looks the same either way.
+    /// Discord sends `offline` for both offline and invisible users.
     pub(in crate::discord) fn from_presence(status: &str) -> Option<Self> {
         match status {
             "offline" => Some(Self::Invisible),
@@ -84,17 +74,16 @@ impl PresenceStatus {
 #[derive(Debug, Default, Clone)]
 pub struct GuildFolders {
     pub folders: Vec<GuildFolder>,
-    /// Every guild in rail order, folders flattened into their contents.
+    /// Folders flattened into their contents.
     pub guild_positions: Vec<Id<GuildMarker>>,
 }
 
 #[derive(Debug, Default, Clone)]
 pub struct GuildFolder {
-    /// `None` for a bare guild sitting at the top level rather than a folder.
+    /// `None` for a bare top-level guild.
     pub id: Option<i64>,
     /// Unset for unnamed folders, which the client renders from their members.
     pub name: Option<String>,
-    /// The folder's colour as `0xRRGGBB`.
     pub color: Option<u32>,
     pub guild_ids: Vec<Id<GuildMarker>>,
 }
@@ -114,7 +103,7 @@ pub(in crate::discord) fn parse_user_settings(settings: &str) -> Result<UserSett
     Ok(parsed)
 }
 
-/// Reads `StatusSettings.status`, a `StringValue` in field 1.
+/// `StatusSettings.status`, a `StringValue` in field 1.
 fn parse_status(bytes: &[u8]) -> Option<PresenceStatus> {
     Fields::new(bytes).find_map(|(number, value)| match (number, value) {
         (1, Value::Bytes(bytes)) => unwrap_bytes(bytes)
@@ -124,16 +113,15 @@ fn parse_status(bytes: &[u8]) -> Option<PresenceStatus> {
     })
 }
 
-/// Encodes a `PreloadedUserSettings` holding only `status.status`, base64'd
-/// for `PATCH /users/@me/settings-proto/1`. Discord merges a patch into what
-/// it has, so every field left out keeps its value.
+/// Encodes a `PreloadedUserSettings` with only `status.status`, for
+/// `PATCH /users/@me/settings-proto/1`. Discord merges patches, so omitted
+/// fields keep their values.
 pub(in crate::discord) fn encode_status_settings(status: PresenceStatus) -> String {
     let string_value = length_delimited(1, status.as_str().as_bytes());
     let status_settings = length_delimited(1, &string_value);
     base64_encode(&length_delimited(11, &status_settings))
 }
 
-/// One length-delimited field: its tag (wire type 2), length, and bytes.
 fn length_delimited(number: u32, bytes: &[u8]) -> Vec<u8> {
     let mut out = Vec::with_capacity(bytes.len() + 4);
     write_varint(&mut out, u64::from(number) << 3 | 2);
@@ -183,9 +171,8 @@ fn parse_folder(bytes: &[u8]) -> GuildFolder {
     folder
 }
 
-/// Reads a packed repeated field of guild ids. Discord declares these as
-/// `fixed64`, but packed varints share the wire type, so anything that isn't a
-/// whole number of 8-byte words is read as varints instead.
+/// Discord declares these `fixed64`, but packed varints share the wire type, so
+/// anything not a whole number of 8-byte words is read as varints.
 fn parse_ids(bytes: &[u8]) -> Vec<Id<GuildMarker>> {
     let raw: Vec<u64> = if bytes.len().is_multiple_of(8) {
         bytes
@@ -204,7 +191,6 @@ fn parse_ids(bytes: &[u8]) -> Vec<Id<GuildMarker>> {
     raw.into_iter().filter_map(Id::new_checked).collect()
 }
 
-/// Reads field 1 of a protobuf scalar wrapper message.
 fn unwrap_scalar(bytes: &[u8]) -> Option<u64> {
     Fields::new(bytes).find_map(|(number, value)| match (number, value) {
         (1, Value::Varint(value) | Value::Fixed64(value)) => Some(value),
@@ -227,8 +213,7 @@ enum Value<'a> {
     Fixed32(u32),
 }
 
-/// Walks the fields of one protobuf message, stopping at the first malformed
-/// or truncated one.
+/// Stops at the first malformed or truncated field.
 struct Fields<'a> {
     bytes: &'a [u8],
     pos: usize,
@@ -280,7 +265,6 @@ fn read_varint(bytes: &[u8], pos: &mut usize) -> Option<u64> {
     None
 }
 
-/// Standard-alphabet base64, padded.
 fn base64_encode(bytes: &[u8]) -> String {
     const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
@@ -300,7 +284,7 @@ fn base64_encode(bytes: &[u8]) -> String {
     out
 }
 
-/// Standard-alphabet base64, tolerating the padding being left off.
+/// Also accepts url-safe characters and missing padding.
 fn base64_decode(input: &str) -> Option<Vec<u8>> {
     let mut out = Vec::with_capacity(input.len() / 4 * 3);
     let mut buffer = 0u32;

@@ -52,8 +52,8 @@ impl HomeScreen {
                             .child(
                                 Button::new(("remove-attachment", id))
                                     .icon(IconName::Close)
-                                    // Outline rather than danger: the translucent
-                                    // danger fill would vanish against the image.
+                                    // Outline: a translucent danger fill vanishes against the
+                                    // image.
                                     .outline()
                                     .xsmall()
                                     .text_color(cx.theme().danger)
@@ -67,8 +67,7 @@ impl HomeScreen {
     }
 }
 
-/// Lays a "SPOILER" label over a staged attachment that will go out marked
-/// as one. The preview itself stays visible — it's the sender's own file.
+/// The preview itself stays visible: it's the sender's own file.
 fn spoiler_badge() -> impl IntoElement {
     div()
         .absolute()
@@ -77,8 +76,7 @@ fn spoiler_badge() -> impl IntoElement {
         .px_2()
         .py(px(2.))
         .rounded_full()
-        // A scrim like the one over a received spoiler, for the same reason:
-        // it sits on top of arbitrary picture colours.
+        // A scrim, since it sits on arbitrary picture colours.
         .bg(black().opacity(0.7))
         .text_xs()
         .font_weight(FontWeight::BOLD)
@@ -86,8 +84,6 @@ fn spoiler_badge() -> impl IntoElement {
         .child("SPOILER")
 }
 
-/// One staged attachment: the image itself when it is one, otherwise a card
-/// with the file's name and size.
 fn render_preview(attachment: &PendingAttachment, cx: &App) -> AnyElement {
     let theme = cx.theme();
 

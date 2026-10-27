@@ -1,5 +1,4 @@
-// Release builds run as a GUI app so double-clicking the exe does not pop a
-// console window; debug builds keep the console for logging.
+// Release builds skip the console window; debug builds keep it for logging.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod assets;
@@ -22,13 +21,12 @@ use crate::screens::home::{
 };
 
 fn main() {
-    // The app doubles as its own update helper: started with this flag it only
-    // swaps the downloaded binary in and exits, with no UI in between.
+    // The app is its own update helper: with this flag it swaps the binary and exits.
     if std::env::args().any(|arg| arg == platform::updater::APPLY_UPDATE_ARG) {
         platform::updater::apply_update();
     }
 
-    // required for webview to work on windows
+    // The login webview doesn't work with DirectComposition.
     #[cfg(target_os = "windows")]
     unsafe {
         std::env::set_var("GPUI_DISABLE_DIRECT_COMPOSITION", "true");
@@ -42,11 +40,8 @@ fn main() {
         ui::theme::init(cx);
         platform::updater::init(cx);
 
-        // Bound with no context so it resolves ahead of the text input's own
-        // paste binding; the handler consumes the event only when an image is
-        // pasted into the composer and otherwise lets text paste through.
-        // Copy works the same way: a selection in the message list copies,
-        // and with none the input's own copy gets the keystroke.
+        // No context, so these resolve ahead of the text input's own paste/copy;
+        // the handlers pass the keystroke on unless there's an image or a list selection.
         cx.bind_keys([
             KeyBinding::new("ctrl-v", PasteAttachment, None),
             KeyBinding::new("cmd-v", PasteAttachment, None),
@@ -54,10 +49,9 @@ fn main() {
             KeyBinding::new("cmd-c", CopySelection, None),
         ]);
 
-        // These share the input's own context depth, where a later binding
-        // wins, so they have to be bound after `gpui_kit::component::init`. In both
-        // the composer and the edit box, enter sends and shift-enter is handed
-        // the input's own enter, which starts a new line, as in Discord.
+        // Same context depth as the input's own bindings, where the later one
+        // wins, so these must come after `gpui_kit::component::init`.
+        // Shift-enter falls through to the input's newline.
         let edit_input = format!("{EDIT_CONTEXT} > Input");
         let composer_input = format!("{COMPOSER_CONTEXT} > Input");
         cx.bind_keys([
@@ -80,27 +74,23 @@ fn main() {
                 Some(&edit_input),
             ),
             KeyBinding::new("up", EditLastMessage, Some(&composer_input)),
-            // After the up arrow's edit binding, so suggestions get it first
-            // and hand it on when there are none.
+            // After the edit binding, so suggestions get first claim and pass it on.
             KeyBinding::new("up", AutocompletePrevious, Some(&composer_input)),
             KeyBinding::new("down", AutocompleteNext, Some(&composer_input)),
             KeyBinding::new("tab", AutocompleteAccept, Some(&composer_input)),
-            // In the screen's own context, so anything inside it that binds
-            // escape — an input, a menu — takes it first. Bound with no
-            // context it would count as the deepest binding and beat them.
+            // Screen context, not none: a global binding would beat any input or
+            // menu that binds escape.
             KeyBinding::new("escape", MarkConversationRead, Some(HOME_CONTEXT)),
         ]);
 
         let options = WindowOptions {
             titlebar: Some(TitlebarOptions {
-                // Still the taskbar's name for the window, but nothing is drawn
-                // for it: the system title bar is gone and the app draws its own
-                // controls into the conversation header instead.
+                // Only the taskbar name; the app draws its own window controls.
                 title: Some("Oxidecord".into()),
                 appears_transparent: true,
                 ..Default::default()
             }),
-            // Open maximized; the bounds are the size to restore to when unmaximized.
+            // The bounds are the size restored to on unmaximize.
             window_bounds: Some(WindowBounds::Maximized(Bounds::centered(
                 None,
                 size(px(1200.), px(800.)),
@@ -116,7 +106,7 @@ fn main() {
         })
         .expect("Failed to open window");
 
-        // After the window, so the update toast has somewhere to appear.
+        // Needs the window open for the toast.
         if platform::updater::supported() {
             platform::updater::check(cx);
         }

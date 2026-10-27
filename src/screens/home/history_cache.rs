@@ -1,11 +1,6 @@
-//! Recently opened conversations' messages, kept so that going back to one
-//! draws it at once.
-//!
-//! Discord's own client does the same: it shows what it already has of a
-//! channel straight away and fetches the newest page underneath, merging it in
-//! when it lands. Cached conversations are kept current from the gateway while
-//! they're closed, so the fetch usually only confirms what's there; it's what
-//! covers what the gateway couldn't, like a stretch spent disconnected.
+//! Recently opened conversations' messages, drawn at once on reopen while the
+//! newest page is fetched and merged in. The gateway keeps closed entries
+//! current; the fetch covers what it couldn't, like time spent disconnected.
 
 use std::collections::VecDeque;
 
@@ -16,17 +11,13 @@ use twilight_model::id::{
 
 use crate::discord::{self, Delivery, Message};
 
-/// How many conversations are kept. A message is a few kilobytes once its
-/// markdown is parsed, so this bounds the cache to a few megabytes.
+/// A parsed message is a few kilobytes, so this bounds the cache to a few megabytes.
 const CACHED_CONVERSATIONS: usize = 24;
 
-/// How many of a conversation's newest messages are kept: what reopening it
-/// shows before anything is fetched. Older history pages in again as it's
-/// scrolled, as it would have the first time.
 const CACHED_MESSAGES: usize = 2 * discord::MESSAGE_PAGE_SIZE;
 
 pub(super) struct CachedHistory {
-    /// Oldest first, running up to the channel's newest as far as is known.
+    /// Oldest first.
     pub messages: Vec<Message>,
     /// `messages` is the channel's whole history.
     pub reached_oldest: bool,
@@ -39,9 +30,8 @@ pub(super) struct HistoryCache {
 }
 
 impl HistoryCache {
-    /// Keeps a conversation that's being left. Only one loaded up to the
-    /// present is worth keeping: reopening goes to the present, so history
-    /// opened further back would leave a gap above it.
+    /// Only a conversation loaded up to the present is worth keeping: reopening
+    /// goes to the present, so history opened further back would leave a gap.
     pub(super) fn store(
         &mut self,
         channel_id: Id<ChannelMarker>,
@@ -49,8 +39,8 @@ impl HistoryCache {
         mut reached_oldest: bool,
     ) {
         self.entries.retain(|(id, _)| *id != channel_id);
-        // A send still in flight confirms into the open conversation only; its
-        // echo lands in the cache as a message of its own.
+        // An in-flight send confirms into the open conversation only; its echo
+        // would land here as a separate message.
         messages.retain(|message| message.delivery == Delivery::Sent);
         if messages.len() > CACHED_MESSAGES {
             messages.drain(..messages.len() - CACHED_MESSAGES);
@@ -69,8 +59,7 @@ impl HistoryCache {
         self.entries.truncate(CACHED_CONVERSATIONS);
     }
 
-    /// Takes a conversation that's being opened out of the cache. It goes
-    /// back in when it's left again.
+    /// Removes the entry; it's stored again when the conversation is left.
     pub(super) fn take(&mut self, channel_id: Id<ChannelMarker>) -> Option<CachedHistory> {
         let ix = self.entries.iter().position(|(id, _)| *id == channel_id)?;
         self.entries.remove(ix).map(|(_, history)| history)
@@ -83,14 +72,12 @@ impl HistoryCache {
             .map(|(_, history)| history)
     }
 
-    /// A message that arrived live in a cached conversation. It's copied only
-    /// if it's kept, since most live messages are for channels not cached.
+    /// Copies only if kept, since most live messages are for uncached channels.
     pub(super) fn push(&mut self, channel_id: Id<ChannelMarker>, message: &Message) {
         let Some(history) = self.get_mut(channel_id) else {
             return;
         };
-        // A repeated dispatch, or one that crossed with the fetch it was
-        // cached from.
+        // A repeated dispatch, or one that crossed with the fetch.
         if history
             .messages
             .last()
@@ -131,15 +118,13 @@ impl HistoryCache {
     }
 }
 
-/// Merges the newest page of a conversation into what was shown of it from the
-/// cache, returning the index from which `shown` changed. The page replaces
-/// everything from its oldest message on — catching the edits and deletions
-/// the cache missed — while what's older is kept, as is anything newer that
-/// arrived live while the page was in flight. `whole` when the page came back
-/// short, so it's the channel's entire history and nothing older is kept.
+/// Returns the index from which `shown` changed. The page replaces everything
+/// from its oldest message on (catching missed edits and deletions); older
+/// messages and live arrivals newer than the page are kept. `whole` means the
+/// page came back short, so it is the entire history.
 ///
-/// The page comes back when it doesn't reach back to what was shown: there's
-/// a gap between them, and it has to stand on its own.
+/// The page is handed back when it doesn't reach `shown`: there's a gap, so it
+/// has to stand alone.
 pub(super) fn merge_latest(
     shown: &mut Vec<Message>,
     page: Vec<Message>,

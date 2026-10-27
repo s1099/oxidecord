@@ -7,9 +7,8 @@ mod dms;
 use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
 use gpui_kit::*;
 
-/// The chrome both sidebars share: a titled header over the scrolling list,
-/// (The account panel isn't here: it spans the rail too, so the home screen
-/// draws it under both.)
+/// The chrome both sidebars share: a titled header over the scrolling list.
+/// The account panel is drawn by the home screen under both, since it spans the rail too.
 fn shell(title: impl Into<SharedString>, list: impl IntoElement, cx: &App) -> impl IntoElement {
     let theme = cx.theme();
 

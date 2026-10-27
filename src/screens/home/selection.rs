@@ -1,16 +1,12 @@
 //! The mouse selection over the message list's text.
 //!
-//! One selection can run from one text into the next: across a message's
-//! blocks, into its embeds, and on through the messages around it, as it does
-//! in Discord's own client. Every selectable text has a [`TextKey`] that sorts
-//! in reading order, so a selection is just two [`TextPoint`]s, and each text
-//! finds its own share by comparing keys — nothing walks the texts between.
+//! One selection can span blocks, embeds and messages. Every selectable text has
+//! a [`TextKey`] that sorts in reading order, so a selection is two
+//! [`TextPoint`]s and each text finds its share by comparing keys.
 //!
-//! What does need the texts is hit-testing and copying. Each one the list lays
-//! out leaves a [`TextRegion`], which is what a press or a drag lands on, and
-//! each one it draws leaves a [`TextCopy`], kept until the conversation
-//! closes, so a selection still copies whole once its middle has scrolled out
-//! of view.
+//! Hit-testing uses the [`TextRegion`]s the list lays out. Copying uses the
+//! [`TextCopy`]s it draws, kept until the conversation closes so a selection
+//! still copies whole after its middle scrolls out of view.
 
 use std::cell::RefCell;
 use std::collections::BTreeMap;
@@ -19,8 +15,7 @@ use std::rc::Rc;
 
 use gpui_kit::*;
 
-/// Where a text falls in reading order: its message, then which part of the
-/// message, then its place within that part.
+/// Reading order: message, then part, then index within the part.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub(super) struct TextKey {
     pub message: u64,
@@ -28,17 +23,12 @@ pub(super) struct TextKey {
     pub index: u32,
 }
 
-/// The parts of a message that hold selectable text, in the order a message
-/// draws them.
+/// In draw order.
 #[derive(Clone, Copy)]
 pub(super) enum TextPart {
-    /// The message a forward carries, drawn above the rest.
     Forward,
     Content,
-    Embed {
-        embed: usize,
-        piece: EmbedPiece,
-    },
+    Embed { embed: usize, piece: EmbedPiece },
 }
 
 #[derive(Clone, Copy)]
@@ -49,11 +39,9 @@ pub(super) enum EmbedPiece {
     FieldValue(usize),
 }
 
-/// Room for an embed's title, description, and two pieces for each of the 25
-/// fields Discord allows.
+/// Title, description, and two pieces for each of Discord's 25 fields.
 const EMBED_SLOTS: u32 = 64;
 
-/// One run of markdown's texts: a part of one message.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) struct TextOwner {
     message: u64,
@@ -87,15 +75,13 @@ impl TextOwner {
     }
 }
 
-/// A place between two characters of a text, as a byte offset.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub(super) struct TextPoint {
     pub key: TextKey,
     pub offset: usize,
 }
 
-/// What a press selects before it's dragged anywhere: a click a point, a
-/// double click the word, a triple click the whole text.
+/// Single click a point, double click the word, triple click the whole text.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum SelectUnit {
     Char,
@@ -113,14 +99,12 @@ impl SelectUnit {
     }
 }
 
-/// Where the pointer lands in a text, and that text, for snapping to words.
 pub(super) struct Hit {
     pub point: TextPoint,
     pub text: SharedString,
 }
 
 impl Hit {
-    /// The span `unit` takes around the hit.
     fn span(&self, unit: SelectUnit) -> (TextPoint, TextPoint) {
         let at = |offset| TextPoint {
             key: self.point.key,
@@ -138,22 +122,17 @@ impl Hit {
 }
 
 pub(super) struct Selection {
-    /// The end that stays put while the other is dragged.
     pub anchor: TextPoint,
     pub head: TextPoint,
-    /// What the press itself took, which dragging grows from and never
-    /// shrinks below.
+    /// What the press took; dragging grows from it and never shrinks below it.
     origin: (TextPoint, TextPoint),
     unit: SelectUnit,
-    /// While the button that made it is still held.
     pub drag: Option<Drag>,
 }
 
 pub(super) struct Drag {
-    /// Where the pointer is, so scrolling under a still pointer can carry the
-    /// selection on.
+    /// Lets scrolling under a still pointer carry the selection on.
     pub pointer: Point<Pixels>,
-    /// The visible part of the message list.
     pub viewport: Bounds<Pixels>,
     pub autoscrolling: bool,
 }
@@ -170,8 +149,6 @@ impl Selection {
         }
     }
 
-    /// A shift-press: keeps the anchor and moves the head to `hit`, then lets
-    /// a drag carry on from there.
     pub fn shift_press(&mut self, hit: &Hit, drag: Drag) {
         self.origin = (self.anchor, self.anchor);
         self.unit = SelectUnit::Char;
@@ -179,8 +156,7 @@ impl Selection {
         self.extend(hit);
     }
 
-    /// Moves the dragged end to `hit`, by the unit the press chose. Returns
-    /// whether anything changed.
+    /// Returns whether anything changed.
     pub fn extend(&mut self, hit: &Hit) -> bool {
         let (start, end) = hit.span(self.unit);
         let (anchor, head) = if start < self.origin.0 {
@@ -202,7 +178,6 @@ impl Selection {
         (self.anchor.min(self.head), self.anchor.max(self.head))
     }
 
-    /// How much of the text keyed `key`, `len` bytes long, is selected.
     pub fn range_in(&self, key: TextKey, len: usize) -> Option<Range<usize>> {
         let (start, end) = self.ordered();
         if key < start.key || key > end.key {
@@ -215,8 +190,7 @@ impl Selection {
     }
 }
 
-/// A text as it copies: what's shown, except that each custom emoji, drawn
-/// into a blank in the text, copies as its `:name:`, as in Discord.
+/// Custom emoji are drawn into blanks in the text but copy as `:name:`, as in Discord.
 pub(super) struct TextCopy {
     text: SharedString,
     emoji: Vec<(Range<usize>, SharedString)>,
@@ -232,7 +206,6 @@ impl TextCopy {
         let end = ceil_char_boundary(text, range.end.min(text.len()));
         let mut at = floor_char_boundary(text, range.start.min(end));
         let mut copied = String::with_capacity(end - at);
-        // A blank partly selected copies its emoji whole.
         for (blank, name) in &self.emoji {
             if blank.end <= at || blank.start >= end {
                 continue;
@@ -246,7 +219,6 @@ impl TextCopy {
     }
 }
 
-/// What each text the list has drawn copies as, kept for the conversation.
 #[derive(Default)]
 pub(super) struct TextCopies(BTreeMap<TextKey, TextCopy>);
 
@@ -255,8 +227,7 @@ impl TextCopies {
         self.0.insert(key, copy);
     }
 
-    /// Forgets one part's texts, ahead of drawing them again, so a part that
-    /// lost texts to an edit doesn't keep copying them.
+    /// Called before redrawing a part so texts lost to an edit don't linger.
     pub fn clear_part(&mut self, owner: TextOwner) {
         let start = owner.key(0);
         let end = TextKey {
@@ -272,8 +243,7 @@ impl TextCopies {
         self.0.clear();
     }
 
-    /// The selected text, one line per text it runs through. `keep` drops the
-    /// texts of messages no longer in the conversation.
+    /// One line per text. `keep` drops messages no longer in the conversation.
     pub fn copy(&self, selection: &Selection, keep: impl Fn(u64) -> bool) -> String {
         let (start, end) = selection.ordered();
         let mut copied = String::new();
@@ -293,26 +263,23 @@ impl TextCopies {
     }
 }
 
-/// A text as the message list last laid it out, for hit-testing.
 #[derive(Clone)]
 pub(super) struct TextRegion {
     pub key: TextKey,
-    /// What it shows, short of any trailing marker.
+    /// Without any trailing marker.
     pub text: SharedString,
     pub layout: TextLayout,
     pub bounds: Bounds<Pixels>,
     pub hitbox: Hitbox,
 }
 
-/// The list's texts, laid out afresh with every frame it draws. A frame
-/// replayed from the cache keeps the last one's, where the text still is.
+/// Rebuilt each frame drawn; a frame replayed from the cache keeps the last set.
 pub(super) type TextRegions = Rc<RefCell<Vec<TextRegion>>>;
 
 impl TextRegion {
-    /// The offset `position` points at. Above the text is its start, below it
-    /// its end, and past either end of a line that end. `closest` rounds to
-    /// the nearer side of the character under the pointer, as a caret does;
-    /// otherwise it's that character's start, for finding the word it's in.
+    /// Above the text is its start, below its end. `closest` rounds to the
+    /// nearer side of the character as a caret does; otherwise it's the
+    /// character's start, for finding the word.
     fn offset_at(&self, position: Point<Pixels>, closest: bool) -> usize {
         let bounds = self.bounds;
         let len = self.text.len();
@@ -354,8 +321,7 @@ impl TextRegion {
     }
 }
 
-/// The text a press lands on, if it's one the pointer is over and nothing
-/// covers.
+/// Only a text the pointer is over and nothing covers.
 pub(super) fn hit_under(
     regions: &[TextRegion],
     position: Point<Pixels>,
@@ -368,15 +334,13 @@ pub(super) fn hit_under(
         .map(|region| region.hit(position, unit == SelectUnit::Char))
 }
 
-/// Where a drag at `position` reaches. Off any text it's the nearest one:
-/// beside a line, that line's end; between two texts, wherever they meet.
+/// Off any text, the nearest one.
 pub(super) fn hit_nearest(regions: &[TextRegion], position: Point<Pixels>) -> Option<Hit> {
     let distance = |region: &TextRegion| {
         let bounds = region.bounds;
         let dy = (bounds.top() - position.y).max(position.y - bounds.bottom() + px(1.));
         let dx = (bounds.left() - position.x).max(position.x - bounds.right());
-        // Any vertical distance outweighs a horizontal one, so a pointer
-        // beside a line picks that line over a nearer text above or below.
+        // Vertical distance dominates, so a pointer beside a line picks that line.
         (dy.max(px(0.)).as_f32(), dx.max(px(0.)).as_f32())
     };
     regions
@@ -404,11 +368,10 @@ impl CharClass {
     }
 }
 
-/// The run of like characters around `offset`: a word, the space between
-/// two, or a stretch of punctuation.
+/// A word, a run of space, or a run of punctuation.
 pub(super) fn word_at(text: &str, offset: usize) -> Range<usize> {
     let offset = floor_char_boundary(text, offset.min(text.len()));
-    // The character at the offset, or at the very end the one before it.
+    // At the very end, the character before it.
     let Some((at, c)) = text[offset..]
         .chars()
         .next()
@@ -447,8 +410,7 @@ fn ceil_char_boundary(text: &str, mut index: usize) -> usize {
 
 #[cfg(test)]
 mod tests {
-    // Named rather than globbed: the glob would bring gpui's `test` attribute
-    // in over the standard one.
+    // Not a glob: it would bring gpui's `test` attribute in over the standard one.
     use super::{
         Bounds, Drag, EmbedPiece, Hit, Point, SelectUnit, Selection, TextCopies, TextCopy, TextKey,
         TextOwner, TextPart, TextPoint, word_at,
@@ -514,7 +476,6 @@ mod tests {
         assert_eq!(selection.range_in(key(3, 2), 3), None);
         assert_eq!(selection.range_in(key(0, 0), 3), None);
 
-        // Dragged back above where it started, the anchor holds.
         selection.extend(&hit(1, 0, 1, "hello world"));
         assert_eq!(selection.range_in(key(1, 0), 11), Some(1..4));
         assert_eq!(selection.range_in(key(2, 0), 5), None);
@@ -529,8 +490,6 @@ mod tests {
         selection.extend(&hit(1, 0, 9, text));
         assert_eq!(selection.range_in(key(1, 0), text.len()), Some(4..13));
 
-        // Back before the word: it stays selected, and the head takes the
-        // start of the word reached.
         selection.extend(&hit(1, 0, 1, text));
         assert_eq!(selection.range_in(key(1, 0), text.len()), Some(0..7));
     }
@@ -576,7 +535,6 @@ mod tests {
             "hi :wave: there\nsecond\nlast"
         );
 
-        // Starting inside the blank still copies the emoji it holds.
         let mut selection = Selection::press(&hit(1, 0, start + 1, ""), SelectUnit::Char, drag());
         selection.extend(&hit(1, 0, start + blank.len() + 3, ""));
         assert_eq!(copies.copy(&selection, |_| true), ":wave: th");

@@ -16,14 +16,11 @@ use super::emoji_picker::emoji_glyph;
 const ROW_HEIGHT: f32 = 34.;
 
 impl HomeScreen {
-    /// Floats over the bottom of the conversation, like the typing indicator,
-    /// and covers it while open.
+    /// Covers the typing indicator while open.
     pub(super) fn render_autocomplete(&self, cx: &Context<Self>) -> Option<AnyElement> {
         let autocomplete = self.autocomplete.as_ref()?;
         let theme = cx.theme();
 
-        // Discord's heading: the kind in capitals, then what's been typed as
-        // typed, once there's something to match.
         let (kind, trigger) = match autocomplete.trigger {
             Trigger::User => ("MEMBERS", '@'),
             Trigger::Channel => ("CHANNELS", '#'),
@@ -65,16 +62,13 @@ impl HomeScreen {
                 .right_2()
                 .mb_1()
                 .p_2()
-                // Discord's sits on the shade its sidebars use rather than a
-                // menu's, reading as part of the composer more than a popup.
                 .bg(theme.sidebar)
                 .text_color(theme.sidebar_foreground)
                 .border_1()
                 .border_color(theme.border)
                 .rounded(radius::CONTROL)
                 .shadow(depth::shadow(Level::Overlay, cx))
-                // A click here would otherwise take focus from the composer,
-                // and the next keystroke with it.
+                // Else a click takes focus from the composer.
                 .on_mouse_down(MouseButton::Left, |_, window, cx| {
                     window.prevent_default();
                     cx.stop_propagation();
@@ -125,7 +119,6 @@ impl HomeScreen {
                 emoji.label(),
                 guild.clone(),
             ),
-            // Plain text in Discord, with no picture beside it.
             Suggestion::Broadcast(broadcast) => (
                 None,
                 broadcast.text().to_string(),
@@ -166,7 +159,6 @@ impl HomeScreen {
                 div()
                     .flex_shrink(1.)
                     .min_w_0()
-                    // Room for `@everyone`'s description, which is long.
                     .max_w(relative(0.6))
                     .truncate()
                     .text_xs()

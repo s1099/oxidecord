@@ -1,5 +1,4 @@
-//! Fallback for platforms without a decoder backend yet. VideoToolbox on
-//! macOS and GStreamer on Linux would fit the same shape.
+//! Fallback for platforms without a decoder backend.
 
 use std::sync::mpsc::Receiver;
 

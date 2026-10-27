@@ -1,19 +1,12 @@
-//! Watching someone else's stream.
+//! The viewer's side of [`super`]: receives the streamer's forwarded RTP,
+//! reorders it, NACKs losses, rebuilds frames, DAVE-decrypts and hands them to
+//! the platform decoder.
 //!
-//! The viewer's side of [`super`]: the same kind of connection, to the same
-//! server the streamer sends to, but receiving. The server forwards the
-//! streamer's RTP; this reorders it, asks for what was lost, rebuilds each
-//! frame, decrypts it with DAVE, and hands it to the platform decoder.
+//! The stream's sound is Opus on its own SSRC. Each packet is a whole frame, so
+//! it skips the assembler and goes decrypted to the call's speakers.
 //!
-//! A stream shared with its sound carries that as Opus too, on an SSRC of
-//! its own. Each packet is a whole frame, so it skips the assembler: it's
-//! decrypted and handed straight to the call's speakers, which decode and
-//! conceal losses the same way they do for anyone talking in the call.
-//!
-//! Nothing can be decoded until a keyframe, and nothing after a lost frame
-//! decodes cleanly until the next, so frames are skipped until one arrives
-//! and the streamer is asked for one (a picture loss indication) whenever
-//! that's the state.
+//! Nothing decodes until a keyframe, nor cleanly after a loss until the next,
+//! so frames are skipped and a picture loss indication sent in that state.
 
 use std::time::{Duration, Instant};
 
@@ -31,27 +24,22 @@ use super::receive::{Assembled, Assembler};
 use super::signalling::{Signal, Signalling};
 use super::{StreamConnection, StreamEvent};
 
-/// How often held packets are checked for gaps that have waited too long.
 const ASSEMBLE_INTERVAL: Duration = Duration::from_millis(20);
 
-/// The least time between keyframe requests. The sender needs a moment to
-/// produce one, and asking again meanwhile only makes it produce two.
+/// The sender needs time to produce a keyframe; asking again makes it produce two.
 const KEYFRAME_RETRY: Duration = Duration::from_millis(500);
 
-/// How often a receiver report goes out to keep the path open.
+/// Receiver reports keep the NAT path open.
 const REPORT_INTERVAL: Duration = Duration::from_secs(2);
 
-/// One stream being watched. Dropping it closes the connection and stops the
-/// decoder.
+/// Dropping it closes the connection and stops the decoder.
 pub struct WatchStream {
     _stop: oneshot::Sender<()>,
     decoder: LiveDecoder,
 }
 
 impl WatchStream {
-    /// Connects to `streamer`'s stream. Decoded pictures arrive on `frames`,
-    /// scaled to fit `target`, and its sound plays through `audio`; the
-    /// connection's end arrives on `events`.
+    /// Pictures arrive on `frames`, scaled to fit `target`.
     pub fn start(
         connection: StreamConnection,
         streamer: Id<UserMarker>,
@@ -77,13 +65,12 @@ impl WatchStream {
         }
     }
 
-    /// Changes the size pictures are scaled to fit, in physical pixels.
+    /// In physical pixels.
     pub fn set_target(&self, target: (u32, u32)) {
         self.decoder.set_target(target);
     }
 
-    /// Reports that a picture has been drawn and released. See
-    /// [`LiveDecoder::frame_consumed`].
+    /// See [`LiveDecoder::frame_consumed`].
     pub fn frame_consumed(&self) {
         self.decoder.frame_consumed();
     }
@@ -171,17 +158,13 @@ async fn run(
     Ok(outcome)
 }
 
-/// What the receiving loop keeps between packets.
 struct Viewer {
     streamer: u64,
     assembler: Assembler,
-    /// The video SSRC taken from the first H.264 packet, for a server that
-    /// forwards video before it says whose it is.
+    /// From the first H.264 packet, for a server that forwards video before saying whose it is.
     guessed_ssrc: Option<u32>,
-    /// Where the stream's sound arrived from, so it can be stopped when the
-    /// watching ends.
+    /// So the sound can be stopped when watching ends.
     audio_ssrc: Option<u32>,
-    /// Nothing decodable has arrived since the start or the last loss.
     needs_keyframe: bool,
     last_request: Option<Instant>,
 }
@@ -194,8 +177,6 @@ impl Viewer {
             .or(self.guessed_ssrc)
     }
 
-    /// Files a packet with the assembler: the streamer's video as is, and a
-    /// retransmission under the sequence number it's standing in for.
     fn receive(&mut self, packet: RtpPacket, signalling: &Signalling) {
         let now = Instant::now();
         let remote = signalling.remote;
@@ -235,11 +216,8 @@ impl Viewer {
         }
     }
 
-    /// Plays a packet of the stream's sound.
-    ///
-    /// Taken by payload type rather than by the `VIDEO` message's audio SSRC:
-    /// only the streamer sends anything on a stream's connection, so any Opus
-    /// that arrives is theirs, and it can arrive before the server has said.
+    /// Matched by payload type, not the `VIDEO` message's audio SSRC: only the
+    /// streamer sends here, and Opus can arrive before the server names the SSRC.
     fn play(&mut self, packet: RtpPacket, signalling: &mut Signalling, audio: &StreamAudio) {
         let Some(opus) = signalling
             .dave
@@ -255,8 +233,7 @@ impl Viewer {
         audio.receive(packet.ssrc, packet.sequence, &opus);
     }
 
-    /// Decrypts and decodes what came out of the assembler, skipping what
-    /// can't be decoded yet. Returns false once the decoder is gone.
+    /// Returns false once the decoder is gone.
     fn decode(
         &mut self,
         assembled: Assembled,
@@ -275,9 +252,7 @@ impl Viewer {
                     .dave
                     .unprotect(self.streamer, MediaType::VIDEO, frame.data)
             else {
-                // A frame that won't decrypt leaves the decoder without its
-                // reference; the next keyframe after the group forms is
-                // where to start.
+                // The decoder lost its reference; restart at the next keyframe.
                 self.needs_keyframe = true;
                 continue;
             };
@@ -289,7 +264,7 @@ impl Viewer {
         true
     }
 
-    /// Whether to ask for a keyframe now, noting the request if so.
+    /// Records the request when it returns true.
     fn wants_keyframe(&mut self) -> bool {
         let now = Instant::now();
         if !self.needs_keyframe

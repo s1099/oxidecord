@@ -1,5 +1,5 @@
-//! The account row of the card pinned under the rail and sidebar, like
-//! Discord's user area. Clicking the user opens the status picker.
+//! The account row of the card pinned under the rail and sidebar. Clicking the user opens the
+//! status picker.
 
 use gpui_kit::component::{
     ActiveTheme as _, Icon, IconName, Selectable, Sizable as _, Theme, h_flex,
@@ -65,11 +65,10 @@ impl HomeScreen {
                             .font_weight(FontWeight::SEMIBOLD)
                             .child(name),
                     )
-                    // The status, swapped for the username while hovered, as
-                    // Discord's user area does. Both are drawn, stacked, and
-                    // the hover only fades between them: a hover that hid one
-                    // outright (`display` or `visibility`) would change what
-                    // gets prepainted after the fact, which gpui panics on.
+                    // Status and username are both drawn, stacked, and hover only fades between
+                    // them: hiding one
+                    // (`display`/`visibility`) changes what gets prepainted after the fact, which
+                    // gpui panics on.
                     .child(
                         div()
                             .relative()
@@ -181,8 +180,7 @@ impl HomeScreen {
                         move |_, window, cx| {
                             let home = home.clone();
                             settings::open(window, cx, move |_, cx| {
-                                // Gone already if the session ended while the
-                                // popup was open.
+                                // Gone if the session ended while the popup was open.
                                 let _ = home.update(cx, |home, cx| home.log_out(cx));
                             })
                         }
@@ -191,9 +189,8 @@ impl HomeScreen {
     }
 }
 
-/// A toggle with a chevron beside it that opens its device menu, the same
-/// one a right-click on either half opens, as Discord pairs its mute and
-/// deafen buttons. Both halves turn red while the toggle is on.
+/// A toggle plus a chevron that opens its device menu (a right-click on either half does too).
+/// Both halves turn red while the toggle is on.
 fn split_control<M>(
     id: &'static str,
     active: bool,
@@ -234,8 +231,6 @@ fn status_label(status: PresenceStatus) -> &'static str {
     }
 }
 
-/// The line Discord's own picker puts under a status whose effect isn't
-/// obvious from its name.
 fn status_description(status: PresenceStatus) -> Option<&'static str> {
     match status {
         PresenceStatus::DoNotDisturb => Some("You will not receive desktop notifications"),
@@ -244,10 +239,8 @@ fn status_description(status: PresenceStatus) -> Option<&'static str> {
     }
 }
 
-/// A status as Discord draws it, so it reads without colour: a dot for
-/// online, a crescent for idle, a dash for do not disturb, a ring for
-/// invisible or offline. `backdrop` is what it sits on: it's ringed in it, so
-/// it cuts cleanly into an avatar, and the cut-outs are painted in it.
+/// A status as Discord draws it, readable without colour. `backdrop` is what it sits on:
+/// it's ringed in it and the cut-outs painted in it, so it cuts cleanly into an avatar.
 /// `hover` names the group whose hover changes that backdrop, and to what.
 pub(super) fn status_indicator(
     status: PresenceStatus,
@@ -300,8 +293,7 @@ pub(super) fn status_indicator(
     )
 }
 
-/// The avatar and name, clickable as one. The status menu's trigger, which
-/// has to be [`Selectable`] so it can show the menu is open.
+/// The status menu's trigger; [`Selectable`] so it can show the menu is open.
 #[derive(IntoElement)]
 struct AccountButton {
     base: Stateful<Div>,

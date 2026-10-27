@@ -1,5 +1,4 @@
-//! Scaling and converting captured BGRA frames into the encoder's NV12, on
-//! the GPU's video processor.
+//! Scales captured BGRA frames into the encoder's NV12 on the GPU's video processor.
 
 use std::mem::ManuallyDrop;
 
@@ -13,13 +12,11 @@ use windows::core::Interface as _;
 
 use super::{Context, texture};
 
-/// NV12 textures the converter cycles through. A hardware encoder may still
-/// be reading one when the next frame is converted, so each frame gets its
-/// own; four covers the deepest pipeline the common encoders keep.
+/// A hardware encoder may still be reading a texture when the next frame is
+/// converted; four covers the deepest pipeline common encoders keep.
 const RING: usize = 4;
 
-/// Studio-range black, for the bars around a source that doesn't fill the
-/// frame.
+/// Studio-range black, for bars around a source that doesn't fill the frame.
 const BLACK: D3D11_VIDEO_COLOR_YCbCrA = D3D11_VIDEO_COLOR_YCbCrA {
     Y: 16. / 255.,
     Cb: 0.5,
@@ -36,16 +33,14 @@ pub(super) struct Converter {
     fps: u32,
     ring: Vec<ID3D11Texture2D>,
     next: usize,
-    /// Rebuilt whenever the source changes size, since the processor is
-    /// created for one input size.
+    /// Rebuilt on source resize; the processor is created for one input size.
     pipeline: Option<Pipeline>,
 }
 
 struct Pipeline {
     size: (u32, u32),
-    /// Our own copy of the latest frame. The capture's textures go back to
-    /// its pool as soon as they're copied, and theirs aren't created with the
-    /// bindings the video processor wants as input anyway.
+    /// Our own copy: the capture's textures return to its pool at once and lack
+    /// the bindings the video processor wants as input.
     input: ID3D11Texture2D,
     input_view: ID3D11VideoProcessorInputView,
     outputs: Vec<ID3D11VideoProcessorOutputView>,
@@ -92,7 +87,6 @@ impl Converter {
         })
     }
 
-    /// Takes a copy of `frame`, which can then go back to the pool.
     pub(super) fn load(
         &mut self,
         frame: &Direct3D11CaptureFrame,
@@ -104,8 +98,7 @@ impl Converter {
         let captured: ID3D11Texture2D =
             unsafe { access.GetInterface() }.context("Couldn't read a captured frame")?;
 
-        // The buffer can be bigger than what's in it while a resize is
-        // settling; only the content is copied.
+        // The buffer can exceed the content while a resize settles.
         let mut desc = D3D11_TEXTURE2D_DESC::default();
         unsafe { captured.GetDesc(&mut desc) };
         let size = (
@@ -223,8 +216,7 @@ impl Converter {
         let source = rect((0, 0), size);
         let target = rect((0, 0), self.out_size);
         let fitted = fit(size, self.out_size);
-        // Full-range RGB in; studio-range BT.709 out, which is what every
-        // decoder assumes of a stream that doesn't say otherwise.
+        // Studio-range BT.709 out is what decoders assume of an unlabelled stream.
         let rgb_full = D3D11_VIDEO_PROCESSOR_COLOR_SPACE { _bitfield: 0 };
         let bt709_studio = D3D11_VIDEO_PROCESSOR_COLOR_SPACE {
             _bitfield: (1 << 2) | (1 << 4),
@@ -245,8 +237,7 @@ impl Converter {
             vc.VideoProcessorSetStreamColorSpace(&processor, 0, &rgb_full);
             vc.VideoProcessorSetOutputColorSpace(&processor, &bt709_studio);
             vc.VideoProcessorSetOutputBackgroundColor(&processor, true, &background);
-            // Denoising and edge enhancement are for camera footage; on text
-            // they only smear.
+            // Denoising and edge enhancement smear text.
             vc.VideoProcessorSetStreamAutoProcessingMode(&processor, 0, false);
         }
 
@@ -259,7 +250,6 @@ impl Converter {
         })
     }
 
-    /// Converts the latest frame into the next NV12 texture of the ring.
     pub(super) fn convert(&mut self) -> Result<ID3D11Texture2D, String> {
         let Some(pipeline) = &self.pipeline else {
             return Err("No frame has been captured yet".into());
@@ -287,8 +277,7 @@ impl Converter {
     }
 }
 
-/// `inner` scaled to fit inside `outer` and centred in it, on even pixels so
-/// the bars don't split a chroma sample.
+/// Even pixels so the bars don't split a chroma sample.
 fn fit(inner: (u32, u32), outer: (u32, u32)) -> RECT {
     let scale =
         (f64::from(outer.0) / f64::from(inner.0)).min(f64::from(outer.1) / f64::from(inner.1));

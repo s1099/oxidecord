@@ -10,13 +10,10 @@ use crate::screens::home::state::TypingDots;
 
 impl Render for TypingDots {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        // Discord's pulsing dots: each one swells and brightens in turn, a
-        // fifth of the cycle behind the one before it.
         let foreground = cx.theme().foreground;
         h_flex().gap(px(3.)).children((0..3usize).map(|i| {
-            // Each dot grows inside a slot sized for its largest, since gpui
-            // can't scale a div without relayout: a bare growing dot would
-            // shove its neighbours and the text along every pulse.
+            // Slot sized for the largest dot: gpui can't scale a div without
+            // relayout, so a bare growing dot would shove its neighbours.
             div()
                 .flex()
                 .size(px(7.))
@@ -27,8 +24,6 @@ impl Render for TypingDots {
                     Animation::new(Duration::from_millis(1400)).repeat(),
                     move |dot, delta| {
                         let phase = (delta - i as f32 * 0.2).rem_euclid(1.0);
-                        // Up and back down over the first half of its turn,
-                        // then rests dim until the cycle comes round.
                         let pulse = if phase < 0.5 {
                             ease_in_out(1.0 - (phase * 4.0 - 1.0).abs())
                         } else {
@@ -43,9 +38,8 @@ impl Render for TypingDots {
 }
 
 impl HomeScreen {
-    /// Floats over the bottom of the conversation rather than taking a row of
-    /// its own, so the message bar doesn't grow and shrink as people start and
-    /// stop typing.
+    /// Floats rather than taking a row, so the message bar doesn't resize as
+    /// people start and stop typing.
     pub(super) fn render_typing_indicator(&self, cx: &Context<Self>) -> Option<AnyElement> {
         let names = self.typing_names()?;
         let theme = cx.theme();
@@ -87,7 +81,6 @@ impl HomeScreen {
                 .px_3()
                 .items_center()
                 .overflow_hidden()
-                // Masks the messages it sits over.
                 .bg(theme.background)
                 .gap_2()
                 .child(self.typing_dots.clone())
@@ -96,16 +89,14 @@ impl HomeScreen {
         )
     }
 
-    /// The names of whoever else is typing in the open conversation, oldest
-    /// first, or `None` when nobody is.
+    /// Oldest first.
     fn typing_names(&self) -> Option<Vec<String>> {
         let channel_id = self.selected_channel?;
         let typists = self.typists.get(&channel_id)?;
         let names: Vec<String> = typists
             .iter()
             .map(|typist| {
-                // A DM's dispatch carries no name, so it's taken from what the
-                // typist has said in the conversation.
+                // A DM's dispatch carries no name; take it from the typist's messages.
                 typist
                     .name
                     .clone()

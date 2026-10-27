@@ -1,10 +1,7 @@
-//! Voice states: who is in which voice channel, what they've silenced, and
-//! who is streaming. Also the streams themselves, which are voice
-//! connections of their own.
+//! Voice states, voice servers and stream servers.
 //!
-//! These arrive as raw gateway dispatches rather than through twilight's
-//! models, because a DM call's `VOICE_SERVER_UPDATE` carries no guild id and
-//! twilight's model requires one.
+//! Parsed from raw dispatches rather than twilight's models, because a DM
+//! call's `VOICE_SERVER_UPDATE` has no guild id and twilight requires one.
 
 use std::collections::HashMap;
 
@@ -16,36 +13,32 @@ use twilight_model::id::{
 
 use super::guild::RawMember;
 
-/// One user's presence in a voice channel, as the gateway last reported it.
 #[derive(Clone)]
 pub struct VoiceUserState {
     pub user_id: Id<UserMarker>,
     pub guild_id: Option<Id<GuildMarker>>,
-    /// The channel they're in, or `None` when they've left voice entirely.
+    /// `None` once they've left voice.
     pub channel_id: Option<Id<ChannelMarker>>,
-    /// Identifies this voice session to the voice server; needed to connect.
     pub session_id: String,
     pub self_mute: bool,
     pub self_deaf: bool,
-    /// Muted or deafened by a moderator, which the user can't undo themselves.
+    /// Set by a moderator; the user can't undo it.
     pub mute: bool,
     pub deaf: bool,
-    /// Going live: sharing their screen into the call.
+    /// Go Live.
     pub self_stream: bool,
-    /// Display name and avatar, carried by dispatches that include the member.
-    /// Absent ones fall back to whatever the app already knows about the user.
+    /// Only present when the dispatch includes the member.
     pub name: Option<String>,
     pub avatar_url: Option<String>,
 }
 
-/// Where a call's voice websocket lives, from `VOICE_SERVER_UPDATE`.
+/// From `VOICE_SERVER_UPDATE`.
 #[derive(Clone)]
 pub struct VoiceServerInfo {
-    /// `None` while Discord is reallocating the call to another server; the
-    /// next update carries the new one.
+    /// `None` while Discord reallocates the call; the next update has the new one.
     pub endpoint: Option<String>,
     pub token: String,
-    /// The guild for a channel call, absent for a DM call.
+    /// Absent for a DM call.
     pub guild_id: Option<Id<GuildMarker>>,
     pub channel_id: Option<Id<ChannelMarker>>,
 }
@@ -84,15 +77,12 @@ pub(in crate::discord) struct RawVoiceServer {
     channel_id: Option<Id<ChannelMarker>>,
 }
 
-/// A `VOICE_STATE_UPDATE`, which carries its own member when it has one.
 pub(in crate::discord) fn convert_voice_state(raw: RawVoiceState) -> VoiceUserState {
     convert(raw, None, None)
 }
 
-/// Every voice state bundled into a guild object (`READY`'s guilds,
-/// `GUILD_CREATE`). Those states carry neither the guild id nor a member, so
-/// the guild comes from the object and the name from its `members`, when the
-/// user is among them.
+/// States bundled into a guild object (`READY`, `GUILD_CREATE`) carry neither
+/// guild id nor member, so both come from the object.
 pub(in crate::discord) fn convert_guild_voice_states<'a>(
     guild_id: Id<GuildMarker>,
     states: Vec<RawVoiceState>,
@@ -114,8 +104,7 @@ pub(in crate::discord) fn convert_guild_voice_states<'a>(
         .collect()
 }
 
-/// The voice states bundled into a `CALL_CREATE`. They're the call's by
-/// definition, so one that leaves its channel out is put in it.
+/// States in a `CALL_CREATE` may omit the channel; they belong to the call.
 pub(in crate::discord) fn convert_call_voice_states(
     channel_id: Id<ChannelMarker>,
     states: Vec<RawVoiceState>,
@@ -162,11 +151,11 @@ pub(in crate::discord) fn convert_voice_server(raw: RawVoiceServer) -> VoiceServ
     }
 }
 
-/// Where a stream's voice websocket lives, from `STREAM_SERVER_UPDATE`.
+/// From `STREAM_SERVER_UPDATE`.
 #[derive(Clone, Deserialize)]
 pub struct StreamServerInfo {
     pub stream_key: String,
-    /// Absent while Discord is reallocating the stream, like a call's.
+    /// Absent while Discord reallocates the stream.
     #[serde(default)]
     pub endpoint: Option<String>,
     pub token: String,
@@ -179,17 +168,15 @@ pub(in crate::discord) fn convert_stream_server(raw: StreamServerInfo) -> Stream
     }
 }
 
-/// The voice websocket is spoken over TLS, but Discord has handed out
-/// endpoints with a plaintext `:80` on them; dropping it leaves the default
-/// 443 the connection actually wants.
+/// Discord has handed out endpoints ending in `:80`, but the websocket is TLS;
+/// dropping it leaves the default 443.
 fn secure_endpoint(endpoint: String) -> String {
     endpoint
         .strip_suffix(":80")
         .map_or(endpoint.clone(), str::to_owned)
 }
 
-/// The key Discord names a user's stream by: the call it's in, and whose it
-/// is. A DM call has no guild, and says so in the prefix.
+/// Discord's key for a user's stream; a DM call uses the `call:` prefix.
 pub fn stream_key(
     guild_id: Option<Id<GuildMarker>>,
     channel_id: Id<ChannelMarker>,

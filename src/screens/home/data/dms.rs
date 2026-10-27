@@ -10,9 +10,8 @@ use crate::discord::{self, DirectMessage};
 use crate::screens::home::{HomeScreen, View};
 
 impl HomeScreen {
-    /// Switches the sidebar to the direct-message list, clearing the currently
-    /// open conversation. The DM list is fetched at startup and kept up to
-    /// date from there; this only fetches it again after that failed.
+    /// Clears the open conversation. The DM list loads at startup and stays current,
+    /// so this fetches only after that failed.
     pub(in crate::screens::home) fn open_direct_messages(
         &mut self,
         window: &mut Window,
@@ -23,8 +22,7 @@ impl HomeScreen {
         }
         self.view = View::DirectMessages;
 
-        // No conversation is open yet; reset the message pane to its empty
-        // state so the previously viewed channel's messages don't linger.
+        // Reset so the previous channel's messages don't linger.
         self.selected_channel = None;
         self.reset_conversation(None, window, cx);
 
@@ -56,10 +54,9 @@ impl HomeScreen {
         .detach();
     }
 
-    /// Keeps the loaded DM list in step with a message that just arrived in a
-    /// DM: its conversation moves to the top. A conversation the list doesn't
-    /// have yet (someone new, or one the user had closed) needs its name and
-    /// avatar, which the message alone doesn't carry, so the list is refetched.
+    /// Moves the conversation to the top. One the list lacks (someone new, or
+    /// closed) needs a name and avatar the message doesn't carry, so the list is
+    /// refetched.
     pub(in crate::screens::home) fn note_dm_activity(
         &mut self,
         channel_id: Id<ChannelMarker>,
@@ -81,8 +78,7 @@ impl HomeScreen {
         }
     }
 
-    /// Refetches the DM list without the loading skeleton, keeping the current
-    /// list on screen until the new one arrives.
+    /// Refetch without the skeleton; the current list stays up meanwhile.
     fn refresh_dms(&mut self, cx: &mut Context<Self>) {
         if self.dms_refreshing {
             return;
@@ -114,8 +110,6 @@ impl HomeScreen {
         }
     }
 
-    /// The DM matching the currently open conversation, if the DM view is
-    /// active and its channel is one of the loaded conversations.
     pub(in crate::screens::home) fn selected_dm_info(&self) -> Option<&DirectMessage> {
         let id = self.selected_channel?;
         self.dms.iter().find(|dm| dm.id == id)

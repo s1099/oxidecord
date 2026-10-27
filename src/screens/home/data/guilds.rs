@@ -14,9 +14,8 @@ use crate::screens::home::folders::build_rail_entries;
 use crate::screens::home::{HomeScreen, SessionEnded, View};
 
 impl HomeScreen {
-    /// Logs out and hands back to login. A call is left properly first, so
-    /// Discord doesn't keep showing the user in the channel until the dropped
-    /// connection times out.
+    /// A call is left first so Discord doesn't keep showing the user in the channel
+    /// until the dropped connection times out.
     pub(in crate::screens::home) fn log_out(&mut self, cx: &mut Context<Self>) {
         if self.voice.is_some() {
             self.leave_voice(cx);
@@ -57,9 +56,8 @@ impl HomeScreen {
         .detach();
     }
 
-    /// Loads the user's settings: the folders that decide the rail's order,
-    /// and their chosen status. Best-effort: until it lands the rail uses the
-    /// plain guild list.
+    /// Folders (the rail's order) and chosen status. Best-effort: until it lands the
+    /// rail uses the plain guild list.
     pub(in crate::screens::home) fn load_user_settings(&mut self, cx: &mut Context<Self>) {
         cx.spawn(async move |this, cx| {
             let result = discord::fetch_user_settings().await;
@@ -88,16 +86,15 @@ impl HomeScreen {
         self.rail_entries = build_rail_entries(&self.guilds, self.guild_folders.as_ref());
     }
 
-    /// Loads the signed-in user for the sidebar account panel. Best-effort:
-    /// on failure the panel just stays empty.
+    /// Best-effort; on failure the panel stays empty.
     pub(in crate::screens::home) fn load_current_user(&mut self, cx: &mut Context<Self>) {
         cx.spawn(async move |this, cx| {
             let Ok(user) = discord::fetch_current_user().await else {
                 return;
             };
             let _ = this.update(cx, |this, cx| {
-                // Whichever of this and the gateway's READY lands first fills
-                // in the id a voice connection identifies itself with.
+                // Whichever of this and READY lands first fills in the id voice identifies itself
+                // with.
                 this.self_user_id.get_or_insert(user.id);
                 this.current_user = Some(user);
                 cx.notify();
@@ -118,9 +115,8 @@ impl HomeScreen {
         }
         self.save_collapsed_categories();
         self.view = View::Guild;
-        // Returning from the DM view to the guild that's already loaded:
-        // switch back to its channels, reopening the channel that was open
-        // since the DM view cleared the selection.
+        // Returning from the DM view, which cleared the selection: reopen the channel
+        // that was open.
         if same_guild && !self.channel_groups.is_empty() {
             self.open_guild_channel(window, cx);
             cx.notify();
@@ -151,9 +147,8 @@ impl HomeScreen {
         cx.notify();
     }
 
-    /// Fetches a guild's channels over REST: when the gateway hasn't sent
-    /// them yet, or the list it sent has since changed. A fetch for the open
-    /// guild that has a list on screen already swaps the new one in under it.
+    /// For when the gateway hasn't sent a list or it went stale. The open guild's
+    /// swaps in under the list on screen.
     fn fetch_guild_channels(
         &mut self,
         guild_id: Id<GuildMarker>,
@@ -198,8 +193,6 @@ impl HomeScreen {
         .detach();
     }
 
-    /// Takes a guild's channels as they now stand, from the gateway or a
-    /// fetch, and redraws the sidebar if it's the open guild's.
     pub(in crate::screens::home) fn set_guild_channels(
         &mut self,
         guild_id: Id<GuildMarker>,
@@ -231,9 +224,8 @@ impl HomeScreen {
         cx.notify();
     }
 
-    /// Marks a guild's channel list out of date: a channel in it changed, or
-    /// something deciding which the user can see. The open guild's is
-    /// refetched now; any other's when it's next opened.
+    /// Marks a list stale: a channel changed, or something deciding visibility. The
+    /// open guild's refetches now, any other's when next opened.
     pub(in crate::screens::home) fn invalidate_guild_channels(
         &mut self,
         guild_id: Id<GuildMarker>,
@@ -249,8 +241,6 @@ impl HomeScreen {
         }
     }
 
-    /// Opens the channel last open in the selected guild, or its first text
-    /// channel when that's gone or there wasn't one.
     fn open_guild_channel(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let last = self
             .selected_guild
@@ -278,9 +268,8 @@ impl HomeScreen {
             .collect();
     }
 
-    /// Writes the selected guild's collapsed categories to the prefs file.
-    /// Called on channel and guild switches rather than on every toggle, so
-    /// clicking through categories doesn't rewrite the file each time.
+    /// Called on channel and guild switches, not every toggle, so clicking through
+    /// categories doesn't rewrite the file.
     pub(in crate::screens::home) fn save_collapsed_categories(&self) {
         let Some(guild_id) = self.selected_guild else {
             return;
@@ -329,8 +318,6 @@ impl HomeScreen {
         self.channel_groups = groups;
     }
 
-    /// The first text channel in display order, used as the default selection
-    /// when entering a guild.
     fn first_text_channel(&self) -> Option<Id<ChannelMarker>> {
         self.channel_groups
             .iter()

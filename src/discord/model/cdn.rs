@@ -49,8 +49,7 @@ pub(super) fn emoji_url(id: impl std::fmt::Display, animated: bool) -> String {
     )
 }
 
-/// Asks the CDN for an image already scaled to the box it will be drawn in,
-/// preserving its aspect ratio.
+/// Asks the CDN for the image pre-scaled to fit the box, keeping aspect ratio.
 pub fn scaled_url(
     url: &str,
     width: Option<u64>,
@@ -58,8 +57,7 @@ pub fn scaled_url(
     max_w: u32,
     max_h: u32,
 ) -> String {
-    // Only Discord's own proxy understands the resize query; asking a third
-    // party host for it would at best be ignored and at worst break a signature.
+    // Third-party hosts would ignore the resize query or break a signature.
     if !is_discord_proxy(url) {
         return url.to_string();
     }
@@ -80,21 +78,15 @@ pub fn scaled_url(
     format!("{url}{separator}width={target_w}&height={target_h}")
 }
 
-/// Whether an image Discord flagged as animated has to be asked of the proxy
-/// as animated WebP to arrive still moving.
-///
-/// A GIF doesn't: the proxy scales it as a GIF and gpui animates that. Any
-/// other animated image — an animated WebP, or the animated AVIF that sites
-/// like vxtwitter serve a Twitter GIF as — does, and the proxy converts it on
-/// the fly. That is what Discord's own client asks for, and the only animated
-/// format besides GIF that gpui decodes.
+/// Whether an animated image must be requested as animated WebP to keep moving.
+/// GIFs don't: the proxy scales them as GIF. Other animated formats (e.g. the
+/// AVIF vxtwitter serves) get converted, and WebP is the only other animated
+/// format gpui decodes.
 pub(super) fn wants_animated_webp(animated: bool, content_type: Option<&str>) -> bool {
     animated && content_type != Some("image/gif")
 }
 
 /// Asks the proxy for `url` as animated WebP; see [`wants_animated_webp`].
-/// Takes a URL [`scaled_url`] already produced, and leaves anything not on
-/// Discord's proxy alone.
 pub fn animated_webp(url: String) -> String {
     if !is_discord_proxy(&url) {
         return url;

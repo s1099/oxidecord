@@ -49,8 +49,6 @@ impl HomeScreen {
         cx.stop_propagation();
     }
 
-    /// Whether the open conversation has a composer to type into: a channel
-    /// the user can post in, a voice channel with its chat beside it, or a DM.
     fn composer_shown(&self) -> bool {
         match self.view {
             View::DirectMessages => self.selected_dm_info().is_some(),

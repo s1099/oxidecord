@@ -13,14 +13,12 @@ use twilight_model::id::{
 use crate::discord;
 use crate::screens::home::{HomeScreen, View};
 
-/// How long acks wait to be sent. Following a busy channel live would
-/// otherwise send one per message; this way it's one every so often.
+/// Batched: following a busy channel live would otherwise send one ack per message.
 const ACK_DELAY: Duration = Duration::from_secs(2);
 
 impl HomeScreen {
-    /// Acks the open conversation up to its newest message, once the user can
-    /// see it: it has loaded, they're scrolled to the bottom, and they haven't
-    /// marked it unread — which holds until they leave it.
+    /// Once the user can see it: loaded, scrolled to the bottom, and not marked
+    /// unread (which holds until they leave).
     pub(in crate::screens::home) fn ack_open_conversation(&mut self, cx: &mut Context<Self>) {
         let Some(channel_id) = self.selected_channel else {
             return;
@@ -43,12 +41,9 @@ impl HomeScreen {
         self.queue_ack(channel_id, newest, cx);
     }
 
-    /// Reads where the message list actually sits, and acks the conversation
-    /// on reaching its newest message. Called every frame: the list's scroll
-    /// handler can't do this, since it only fires for the wheel and reports
-    /// where the list was before the event moved it, and smooth scrolling
-    /// glides the rest of the way without it — so the bottom was only noticed
-    /// on the next tick after reaching it.
+    /// Called every frame: the list's scroll handler fires only for the wheel and
+    /// reports where the list was before the event moved it, and smooth scrolling
+    /// glides on without it, so the bottom would be noticed a tick late.
     pub(in crate::screens::home) fn sync_at_bottom(&mut self, cx: &mut Context<Self>) {
         let list = &self.messages_list;
         // Pinned to the bottom, the list reports its top as past the last
@@ -63,9 +58,8 @@ impl HomeScreen {
         }
     }
 
-    /// Reads the open conversation through to its newest message and takes
-    /// the user there, as escape and the "new messages" bar do in Discord. It
-    /// undoes marking it unread too, and the divider goes.
+    /// As escape and the "new messages" bar do in Discord. Also undoes marking it
+    /// unread; the divider goes.
     pub(in crate::screens::home) fn mark_conversation_read(
         &mut self,
         window: &mut Window,
@@ -90,8 +84,6 @@ impl HomeScreen {
         cx.notify();
     }
 
-    /// Brings the first unread message to the top of the view, or the oldest
-    /// loaded one when the divider is further back than the list goes.
     pub(in crate::screens::home) fn jump_to_first_unread(&mut self, cx: &mut Context<Self>) {
         let ix = self.unread_divider_index().unwrap_or(0);
         self.messages_list.scroll_to(ListOffset {
@@ -101,9 +93,7 @@ impl HomeScreen {
         cx.notify();
     }
 
-    /// What the "new messages" bar says: how many loaded messages are past
-    /// the ack, and when the first of them was sent. `None` while the open
-    /// conversation has nothing unread, or hasn't loaded.
+    /// `None` while nothing is unread or the conversation hasn't loaded.
     pub(in crate::screens::home) fn unread_summary(&self) -> Option<(usize, bool, String)> {
         let channel_id = self.selected_channel?;
         if self.messages_loading || !self.unreads.is_unread(channel_id) {
@@ -120,11 +110,9 @@ impl HomeScreen {
         Some((count, !self.reached_newest, first.timestamp_label()))
     }
 
-    /// Whether a message counts toward its channel's mention badge, by the
-    /// rules Discord's client counts them by: a ping of the user by name, of
-    /// everyone, or of one of their roles, unless the guild's settings
-    /// suppress those — and in a DM, every message, unless the conversation
-    /// is muted. The user's own messages never count.
+    /// Discord's counting rules: a ping by name, of everyone, or of one of the user's
+    /// roles, unless guild settings suppress those; in a DM every message unless
+    /// muted. The user's own never count.
     pub(in crate::screens::home) fn pings_me(
         &self,
         channel_id: Id<ChannelMarker>,
@@ -148,8 +136,7 @@ impl HomeScreen {
             || (roles && self.mentions_self_role(message, guild_id))
     }
 
-    /// Moves a channel's ack forward at once, and sends it after a moment
-    /// along with any others that pile up meanwhile.
+    /// Sent after a moment, batched with others that pile up meanwhile.
     fn queue_ack(
         &mut self,
         channel_id: Id<ChannelMarker>,
@@ -180,9 +167,8 @@ impl HomeScreen {
         }));
     }
 
-    /// Marks the open conversation unread from `message_id` on, as alt-click
-    /// does in Discord. The divider moves above the message, and the
-    /// conversation isn't acked again until the user leaves it.
+    /// As alt-click does in Discord. The divider moves above the message and no ack
+    /// is sent until the user leaves.
     pub(in crate::screens::home) fn mark_unread(
         &mut self,
         message_id: Id<MessageMarker>,
@@ -227,8 +213,8 @@ impl HomeScreen {
         .detach();
     }
 
-    /// Moves the "new" divider, re-measuring the rows it leaves and lands on:
-    /// the list caches each row's height, and the divider is part of its row.
+    /// Re-measures the rows it leaves and lands on: the list caches row heights and
+    /// the divider is part of its row.
     pub(in crate::screens::home) fn set_unread_marker(
         &mut self,
         marker: Option<Id<MessageMarker>>,
@@ -241,9 +227,8 @@ impl HomeScreen {
         }
     }
 
-    /// The row the "new" divider sits above: the first message past the
-    /// marker. Only when the message before it is loaded too, or there is
-    /// none — otherwise the marker is further back than the list goes.
+    /// The first message past the marker, only if the one before it is loaded too (or
+    /// there is none); otherwise the marker is further back than the list goes.
     pub(in crate::screens::home) fn unread_divider_index(&self) -> Option<usize> {
         let marker = self.unread_marker?;
         let ix = self
@@ -252,8 +237,7 @@ impl HomeScreen {
         (ix < self.messages.len() && (ix > 0 || self.reached_oldest)).then_some(ix)
     }
 
-    /// The newest message in the open conversation that the server has; a
-    /// pending one's id is only its nonce.
+    /// A pending message's id is only its nonce.
     fn newest_sent_message(&self) -> Option<Id<MessageMarker>> {
         self.messages
             .iter()

@@ -9,8 +9,6 @@ use twilight_model::id::{Id, marker::ChannelMarker};
 use crate::screens::home::HomeScreen;
 
 impl HomeScreen {
-    /// Puts a voice channel's pane on screen, with its chat loaded when the
-    /// chat is open.
     pub(in crate::screens::home) fn show_voice_channel(
         &mut self,
         channel_id: Id<ChannelMarker>,
@@ -30,7 +28,6 @@ impl HomeScreen {
         }
     }
 
-    /// Opens a voice channel's chat beside its stage, without joining it.
     pub(in crate::screens::home) fn open_voice_chat(
         &mut self,
         channel_id: Id<ChannelMarker>,

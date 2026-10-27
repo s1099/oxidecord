@@ -10,11 +10,8 @@ use crate::screens::home::voice::VoiceParticipant;
 use crate::ui::button::Button;
 use crate::ui::depth::{self, radius};
 
-/// Largest diameter of the avatar on a participant tile; smaller tiles get a
-/// smaller one.
 const TILE_AVATAR: f32 = 80.;
 
-/// Space between tiles, and around them inside the stage.
 pub(super) const TILE_GAP: f32 = 8.;
 pub(super) const STAGE_PADDING: f32 = 16.;
 
@@ -22,8 +19,6 @@ pub(super) const STAGE_PADDING: f32 = 16.;
 const TILE_ASPECT: f32 = 16. / 9.;
 
 impl HomeScreen {
-    /// One participant: their avatar on their banner colour, and a badge with
-    /// their name and what they've silenced. Ringed while they're talking.
     pub(super) fn participant_tile(
         &self,
         participant: &VoiceParticipant,
@@ -74,8 +69,6 @@ impl HomeScreen {
             })
     }
 
-    /// The tile a live participant's stream gets beside their own: the way to
-    /// open it, or, for the user's own, what's going out and the way to stop.
     pub(super) fn stream_tile(
         &self,
         participant: &VoiceParticipant,
@@ -132,8 +125,7 @@ impl HomeScreen {
         );
 
         tile(format!("voice-stream-{user_id}"), size, cx)
-            // Black rather than a theme colour, like the watched stream's
-            // letterbox: it's where the picture goes.
+            // Black, not a theme colour, like the watched stream's letterbox.
             .bg(black())
             .child(middle)
             .child(
@@ -155,7 +147,6 @@ impl HomeScreen {
     }
 }
 
-/// A tile on the stage: a card with its contents centred, sized by the grid.
 fn tile(id: String, size: Size<Pixels>, cx: &App) -> Stateful<Div> {
     depth::card(radius::CARD, cx)
         .id(SharedString::from(id))
@@ -190,7 +181,6 @@ fn name_badge(icon: Option<Icon>, name: String) -> Div {
         .child(div().min_w_0().truncate().child(name))
 }
 
-/// How the stage's tiles are laid out: how many to a row, and how big.
 pub(super) struct TileGrid {
     columns: usize,
     pub(super) size: Size<Pixels>,
@@ -204,8 +194,6 @@ impl TileGrid {
     }
 }
 
-/// The largest tiles that fit `count` of them into `stage`, trying every
-/// column count and keeping whichever leaves them biggest.
 pub(super) fn fit_tiles(count: usize, stage: Size<Pixels>) -> TileGrid {
     let count = count.max(1);
     let width = f32::from(stage.width) - STAGE_PADDING * 2.;

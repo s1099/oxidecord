@@ -1,13 +1,11 @@
 //! Watching someone else's stream in the call.
 //!
-//! The same dance as going live, from the other side: a gateway command
-//! (`STREAM_WATCH`) answered by `STREAM_CREATE` and `STREAM_SERVER_UPDATE`,
-//! after which a connection of its own opens to the stream's server — or by
-//! a `STREAM_DELETE` saying why it can't be watched.
+//! The same dance as going live from the other side: `STREAM_WATCH` answered by
+//! `STREAM_CREATE` and `STREAM_SERVER_UPDATE`, after which a connection of its own
+//! opens, or by a `STREAM_DELETE` saying why it can't be watched.
 //!
-//! Decoded pictures cross to gpui over a channel, like a playing video's, and
-//! are handled the same way: each replaces the last, and the last is handed
-//! back to the sprite atlas (see [`HomeScreen::show_frame`]'s notes).
+//! Pictures cross to gpui over a channel like a playing video's and are handled
+//! the same way (see [`HomeScreen::show_frame`]'s notes).
 
 use std::sync::Arc;
 
@@ -22,13 +20,10 @@ use crate::screens::home::voice::{StreamWatch, VoiceStatus};
 use crate::voice::VoiceEngine;
 use crate::voice::stream::{StreamConnection, WatchStream};
 
-/// The size pictures are decoded at before the stage has been drawn and
-/// said how big it is.
+/// Decode size before the stage has been drawn and reported its size.
 const DEFAULT_TARGET: (u32, u32) = (1280, 720);
 
 impl HomeScreen {
-    /// Whether `user_id`'s stream can be opened: they're live in the call the
-    /// user is connected to, and it's not the user's own.
     pub(in crate::screens::home) fn can_watch(&self, user_id: Id<UserMarker>) -> bool {
         let Some(call) = self
             .voice
@@ -44,7 +39,6 @@ impl HomeScreen {
                 .is_some_and(|state| state.self_stream && state.channel_id == Some(call.channel_id))
     }
 
-    /// Starts watching `user_id`'s stream, in place of any other.
     pub(in crate::screens::home) fn watch_stream(
         &mut self,
         user_id: Id<UserMarker>,
@@ -103,7 +97,6 @@ impl HomeScreen {
         cx.notify();
     }
 
-    /// Stops watching: tells the gateway, and closes the connection.
     pub(in crate::screens::home) fn stop_watching(&mut self, cx: &mut Context<Self>) {
         if let (Some(watch), Some(gateway)) = (&self.watching, &self.gateway) {
             gateway.delete_stream(&watch.stream_key);
@@ -112,15 +105,13 @@ impl HomeScreen {
         cx.notify();
     }
 
-    /// Drops the watch without telling the gateway, for when it already
-    /// knows: the stream ended, or the call did.
+    /// For when the gateway already knows: the stream ended, or the call did.
     pub(in crate::screens::home) fn end_watch(&mut self) {
         if let Some(frame) = self.watching.take().and_then(|watch| watch.frame) {
             self.retired_stream_frames.push(frame);
         }
     }
 
-    /// Hands pictures from an ended watch back to gpui. Called on render.
     pub(in crate::screens::home) fn release_stream_frames(&mut self, window: &mut Window) {
         for frame in self.retired_stream_frames.drain(..) {
             let _ = window.drop_image(frame);
@@ -166,7 +157,6 @@ impl HomeScreen {
         self.try_start_watch(cx);
     }
 
-    /// The stream ended, or Discord refused to show it.
     pub(in crate::screens::home) fn handle_watch_delete(
         &mut self,
         reason: Option<String>,
@@ -185,7 +175,6 @@ impl HomeScreen {
         cx.notify();
     }
 
-    /// The connection ended on its own.
     pub(in crate::screens::home) fn handle_watch_ended(
         &mut self,
         error: Option<String>,
@@ -198,7 +187,6 @@ impl HomeScreen {
         cx.notify();
     }
 
-    /// Opens the connection once the gateway has delivered every part of it.
     fn try_start_watch(&mut self, cx: &mut Context<Self>) {
         let session_id = self.voice.as_ref().and_then(|call| call.session_id.clone());
         let audio = self.voice_engine.as_ref().map(VoiceEngine::stream_audio);
@@ -246,8 +234,6 @@ impl HomeScreen {
         cx.notify();
     }
 
-    /// Returns whether the watch this picture belongs to is still the current
-    /// one; once it isn't, the pump feeding it stops.
     fn handle_watch_frame(
         &mut self,
         stream_key: &str,
@@ -279,7 +265,6 @@ impl HomeScreen {
         true
     }
 
-    /// Shows why a stream couldn't be watched, on the call's panel.
     fn report_watch_error(&mut self, error: String, cx: &mut Context<Self>) {
         eprintln!("watching a stream: {error}");
         if let Some(call) = &mut self.voice {
@@ -289,8 +274,7 @@ impl HomeScreen {
     }
 }
 
-/// Wraps decoded pixels as something `img()` can draw. They're BGRA already,
-/// so this is a move.
+/// BGRA already, so this is a move.
 fn to_image(frame: DecodedFrame) -> Option<Arc<RenderImage>> {
     let buffer = ImageBuffer::from_raw(frame.width, frame.height, frame.bgra)?;
     Some(Arc::new(RenderImage::new(vec![Frame::new(buffer)])))

@@ -5,51 +5,36 @@ use std::sync::Mutex;
 
 use crate::platform::audio::sanitize;
 
-/// Ceiling on each ring: enough to ride out a scheduling hiccup, short enough
-/// that recovery isn't audible as a growing delay.
+/// Rides out scheduling hiccups without a noticeable growing delay.
 const MAX_BUFFERED_MS: u32 = 400;
 
-/// How long the ramp either side of a gap lasts.
-///
-/// Long enough to take the edge off the step, short enough not to swallow a
-/// consonant.
+/// Long enough to soften the step, short enough not to swallow a consonant.
 const FADE_MS: u32 = 3;
 
-/// A ring of interleaved samples shared between an audio callback and the
-/// call.
+/// Neither side blocks: a starved reader gets silence and an overrun writer
+/// drops the oldest audio, since stalling would stutter the whole call.
 ///
-/// Neither side ever blocks: a starved reader gets silence and an overrun
-/// writer drops the oldest audio, since stalling either thread would be heard
-/// as a stutter across the whole call.
-///
-/// Both of those are steps in the waveform, and a step is a click — the louder
-/// the audio it interrupts, the louder the click. So the ring hides them: it
-/// ramps down into a gap and back up out of one, and after a stall it waits
-/// for `prime` samples to build up rather than tearing another gap on the very
-/// next callback.
+/// Both leave a step in the waveform, which clicks. So the ring ramps down into
+/// a gap and back out, and after a stall waits for `prime` samples before
+/// draining again.
 pub(super) struct SampleRing {
     state: Mutex<RingState>,
-    /// Interleaved channel count. Every drain and every drop is a whole number
-    /// of frames, because losing a single sample would rotate every later one
-    /// onto the wrong channel for the rest of the call.
+    /// Drains and drops are whole frames; losing one sample would put every
+    /// later one on the wrong channel.
     pub(super) channels: usize,
-    /// Samples the reader waits for after a stall before it drains again.
     prime: usize,
     capacity: usize,
-    /// Length of the ramp either side of a gap, in frames.
+    /// In frames.
     fade: usize,
 }
 
 #[derive(Default)]
 struct RingState {
     samples: VecDeque<f32>,
-    /// While set the reader emits silence: the writer hasn't built the buffer
-    /// back up since the last stall.
+    /// Reader emits silence until the buffer refills after a stall.
     priming: bool,
-    /// The last sample emitted on each channel. A gap ramps down from here
-    /// rather than cutting straight to zero.
+    /// Last sample per channel; a gap ramps down from here.
     last: Vec<f32>,
-    /// Frames left of the ramp back in after a gap.
     fade_in: usize,
 }
 
@@ -66,8 +51,7 @@ impl SampleRing {
             }),
             channels,
             prime,
-            // A ring that couldn't hold what the reader waits for would never
-            // finish priming.
+            // Must hold more than `prime` or priming never finishes.
             capacity: (frames(MAX_BUFFERED_MS) * channels).max(prime * 2),
             fade: frames(FADE_MS).max(1),
         }
@@ -77,26 +61,20 @@ impl SampleRing {
         let Ok(mut state) = self.state.lock() else {
             return;
         };
-        // A driver that hands back a NaN, or a mix that ran past full scale,
-        // becomes a full-scale spike once it's converted to the device's
-        // format. Neither belongs in a call, and neither is worth finding out
-        // about through the speakers.
+        // NaN or over-range samples become full-scale spikes after format conversion.
         state.samples.extend(samples.map(sanitize));
 
         if state.samples.len() > self.capacity {
-            // Keep the newest audio: the listener would rather skip forward
-            // than fall further behind the conversation.
+            // Keep the newest audio; skipping forward beats falling behind.
             let excess = state.samples.len() - self.capacity;
             let excess = (excess.div_ceil(self.channels) * self.channels).min(state.samples.len());
             state.samples.drain(..excess);
-            // The reader is about to jump over whatever was dropped, so ramp
-            // it back in on the far side of the jump.
+            // The reader jumps over the dropped audio; ramp in after it.
             state.fade_in = self.fade;
         }
     }
 
-    /// Fills `out` with what's buffered, ramping into silence when the writer
-    /// hasn't kept up. `out` holds a whole number of frames.
+    /// `out` must hold a whole number of frames.
     pub(super) fn fill(&self, out: &mut [f32]) {
         if out.is_empty() {
             return;
@@ -123,9 +101,8 @@ impl SampleRing {
         }
 
         if take < out.len() {
-            // Underrun. Ease out of the audio there was and wait for the
-            // writer to get ahead again, rather than cutting it dead here and
-            // tearing another gap on the next callback.
+            // Underrun: fade out and re-prime instead of cutting dead and
+            // tearing another gap next callback.
             self.fade_out(&mut out[..take]);
             out[take..].fill(0.);
             state.priming = true;
@@ -135,17 +112,12 @@ impl SampleRing {
             self.fade_in(out, &mut state.fade_in);
         }
 
-        // Remember where the waveform ended, so the next gap knows what to
-        // ramp down from.
         let frames = out.len() / self.channels;
         let last_frame = &out[(frames - 1) * self.channels..][..self.channels];
         state.last.copy_from_slice(last_frame);
     }
 
-    /// Ramps `out` down from the last sample emitted, then holds silence.
-    ///
-    /// Used when there is nothing at all to play: cutting from the previous
-    /// callback's final sample straight to zero is the click.
+    /// For when there is nothing to play; going straight from the last sample to zero clicks.
     fn ramp_from_last(&self, state: &RingState, out: &mut [f32]) {
         out.fill(0.);
         let span = self.fade.min(out.len() / self.channels);
@@ -160,8 +132,6 @@ impl SampleRing {
         }
     }
 
-    /// Ramps the end of what was filled down to silence, so the gap that
-    /// follows isn't a step.
     fn fade_out(&self, filled: &mut [f32]) {
         let frames = filled.len() / self.channels;
         let span = self.fade.min(frames);
@@ -174,8 +144,7 @@ impl SampleRing {
         }
     }
 
-    /// Ramps the start of `out` up out of a gap, carrying on across callbacks
-    /// when the ramp outlasts one of them.
+    /// Continues across callbacks if the ramp outlasts one.
     fn fade_in(&self, out: &mut [f32], remaining: &mut usize) {
         let span = (*remaining).min(out.len() / self.channels);
         for frame in 0..span {

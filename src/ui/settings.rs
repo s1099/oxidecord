@@ -1,11 +1,7 @@
-//! The settings popup: gpui-component's [`Settings`] component — a page sidebar
-//! beside the active page's groups — hosted in a dialog, opened from the
-//! account panel.
+//! The settings popup: gpui-component's [`Settings`] hosted in a dialog.
 //!
-//! Both pages are real: themes picks a preset, and updates drives the
-//! self-updater in [`crate::platform::updater`]. Typing [`DEBUG_CODE`] into the
-//! search adds a third, [`gallery`], for the rest of the session. A logout
-//! button sits under the page list.
+//! Pages: themes, and updates (drives [`crate::platform::updater`]). Typing
+//! [`DEBUG_CODE`] into the search adds [`gallery`] for the session.
 
 use std::rc::Rc;
 
@@ -23,33 +19,25 @@ use crate::platform::updater::{self, Status};
 use crate::ui::button::Button;
 use crate::ui::{depth, gallery, theme};
 
-/// Size the popup aims for. Both are capped to the window with [`WINDOW_MARGIN`]
-/// to spare, since the dialog is positioned from a fixed size and would
-/// otherwise run off a small window.
+/// Popup size, capped to the window less [`WINDOW_MARGIN`]: the dialog is
+/// positioned from a fixed size and would run off a small window.
 const WIDTH: f32 = 900.;
 const HEIGHT: f32 = 600.;
 const WINDOW_MARGIN: f32 = 64.;
 
 const SIDEBAR_WIDTH: f32 = 220.;
 
-/// The dialog's own border, one pixel top and bottom, which sits inside the
-/// height it's given. See [`open`] for why the content has to subtract it.
+/// The dialog's border (1px top and bottom) sits inside its height; see [`open`].
 const DIALOG_BORDER: f32 = 2.;
 
-/// A theme card: wide enough for a couple of words of theme name, over a
-/// preview roughly the proportions of the app window.
 const CARD_WIDTH: f32 = 148.;
 const PREVIEW_HEIGHT: f32 = 84.;
 
-/// What the logout button calls, supplied by whoever opens the popup.
 type LogOutHandler = dyn Fn(&mut Window, &mut App);
 
-/// Typed into the settings search, reveals the debug page.
 const DEBUG_CODE: &str = "debug";
 
-/// Opens the settings popup. Closed by the dialog's own close button, Escape,
-/// or a click on the overlay. `on_log_out` runs, after the popup closes, when
-/// the logout button is clicked.
+/// Opens the settings popup. `on_log_out` runs after it closes, when logout is clicked.
 pub fn open(
     window: &mut Window,
     cx: &mut App,
@@ -68,23 +56,20 @@ pub fn open(
         let inner_radius = dialog_inner_radius(cx);
 
         dialog
-            // The component brings its own sidebar, header, and scrolling, so
-            // the dialog is only the frame around it: no padding and no title.
+            // The component brings its own chrome, so the dialog is just a frame.
             // `overflow_hidden` clips to the rectangle, not the rounded corners,
-            // so the sidebar and footer round their own corners to match.
+            // so the sidebar and footer round their own.
             .p_0()
             .border_color(depth::ring(cx))
             .w(width)
             .h(height)
             .overflow_hidden()
             .child(
-                // The dialog puts its content in a block-layout scroll box, so
-                // a percentage height has nothing definite to resolve against
-                // and the whole component would collapse to the height of the
-                // sidebar's two entries. It needs a pixel height, and that
-                // height is the dialog's content box: what it was given, less
-                // the border sitting inside it. Overshoot by even a pixel and
-                // the dialog scrolls the popup — sidebar and all.
+                // The dialog's content is a block-layout scroll box, so a percentage
+                // height has nothing to resolve against and the component collapses
+                // to the sidebar's height. Use the content box in pixels (given
+                // height less the inner border); overshoot by a pixel and the
+                // dialog scrolls the whole popup.
                 div()
                     .relative()
                     .w_full()
@@ -104,16 +89,13 @@ pub fn open(
     });
 }
 
-/// The logout button, pinned under the sidebar's page list. The component's
-/// sidebar has a footer slot but [`Settings`] doesn't expose it, so this is
-/// laid over the sidebar's bottom edge instead, at the width it opens at. The
-/// page list scrolls under it, and is far too short to reach it anyway.
+/// The logout button. [`Settings`] doesn't expose the sidebar's footer slot, so
+/// this is laid over the sidebar's bottom edge at its opening width.
 fn log_out_footer(on_log_out: Rc<LogOutHandler>, cx: &App) -> Div {
     div()
         .absolute()
         .bottom_0()
         .left_0()
-        // Clear of the sidebar's right border, so the divider stays unbroken.
         .w(px(SIDEBAR_WIDTH) - px(1.))
         .p_3()
         .rounded_bl(dialog_inner_radius(cx))
@@ -134,14 +116,12 @@ fn log_out_footer(on_log_out: Rc<LogOutHandler>, cx: &App) -> Div {
         )
 }
 
-/// The radius of the dialog's corners inside its one-pixel border, for content
-/// that paints right up to them.
+/// Corner radius inside the dialog's border, for content painting up to it.
 fn dialog_inner_radius(cx: &App) -> Pixels {
     (cx.theme().radius_lg - px(1.)).max(px(0.))
 }
 
-/// Watches the settings search for [`DEBUG_CODE`]. The unlock is never saved,
-/// so it lasts until the app quits.
+/// Watches the settings search for [`DEBUG_CODE`]. The unlock is not persisted.
 #[derive(Default)]
 struct DebugCode {
     unlocked: bool,
@@ -151,11 +131,9 @@ struct DebugCode {
 
 impl Global for DebugCode {}
 
-/// The [`Settings`] component builds its search input privately and offers no
-/// way to read it, so the only way in is to catch the input being created.
-/// Every input in the app goes through the same hook, so it's armed just
-/// before the dialog opens and claims the next one made: the search box, which
-/// the component creates on its first render, ahead of any page content.
+/// [`Settings`] builds its search input privately, so catch it on creation:
+/// every input goes through one hook, armed just before the dialog opens, and
+/// the next one made is the search box (created on first render, before pages).
 fn arm_debug_code(cx: &mut App) {
     if !cx.has_global::<DebugCode>() {
         let observer = cx.observe_new(|_: &mut InputState, window, cx| {
@@ -172,9 +150,8 @@ fn arm_debug_code(cx: &mut App) {
                     && search.value().trim().eq_ignore_ascii_case(DEBUG_CODE)
                 {
                     cx.global_mut::<DebugCode>().unlocked = true;
-                    // Left in place, the code would filter every page out,
-                    // the new one included — its content is custom-rendered,
-                    // which the search never matches.
+                    // Left in, the code would filter out every page, including the
+                    // new one (custom-rendered, which search never matches).
                     search.set_value("", window, cx);
                 }
             })
@@ -203,14 +180,11 @@ fn themes_page() -> SettingPage {
         )
 }
 
-/// Every preset laid out as a wrapping grid of preview cards.
 fn theme_grid(cx: &mut App) -> Div {
     let active = theme::active_name(cx);
-    // Cloned out of the global so the cards can be built against `&mut App`.
     let presets: Vec<Rc<ThemeConfig>> = theme::presets(cx).to_vec();
 
-    // Built up in a loop rather than with `children`, since each card needs
-    // `&mut App` and a closure can't hand it back out.
+    // A loop, not `children`: each card needs `&mut App`, which a closure can't hand back.
     let mut grid = div().flex().flex_wrap().gap_3();
     for preset in presets {
         let selected = preset.name == active;
@@ -219,30 +193,25 @@ fn theme_grid(cx: &mut App) -> Div {
     grid
 }
 
-/// One preset: a miniature of the app window in that theme's colours with the
-/// theme's name under it. The selected card is outlined in the accent colour.
+/// A miniature of the app window in the preset's colours; the selected card gets an accent outline.
 fn theme_card(preset: Rc<ThemeConfig>, selected: bool, cx: &mut App) -> Stateful<Div> {
     let colors = &preset.colors;
     let name = preset.name.clone();
 
-    // Every colour in a theme file is optional, so each one falls back to
-    // another colour from the same theme rather than to a fixed value.
+    // Every colour is optional; fall back to another from the same theme.
     let background = color(&colors.background, cx.theme().background);
     let foreground = color(&colors.foreground, cx.theme().foreground);
     let sidebar = color(&colors.sidebar, background);
     let title_bar = color(&colors.title_bar, sidebar);
     let primary = color(&colors.primary, foreground);
     let outline = color(&colors.border, foreground.alpha(0.2));
-    // The children that reach the corners round themselves to sit inside the
-    // border. Not `overflow_hidden`: it wouldn't clip the rounded corners anyway,
-    // and gpui rounds a clip out to whole device pixels, so a card scrolled
-    // just past the list's edge would leave a sliver of its title bar there.
+    // Corner children round themselves instead of using `overflow_hidden`: it
+    // doesn't clip rounded corners, and gpui rounds the clip out to whole device
+    // pixels, leaving a title-bar sliver when a card scrolls past the list edge.
     let inner_radius = (cx.theme().radius - px(1.)).max(px(0.));
 
     card_frame(name.clone(), selected, cx)
         .child(
-            // The miniature: title bar across the top, sidebar down the left,
-            // and a few lines standing in for content beside it.
             div()
                 .w_full()
                 .h(px(PREVIEW_HEIGHT))
@@ -297,7 +266,6 @@ fn theme_card(preset: Rc<ThemeConfig>, selected: bool, cx: &mut App) -> Stateful
         )
 }
 
-/// The clickable frame around a card's preview and label.
 fn card_frame(name: SharedString, selected: bool, cx: &mut App) -> Stateful<Div> {
     let hover = cx.theme().accent;
     let border = if selected {
@@ -321,14 +289,12 @@ fn card_frame(name: SharedString, selected: bool, cx: &mut App) -> Stateful<Div>
         .on_click(move |_, window, cx| theme::activate(&name, window, cx))
 }
 
-/// A stand-in for a line of text inside a preview.
 fn preview_line(width: Pixels, color: Hsla) -> Div {
     div().w(width).h(px(4.)).rounded_full().bg(color)
 }
 
-/// Resolves an optional theme colour, which the JSON holds as a string, to the
-/// colour to paint. Anything that isn't a plain hex value — a gradient, say —
-/// falls back too, since a preview swatch is a flat fill.
+/// Parses an optional theme colour string; non-hex values (a gradient, say) fall
+/// back too, since a preview is a flat fill.
 fn color(value: &Option<SharedString>, fallback: Hsla) -> Hsla {
     value
         .as_ref()
@@ -358,8 +324,6 @@ fn version_field() -> SettingField<SharedString> {
     })
 }
 
-/// The updater's whole interface: where it has got to, and the one action that
-/// makes sense from there.
 fn update_field() -> SettingField<SharedString> {
     SettingField::render(|_: &RenderOptions, _window: &mut Window, cx: &mut App| {
         let status = updater::status(cx);
@@ -375,8 +339,7 @@ fn update_field() -> SettingField<SharedString> {
     })
 }
 
-/// What the current status reads as, and the colour it reads in. `None` where
-/// the button alone already says it.
+/// `None` where the button alone already says it.
 fn status_message(status: &Status, cx: &App) -> (Option<SharedString>, Hsla) {
     let muted = cx.theme().muted_foreground;
     match status {
@@ -398,8 +361,7 @@ fn status_message(status: &Status, cx: &App) -> (Option<SharedString>, Hsla) {
     }
 }
 
-/// The action the current status leads to. Work in flight leaves a disabled
-/// button in place, so the row doesn't reflow while it runs.
+/// Work in flight leaves a disabled button so the row doesn't reflow.
 fn action_button(status: &Status) -> Option<Button> {
     if !updater::supported() {
         return None;
@@ -415,8 +377,7 @@ fn action_button(status: &Status) -> Option<Button> {
             .primary()
             .on_click(|_, _window, cx| updater::download(cx)),
         Status::Ready { .. } => Button::new("update-action")
-            // The swap can only happen once this process is gone, so restarting
-            // is the install rather than a step before it.
+            // The swap happens only once this process exits, so restarting is the install.
             .label("Restart to update")
             .primary()
             .on_click(|_, _window, cx| updater::install(cx)),

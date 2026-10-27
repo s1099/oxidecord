@@ -10,12 +10,9 @@ use crate::voice::stream::StreamEvent;
 use crate::voice::{VoiceEngine, VoiceEvent};
 
 impl HomeScreen {
-    /// Opens the gateway connection and pumps its events onto the gpui
-    /// foreground, where they update the open conversation and the call.
-    ///
-    /// The call engine is started here too: a call is opened with a gateway
-    /// command and answered with gateway dispatches, so neither half is of any
-    /// use without the other.
+    /// Pumps gateway events onto the foreground. The call engine starts here too: a
+    /// call opens with a gateway command and is answered by dispatches, so neither
+    /// half works alone.
     pub(in crate::screens::home) fn start_gateway(
         &mut self,
         window: &mut Window,
@@ -27,8 +24,7 @@ impl HomeScreen {
 
         let (tx, rx) = futures::channel::mpsc::unbounded::<discord::GatewayEvent>();
         let gateway = discord::connect_gateway(token, move |event| {
-            // Returns whether the foreground receiver is still around; once it
-            // isn't (the screen was dropped), the gateway loop stops.
+            // False once the receiver is gone (screen dropped), which stops the gateway loop.
             tx.unbounded_send(event).is_ok()
         });
         self.gateway = Some(gateway);
@@ -106,9 +102,8 @@ impl HomeScreen {
                 voice_states,
             } => {
                 self.self_user_id = Some(user_id);
-                // A new session starts out online whatever was picked, and
-                // a resume doesn't come through here, so this covers both
-                // the first connect and every reconnect.
+                // A new session starts online whatever was picked; resumes don't come through
+                // here, so this covers the first connect and every reconnect.
                 if let (Some(status), Some(gateway)) = (self.presence_status, &self.gateway) {
                     gateway.update_presence(status);
                 }
@@ -321,7 +316,6 @@ impl HomeScreen {
         }
     }
 
-    /// Appends a live message to the open conversation, if it belongs there.
     fn handle_incoming_message(
         &mut self,
         incoming: discord::IncomingMessage,
@@ -334,9 +328,9 @@ impl HomeScreen {
         {
             return;
         }
-        // The history for this channel is still loading and will replace the
-        // whole list when it lands (and include this message), so skip it now
-        // to avoid a desync between `messages` and the list state.
+        // History for this channel is still loading and will replace the list wholesale
+        // (including this message), so skip it to avoid desyncing `messages` and the
+        // list state.
         if self.messages_loading {
             return;
         }

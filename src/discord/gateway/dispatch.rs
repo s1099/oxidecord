@@ -20,11 +20,8 @@ use crate::discord::model::{
 use super::payloads::*;
 use super::{GatewayEvent, IncomingMessage, ReactionChange};
 
-/// Turns one dispatch into the events the app acts on. `READY` and
-/// `GUILD_CREATE` fan out into several.
-///
-/// `self_id` is the signed-in user, remembered from `READY` for the
-/// dispatches that need it and don't say.
+/// Turns one dispatch into events; `READY` and `GUILD_CREATE` fan out into several.
+/// `self_id` is the signed-in user, remembered from `READY` for dispatches that don't name them.
 pub(super) fn dispatch(
     name: &str,
     data: &RawValue,
@@ -111,9 +108,8 @@ pub(super) fn dispatch(
                 .collect()
             })
             .unwrap_or_default(),
-        // twilight models this dispatch as a partial message, because Discord
-        // hasn't always sent the whole thing. Parsing it as a full one takes
-        // the updates that do and skips any that don't.
+        // twilight models this as a partial message since Discord hasn't always sent the whole
+        // thing; parsing a full one takes the updates that have it and skips the rest.
         "MESSAGE_UPDATE" => serde_json::from_str::<twilight_model::channel::Message>(data)
             .map(|message| {
                 let roles = author_roles(&message);
@@ -273,8 +269,6 @@ pub(super) fn dispatch(
                 .map(|guild_id| vec![GatewayEvent::GuildChannelsChanged { guild_id }])
                 .unwrap_or_default()
         }
-        // Of the guild's own fields, only its boost level and default
-        // notifications matter here.
         "GUILD_UPDATE" => serde_json::from_str::<GatewayGuild>(data)
             .map(|guild| {
                 guild_upload_limit(&guild)
@@ -397,10 +391,8 @@ pub(super) fn dispatch(
     }
 }
 
-/// A guild's channels as events — the sidebar's list and its unread mark —
-/// unless it arrived without any: an unavailable guild, which says nothing
-/// about them. `members` is searched for the signed-in user's own, whose
-/// roles decide what they see.
+/// A guild's channels and unread mark as events, unless it arrived unavailable.
+/// `members` is searched for the user's own, whose roles decide what they see.
 fn guild_channels<'a>(
     guild_id: Id<GuildMarker>,
     self_id: Id<UserMarker>,
@@ -432,8 +424,6 @@ fn guild_channels<'a>(
     ]
 }
 
-/// The file size a guild's boosts allow as an event, unless it arrived
-/// unavailable.
 fn guild_upload_limit(guild: &GatewayGuild) -> Option<GatewayEvent> {
     Some(GatewayEvent::GuildUploadLimit {
         guild_id: guild.id,
@@ -441,8 +431,6 @@ fn guild_upload_limit(guild: &GatewayGuild) -> Option<GatewayEvent> {
     })
 }
 
-/// What marks a guild unread by default as an event, unless it arrived
-/// unavailable.
 fn guild_default_unreads(guild: &GatewayGuild) -> Option<GatewayEvent> {
     Some(GatewayEvent::GuildDefaultUnreads {
         guild_id: guild.id,
@@ -450,7 +438,6 @@ fn guild_default_unreads(guild: &GatewayGuild) -> Option<GatewayEvent> {
     })
 }
 
-/// A guild's emoji as an event, unless the guild arrived without its list.
 fn guild_emojis(guild_id: Id<GuildMarker>, emojis: Option<Vec<RawEmoji>>) -> Option<GatewayEvent> {
     Some(GatewayEvent::GuildEmojis {
         guild_id,
@@ -458,7 +445,6 @@ fn guild_emojis(guild_id: Id<GuildMarker>, emojis: Option<Vec<RawEmoji>>) -> Opt
     })
 }
 
-/// Each member's roles as an event, skipping any that arrived without a user.
 fn member_roles(
     guild_id: Id<GuildMarker>,
     members: Vec<RawMember>,
@@ -473,10 +459,9 @@ fn member_roles(
     })
 }
 
-/// The roles and name of a guild message's author, from the member Discord
-/// sends along with it. Webhooks aren't members, so their messages have none.
-/// The name is kept because fetched history carries no members, and without
-/// it the same author's older messages would show their global name.
+/// The author's roles and name from the member sent with a guild message (webhooks have
+/// none). The name is kept because fetched history carries no members, so older messages
+/// would otherwise show the global name.
 fn author_roles(message: &twilight_model::channel::Message) -> Vec<GatewayEvent> {
     let (Some(guild_id), Some(member)) = (message.guild_id, message.member.as_ref()) else {
         return Vec::new();
@@ -493,8 +478,7 @@ fn author_roles(message: &twilight_model::channel::Message) -> Vec<GatewayEvent>
     std::iter::once(roles).chain(named).collect()
 }
 
-/// A guild's roles and its members' as events. An unavailable guild in
-/// `READY` arrives with neither, and yields nothing.
+/// An unavailable guild in `READY` has neither and yields nothing.
 fn guild_roles(
     guild_id: Id<GuildMarker>,
     roles: Vec<RawRole>,

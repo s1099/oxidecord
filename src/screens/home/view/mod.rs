@@ -21,13 +21,11 @@ use crate::ui::depth;
 
 const MESSAGE_PADDING_X: f32 = 16.;
 
-/// Vertical gap, in pixels, between two consecutive author groups. It sits
-/// outside each message's hover highlight, as in Discord.
+/// Gap in px between author groups, outside each message's hover highlight.
 const GROUP_GAP: f32 = 14.;
 
 impl Render for HomeScreen {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        // Only a pane that's mid-glide does anything here; the rest just resync.
         for scroll in [
             &mut self.rail_scroll,
             &mut self.sidebar_scroll,
@@ -42,17 +40,13 @@ impl Render for HomeScreen {
         // After the glide's step, so it reads where this frame draws the list.
         self.sync_at_bottom(cx);
 
-        // Follows whichever way the selection changed: a channel click, a
-        // guild switch, the DM view, a voice join.
         self.sync_member_list();
 
-        // Holding shift lays the message toolbar's hidden actions out inline;
-        // modifier changes don't repaint on their own, so the listener below
-        // nudges the screen when shift goes down or up.
+        // Modifier changes don't repaint on their own, so nudge the screen when shift toggles
+        // (it lays the message toolbar's hidden actions out inline).
         self.shift_held = window.modifiers().shift;
 
-        // A watched stream is decoded at most at the window's size, which is
-        // as large as the stage can draw it.
+        // Decoded at most at the window's size, the largest the stage can draw.
         self.release_stream_frames(window);
         if let Some(stream) = self
             .watching
@@ -79,8 +73,6 @@ impl Render for HomeScreen {
             .size_full()
             // Anchors the profile popout's full-screen dismiss layer.
             .relative()
-            // The rail and sidebar sit straight on the window; the conversation
-            // is a panel lifted off it (see `inset`).
             .bg(cx.theme().sidebar)
             .key_context(HOME_CONTEXT)
             .on_action(cx.listener(Self::on_paste_attachment))
@@ -93,12 +85,12 @@ impl Render for HomeScreen {
                 }
             }))
             .on_action(cx.listener(Self::on_copy_selection))
-            // After the bindings, so only a keystroke no shortcut took.
+            // After the bindings, so only keystrokes no shortcut took.
             .on_key_down(cx.listener(Self::on_type_to_compose))
-            // gpui leaves focus where it was when a click lands on nothing
-            // focusable. Discord lets go of it, so typing afterwards goes to
-            // the composer rather than a search box or edit box left behind.
-            // Whatever takes focus on mouse down prevents the default first.
+            // gpui leaves focus where it was when a click lands on nothing focusable; Discord lets
+            // go,
+            // so typing goes to the composer, not a stale search or edit box. Anything focusable
+            // takes mouse down first by preventing default.
             .on_mouse_down(
                 MouseButton::Left,
                 cx.listener(|this, _, window, cx| {
@@ -112,14 +104,11 @@ impl Render for HomeScreen {
                     cx.notify();
                 }
             }))
-            // Puts the screen on the focus path, which is the only path
-            // modifier events travel. Not on the root: a focusable element
-            // prevents the default on every mouse down over it, which Windows
-            // reads as the app having handled the click — killing the window
-            // controls and the drag region.
+            // Puts the screen on the focus path, the only one modifier events travel. Not the root:
+            // a focusable element prevents default on every mouse down, which Windows reads as the
+            // click handled, killing the window controls and drag region.
             .child(div().track_focus(&self.focus_handle))
-            // The account card reaches under the rail as well as the sidebar,
-            // so the two share a column with it at the bottom.
+            // The account card spans the rail too, so both share a column with it at the bottom.
             .child(
                 v_flex()
                     .h_full()
@@ -142,11 +131,9 @@ impl Render for HomeScreen {
     }
 }
 
-/// Gap between the conversation panel and the window's edges.
 const INSET: f32 = 8.;
 
-/// The conversation pane as a panel inset from the window: rounded, ringed,
-/// and resting on the sidebar colour, the way the toolkit's inset layout reads.
+/// The conversation pane as an inset panel: rounded, ringed, on the sidebar colour.
 fn inset(content: AnyElement, cx: &App) -> impl IntoElement {
     div()
         .relative()
@@ -163,9 +150,8 @@ fn inset(content: AnyElement, cx: &App) -> impl IntoElement {
                 .overflow_hidden()
                 .child(content),
         )
-        // The strip above the panel is window edge, so it drags the window the
-        // way the header inside the panel does. A sibling of the panel rather
-        // than its parent, so it can't swallow the window controls' clicks.
+        // The strip above the panel is window edge and drags the window like the header.
+        // A sibling of the panel so it can't swallow the window controls' clicks.
         .when(cfg!(target_os = "windows"), |this| {
             this.child(
                 div()
@@ -180,8 +166,6 @@ fn inset(content: AnyElement, cx: &App) -> impl IntoElement {
         })
 }
 
-/// An avatar with its picture when there is one, and the name's initials
-/// otherwise.
 fn avatar(name: String, url: Option<String>, size: Pixels) -> Avatar {
     let avatar = Avatar::new().name(name).with_size(size);
     match url {
@@ -190,9 +174,7 @@ fn avatar(name: String, url: Option<String>, size: Pixels) -> Avatar {
     }
 }
 
-/// The small bar Discord hangs off the left of a channel, DM, or guild with
-/// something unread. Placed against the row's left edge, `inset` out from it
-/// into the gutter beside the list.
+/// The unread bar Discord hangs off the left of a row, `inset` out from its edge into the gutter.
 fn unread_pill(inset: Pixels, cx: &App) -> Div {
     div()
         .absolute()
@@ -210,9 +192,8 @@ fn unread_pill(inset: Pixels, cx: &App) -> Div {
         )
 }
 
-/// The red count Discord puts on whatever has unread messages pinging the
-/// user. gpui-component's `Badge` only sits in a corner, without the ring that
-/// cuts it out of an icon, so this is drawn by hand. `None` with no mentions.
+/// The red mention count. gpui-component's `Badge` only sits in a corner, without the ring
+/// that cuts it out of an icon, so this is drawn by hand. `None` with no mentions.
 fn mention_badge(count: u32, cx: &App) -> Option<Div> {
     if count == 0 {
         return None;

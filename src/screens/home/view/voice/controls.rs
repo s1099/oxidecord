@@ -92,9 +92,8 @@ impl HomeScreen {
 
     /// Puts the microphone picker behind a right-click on `button`.
     ///
-    /// The menu wraps the button rather than being hung off it: a `Button` with
-    /// children lays itself out as a labelled button, which would stretch an icon
-    /// one out of shape.
+    /// The menu wraps the button: a `Button` with children lays out as a labelled button,
+    /// which would stretch an icon one out of shape.
     pub(in crate::screens::home) fn with_mic_menu(
         &self,
         id: &'static str,
@@ -104,7 +103,6 @@ impl HomeScreen {
         div().id(id).child(button).context_menu(self.mic_menu(cx))
     }
 
-    /// Builds the microphone picker, for a right-click or a dropdown to open.
     pub(in crate::screens::home) fn mic_menu(
         &self,
         cx: &Context<Self>,
@@ -113,7 +111,6 @@ impl HomeScreen {
         device_menu(Direction::Input, cx)
     }
 
-    /// Builds the speaker picker, for a right-click or a dropdown to open.
     pub(in crate::screens::home) fn output_menu(
         &self,
         cx: &Context<Self>,
@@ -123,7 +120,6 @@ impl HomeScreen {
     }
 }
 
-/// Which way the devices in a picker carry sound.
 #[derive(Clone, Copy)]
 enum Direction {
     Input,
@@ -172,7 +168,6 @@ fn device_menu(
     }
 }
 
-/// One device in a picker, ticked when it's the one in use.
 fn device_item(
     direction: Direction,
     label: impl Into<SharedString>,
@@ -197,7 +192,6 @@ fn device_item(
     }
 }
 
-/// One square toggle on the control bar, pushed in while its thing is on.
 fn control(id: &'static str, icon: &'static str, tooltip: &'static str, active: bool) -> Button {
     Button::new(id)
         .icon(Icon::default().path(icon))

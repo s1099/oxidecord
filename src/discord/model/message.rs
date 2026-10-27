@@ -24,50 +24,37 @@ pub struct Message {
     pub author_name: String,
     pub author_avatar_url: Option<String>,
     pub content: String,
-    /// `content`, parsed. Shared, since a message is cloned more often than
-    /// its text changes.
+    /// `content`, parsed. Shared since messages are cloned more often than edited.
     pub markdown: Arc<Markdown>,
-    /// The users the content mentions, which is how `<@id>` gets a name.
     pub mentions: Vec<MentionedUser>,
-    /// Whether the message pings everyone who can see it: an `@everyone` or
-    /// `@here` its author had permission to use. Discord only sets it when the
-    /// ping actually went out, so it's what decides the highlight, not the text.
+    /// Discord only sets it when an `@everyone`/`@here` actually pinged, so it,
+    /// not the text, decides the highlight.
     pub mention_everyone: bool,
     pub mention_roles: Vec<Id<RoleMarker>>,
-    /// When the message was sent, in Unix seconds.
+    /// Unix seconds.
     pub timestamp: i64,
-    /// When the message was last edited, in Unix seconds, which the view
-    /// marks with "(edited)" after the content.
+    /// Unix seconds.
     pub edited: Option<i64>,
     pub images: Vec<ImageAttachment>,
     pub videos: Vec<VideoAttachment>,
     pub files: Vec<FileAttachment>,
     pub embeds: Vec<Embed>,
-    /// The message this one is a reply to, when it references another. Carries
-    /// just enough to render the quoted preview above the message.
     pub reply: Option<MessageReference>,
-    /// The message this one forwards, as it stood when it was forwarded.
     pub forward: Option<ForwardedMessage>,
-    /// Reactions on the message, in Discord's order (first reacted first).
+    /// In Discord's order (first reacted first).
     pub reactions: Vec<Reaction>,
-    /// Whether the server has the message yet. Only ever not [`Delivery::Sent`]
-    /// for one the user just sent, shown before Discord confirms it.
     pub delivery: Delivery,
 }
 
-/// How far a message sent from here has got.
 #[derive(Clone, PartialEq, Eq)]
 pub enum Delivery {
     Sent,
-    /// Shown optimistically while the request is in flight. Its id is the
-    /// nonce the request carried, so the confirmed copy can take its place.
-    /// Carries the names of the files being uploaded with it, which have no
-    /// URL to draw from yet.
+    /// Shown optimistically; its id is the request's nonce so the confirmed
+    /// copy can replace it. `uploads` are file names, which have no URL yet.
     Sending {
         uploads: Vec<String>,
     },
-    /// The request failed; the message stays in the list so the text isn't
-    /// lost, like Discord's red failed message.
+    /// Stays in the list so the text isn't lost.
     Failed,
 }
 
@@ -77,11 +64,8 @@ impl Message {
         !self.content.is_empty() && !is_bare_media_link(&self.content, &self.embeds)
     }
 
-    /// A message the user is sending, as it's shown before the server has it.
-    ///
-    /// `id` is the request's nonce: a snowflake for the moment it was sent, so
-    /// it sorts and dates like a real id. Mentions resolve once the confirmed
-    /// copy arrives with the mentioned users attached.
+    /// `id` is the request's nonce, a snowflake for the send time so it sorts
+    /// like a real id. Mentions resolve once the confirmed copy arrives.
     pub fn pending(
         id: Id<MessageMarker>,
         author: &CurrentUser,
@@ -113,13 +97,9 @@ impl Message {
         }
     }
 
-    /// Takes on what an edit can change from `edited`, the same message as the
-    /// server now has it.
-    ///
-    /// Only the edited parts are copied: an update doesn't reliably carry the
-    /// author's guild member (so the nickname would fall back to the global
-    /// name), the quoted reply, or the current user's own reactions, and none
-    /// of those change with an edit anyway.
+    /// Copies only what an edit can change: an update doesn't reliably carry the
+    /// author's guild member (the nickname would fall back to the global name),
+    /// the quoted reply, or the user's own reactions.
     pub fn apply_edit(&mut self, edited: Message) {
         self.content = edited.content;
         self.markdown = edited.markdown;
@@ -127,42 +107,34 @@ impl Message {
         self.mention_everyone = edited.mention_everyone;
         self.mention_roles = edited.mention_roles;
         self.edited = edited.edited;
-        // Attachments can be removed in an edit, and links added or removed
-        // change the embeds.
+        // Edits can remove attachments and add or remove embeds.
         self.images = edited.images;
         self.videos = edited.videos;
         self.files = edited.files;
         self.embeds = edited.embeds;
     }
 
-    /// When the message was sent, as its header shows it: just the time for
-    /// today, the short date and time before that.
     pub fn timestamp_label(&self) -> String {
         format_message_time(self.timestamp)
     }
 
-    /// When the message was sent, as the gutter of a continuation message
-    /// shows it on hover: the time of day alone.
+    /// Time of day alone, for a continuation message's gutter.
     pub fn clock_label(&self) -> String {
         format_message_clock(self.timestamp)
     }
 
-    /// When the message was last edited, in the long form the "(edited)"
-    /// marker's tooltip shows.
+    /// Long form for the "(edited)" tooltip.
     pub fn edited_label(&self) -> Option<String> {
         self.edited.map(format_local_full)
     }
 
-    /// Replaces the text, as an edit made locally does before the server
-    /// confirms it.
+    /// For a local edit shown before the server confirms it.
     pub fn set_content(&mut self, content: String) {
         self.markdown = Arc::new(Markdown::parse(&content));
         self.content = content;
     }
 }
 
-/// A user mentioned in a message, named the way the message's guild knows
-/// them.
 #[derive(Clone)]
 pub struct MentionedUser {
     pub id: Id<UserMarker>,
@@ -174,7 +146,6 @@ pub struct MentionedUser {
 pub struct Reaction {
     pub emoji: ReactionEmoji,
     pub count: u64,
-    /// Whether the current user is one of the reactors.
     pub me: bool,
 }
 
@@ -190,8 +161,7 @@ pub enum ReactionEmoji {
 }
 
 impl ReactionEmoji {
-    /// CDN URL for a custom emote's image; `None` for unicode emoji, which are
-    /// rendered as text.
+    /// `None` for unicode emoji, which render as text.
     pub fn image_url(&self) -> Option<String> {
         match self {
             Self::Unicode(_) => None,
@@ -199,8 +169,8 @@ impl ReactionEmoji {
         }
     }
 
-    /// The `:name:` Discord names the emoji by in "reacted with" lines. A
-    /// unicode emoji without a known shortcode is named by itself.
+    /// The `:name:` used in "reacted with" lines; a unicode emoji without a
+    /// shortcode is its own label.
     pub fn label(&self) -> String {
         match self {
             Self::Unicode(text) => emojis::get(text)
@@ -212,26 +182,22 @@ impl ReactionEmoji {
     }
 }
 
-/// A compact snapshot of the message a reply points at, used to render the
-/// quoted preview line atop the reply.
+/// The quoted preview above a reply.
 #[derive(Clone)]
 pub struct MessageReference {
-    /// The original, which clicking the quote jumps to.
+    /// Clicking the quote jumps to it.
     pub id: Id<MessageMarker>,
     pub author_id: Id<UserMarker>,
     pub author_name: String,
     pub author_avatar_url: Option<String>,
-    /// A single-line preview of the referenced message's content. Empty when
-    /// the original had no text (e.g. an attachment-only message).
+    /// Empty when the original had no text.
     pub content: String,
-    /// The original's content parsed for the preview line, inline formatting
-    /// only.
+    /// Inline formatting only.
     pub preview: Vec<Inline>,
     pub mentions: Vec<MentionedUser>,
 }
 
 impl MessageReference {
-    /// The quote for a reply to `message`, built from the copy already loaded.
     fn quoting(message: &Message) -> Self {
         let content = match &message.forward {
             Some(forward) if message.content.is_empty() => forward.content.as_str(),
@@ -249,21 +215,20 @@ impl MessageReference {
     }
 }
 
-/// A copy of a forwarded message, taken when it was forwarded. Discord sends
-/// it without an author, so the view credits where it came from instead.
+/// A snapshot taken at forward time. Discord sends it without an author.
 #[derive(Clone)]
 pub struct ForwardedMessage {
     pub content: String,
     pub markdown: Arc<Markdown>,
     pub mentions: Vec<MentionedUser>,
-    /// When the original was sent, in Unix seconds.
+    /// Unix seconds.
     pub timestamp: i64,
     pub edited: Option<i64>,
     pub images: Vec<ImageAttachment>,
     pub videos: Vec<VideoAttachment>,
     pub files: Vec<FileAttachment>,
     pub embeds: Vec<Embed>,
-    /// The guild the original was sent in; `None` for a direct message.
+    /// `None` for a direct message.
     pub guild_id: Option<Id<GuildMarker>>,
 }
 
@@ -273,7 +238,6 @@ impl ForwardedMessage {
         !self.content.is_empty() && !is_bare_media_link(&self.content, &self.embeds)
     }
 
-    /// When the original was sent, formatted like a message header's time.
     pub fn timestamp_label(&self) -> String {
         format_message_time(self.timestamp)
     }
@@ -285,71 +249,57 @@ impl ForwardedMessage {
 
 #[derive(Clone)]
 pub struct ImageAttachment {
-    /// Scaled down to the inline preview's box.
     pub url: String,
-    /// The proxy's unscaled original, which the image viewer asks for at the
-    /// size of the window and opens in the browser.
+    /// The proxy's unscaled original, for the image viewer and the browser.
     pub source: String,
-    /// Intrinsic pixel dimensions, when Discord reports them. Used to size the
-    /// inline preview while preserving aspect ratio.
+    /// Intrinsic pixels, to size the preview with its aspect ratio.
     pub width: Option<u32>,
     pub height: Option<u32>,
-    /// Whether [`Self::source`] has to be asked of the proxy as animated WebP
-    /// to stay moving at another size; see [`cdn::wants_animated_webp`].
+    /// Whether [`Self::source`] must be requested as animated WebP to stay
+    /// moving at another size; see [`cdn::wants_animated_webp`].
     pub animated_webp: bool,
     pub spoiler: Option<SpoilerCover>,
 }
 
-/// What an attachment marked as a spoiler shows until it's clicked open.
 #[derive(Clone)]
 pub struct SpoilerCover {
-    /// The picture asked of the media proxy at a few pixels across. Drawn at
-    /// full size it smears into a blur, which gpui has no filter for — its
-    /// sampler filters linearly, so the upscale does the blurring.
+    /// The picture at a few pixels across; upscaled it smears into a blur,
+    /// which gpui has no filter for (its sampler filters linearly).
     pub url: String,
 }
 
 impl SpoilerCover {
-    /// The longest side of the picture a cover is fetched at, in pixels. Only
-    /// the broad colours should survive being blown back up to preview size —
-    /// at 16 a face or a line of text was still readable through the smear.
+    /// Longest side in pixels. At 16 a face or text was still readable through
+    /// the smear.
     pub const SIZE: u32 = 6;
 }
 
-/// Any other attachment, which the view shows as a card that opens it in the
-/// browser to download.
 #[derive(Clone)]
 pub struct FileAttachment {
-    /// The CDN URL rather than the media proxy's, which only serves images
-    /// and video.
+    /// The CDN URL; the media proxy only serves images and video.
     pub url: String,
     pub filename: String,
     pub size: u64,
 }
 
-/// A video attachment, played inline by [`crate::platform::video`].
 #[derive(Clone)]
 pub struct VideoAttachment {
-    /// Discord's media-proxy URL, which is what gets decoded. Both this and
-    /// `poster_url` carry a signed query string and expire, so neither is
-    /// worth caching past the session.
+    /// Media-proxy URL, which is what gets decoded. This and `poster_url` are
+    /// signed and expire, so don't cache them past the session.
     pub url: String,
-    /// A still from the video, asked of the media proxy so the message can
-    /// show something before anyone presses play. Discord doesn't promise one
-    /// for every codec, so the poster is drawn over a themed card that stands
-    /// on its own when the request comes back empty.
+    /// Discord doesn't serve a still for every codec, so the poster is drawn
+    /// over a themed card that stands alone when the request comes back empty.
     pub poster_url: String,
     pub filename: String,
-    /// Intrinsic pixel dimensions, when Discord reports them. Used to size the
-    /// card up front so the message doesn't reflow once playback starts.
+    /// Intrinsic pixels, to size the card before playback without reflow.
     pub width: Option<u32>,
     pub height: Option<u32>,
     pub size: u64,
-    /// The cover is a blurred poster frame.
+    /// A blurred poster frame.
     pub spoiler: Option<SpoilerCover>,
 }
 
-/// A page of `GET /channels/{id}/messages/pins`, most recently pinned first.
+/// `GET /channels/{id}/messages/pins`, most recently pinned first.
 #[derive(Deserialize)]
 pub(in crate::discord) struct RawPins {
     pub items: Vec<RawPin>,
@@ -358,13 +308,12 @@ pub(in crate::discord) struct RawPins {
 
 #[derive(Deserialize)]
 pub(in crate::discord) struct RawPin {
-    /// ISO 8601, which is what the next page's `before` takes.
+    /// ISO 8601; the next page's `before` takes it.
     pub pinned_at: String,
     pub message: twilight_model::channel::Message,
 }
 
-/// Who a guild message's author is there, from the member Discord sends along
-/// with it. Only gateway dispatches carry one: fetched history doesn't, and
+/// Only gateway dispatches carry a member; fetched history doesn't, and
 /// webhooks aren't members.
 pub(in crate::discord) fn author_member(
     message: &twilight_model::channel::Message,
@@ -387,10 +336,9 @@ pub(in crate::discord) fn author_member(
 
 pub(in crate::discord) fn convert_message(message: twilight_model::channel::Message) -> Message {
     let author_avatar_url = small_avatar_url(&message.author);
-    // Prefer the author's per-guild nickname, then their global display name,
-    // then their username. Only gateway dispatches carry `member`: fetched
-    // history and the response to a send don't, so the view names authors by
-    // the guild's members where it knows them.
+    // Nickname, then global name, then username. Only gateway dispatches carry
+    // `member`; fetched history and send responses don't, so the view names
+    // authors by the guild's members where it can.
     let author_name = message
         .member
         .and_then(|member| member.nick)
@@ -398,8 +346,7 @@ pub(in crate::discord) fn convert_message(message: twilight_model::channel::Mess
         .or(message.author.global_name)
         .unwrap_or_else(|| message.author.name.clone());
     let (images, videos, files) = convert_attachments(&message.attachments);
-    // A forward points at its original through the same reference a reply
-    // does, so only a plain reference counts as a reply.
+    // A forward uses the same reference as a reply, so check its type.
     let is_forward = message
         .reference
         .as_ref()
@@ -443,8 +390,6 @@ pub(in crate::discord) fn convert_message(message: twilight_model::channel::Mess
     }
 }
 
-/// Splits attachments into the images and videos the view draws inline and
-/// the files it lists as cards.
 fn convert_attachments(
     attachments: &[twilight_model::channel::Attachment],
 ) -> (
@@ -534,9 +479,8 @@ fn convert_snapshot(snapshot: MessageSnapshot) -> ForwardedMessage {
     }
 }
 
-/// The mentioned users, by guild nickname where the message carries one.
 /// twilight's mention model drops the global display name, so the username is
-/// the fallback.
+/// the fallback after the nickname.
 fn convert_mentions(
     mentions: Vec<twilight_model::channel::message::Mention>,
 ) -> Vec<MentionedUser> {
@@ -569,12 +513,10 @@ pub(in crate::discord) fn convert_reaction_emoji(
     }
 }
 
-/// Extracts the referenced message into a compact preview. Referenced messages
-/// don't carry guild `member` data, so the author name falls back to the global
-/// display name and then the username.
+/// Referenced messages carry no guild `member`, so the name is the global name,
+/// else the username.
 fn convert_reference(referenced: twilight_model::channel::Message) -> MessageReference {
-    // A forward has no text of its own, so a reply to one quotes what it
-    // carries.
+    // A forward has no text of its own; quote what it carries.
     let content = match referenced.message_snapshots.first() {
         Some(snapshot) if referenced.content.is_empty() => snapshot.message.content.as_str(),
         _ => referenced.content.as_str(),
@@ -594,7 +536,6 @@ fn convert_reference(referenced: twilight_model::channel::Message) -> MessageRef
     }
 }
 
-/// Condense a message's content into a single line preview for the reply quote.
 fn single_line_preview(content: &str) -> String {
     const MAX_LEN: usize = 150;
 
@@ -614,12 +555,8 @@ fn single_line_preview(content: &str) -> String {
 const PREVIEW_MAX_WIDTH: u32 = 480;
 const PREVIEW_MAX_HEIGHT: u32 = 390;
 
-/// Whether the uploader marked an attachment as a spoiler. There's no flag for
-/// it in the API: the client prefixes the filename, and every client reads it
-/// back the same way.
 /// Whether a message is nothing but a link to the image or GIF its embed
-/// draws. Discord leaves the link out then, so a Tenor link posted on its own
-/// reads as the GIF alone; any other text keeps it, link and all.
+/// draws. Discord hides the link then; any other text keeps it.
 fn is_bare_media_link(content: &str, embeds: &[Embed]) -> bool {
     let content = content.trim();
     !content.contains(char::is_whitespace)
@@ -632,14 +569,14 @@ fn is_bare_media_link(content: &str, embeds: &[Embed]) -> bool {
         })
 }
 
+/// The API has no spoiler flag; clients prefix the filename.
 fn is_spoiler(attachment: &twilight_model::channel::Attachment) -> bool {
     attachment.filename.starts_with(SPOILER_PREFIX)
 }
 
 pub const SPOILER_PREFIX: &str = "SPOILER_";
 
-/// Whether an attachment is an image we can render inline. Prefers Discord's
-/// reported media type and falls back to the filename extension.
+/// Discord's reported media type first, filename extension second.
 fn is_image(attachment: &twilight_model::channel::Attachment) -> bool {
     if let Some(content_type) = &attachment.content_type {
         return content_type.starts_with("image/");
@@ -650,12 +587,8 @@ fn is_image(attachment: &twilight_model::channel::Attachment) -> bool {
         .any(|ext| name.ends_with(ext))
 }
 
-/// Whether an attachment is a video. Mirrors [`is_image`]: Discord's reported
-/// media type first, filename extension second.
-///
-/// The extensions are the containers the platform decoders actually open, not
-/// every `video/*` Discord will accept — an attachment listed here that turns
-/// out to be undecodable still falls back to the poster card.
+/// Like [`is_image`]. The extensions are the containers the platform decoders
+/// open; an undecodable one still falls back to the poster card.
 fn is_video(attachment: &twilight_model::channel::Attachment) -> bool {
     if let Some(content_type) = &attachment.content_type {
         return content_type.starts_with("video/");
@@ -666,9 +599,7 @@ fn is_video(attachment: &twilight_model::channel::Attachment) -> bool {
         .any(|ext| name.ends_with(ext))
 }
 
-/// Asks the media proxy for a still frame of a video, fitted in the given box.
-/// Discord serves one for the common codecs and 404s for the rest, which the
-/// card is built to survive.
+/// Discord 404s for uncommon codecs, which the card is built to survive.
 fn poster_url(attachment: &twilight_model::channel::Attachment, width: u32, height: u32) -> String {
     let separator = if attachment.proxy_url.contains('?') {
         '&'

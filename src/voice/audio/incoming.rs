@@ -8,37 +8,25 @@ use songbird::constants::{MONO_FRAME_SIZE, SAMPLE_RATE};
 use super::CHANNELS;
 use super::ring::SampleRing;
 
-/// Opus's longest frame, 120ms, in samples per channel.
+/// Opus's longest frame (120ms), per channel.
 const MAX_FRAME: usize = 5760;
 
-/// How much a sender's ring builds up before it starts draining again.
-///
-/// Packets are played straight off the network, 20ms apart give or take
-/// however much the route smears them, so a reader that drains to empty
-/// underruns on nearly every callback. The gaps that leaves repeat at the
-/// callback rate, which is heard as a harsh buzz rather than as the dropouts
-/// they are; a buffer this deep costs latency once and stops it.
+/// Without this buffer, network jitter makes nearly every callback underrun, and
+/// gaps repeating at the callback rate sound like a buzz instead of dropouts.
 const PLAYBACK_PRIME_MS: u32 = 60;
 
-/// The most lost packets in a row that get concealed. A longer run is a
-/// sender that dropped out rather than a network that lost a few, and
-/// papering over it would only hold up the audio that comes next.
+/// A longer run is a sender that dropped out; concealing it would only delay
+/// the audio that follows.
 const MAX_CONCEALED: i16 = 5;
 
-/// How far behind the expected sequence number a packet can be and still be
-/// taken for one that arrived late. Further back than this is a sender that
-/// started its count over.
+/// Further behind than this is a sender that restarted its count, not a late packet.
 const REORDER_WINDOW: i16 = 32;
 
-/// One sender's packets on their way to the mixer.
 pub(super) struct Incoming {
     decoder: Decoder,
     pub(super) ring: Arc<SampleRing>,
-    /// The sequence number the next packet should carry, once there has been
-    /// a first one to count from.
     expected: Option<u16>,
-    /// Samples per channel in the last frame decoded: how much a concealed
-    /// frame has to cover, since there's no packet to say.
+    /// Samples per channel of the last frame; sizes a concealed frame.
     frame: usize,
     decoded: Vec<f32>,
 }
@@ -54,13 +42,9 @@ impl Incoming {
         })
     }
 
-    /// Decodes a packet into the ring, concealing whatever was lost before it.
-    ///
-    /// Packets are played in the order they arrive rather than held back to
-    /// be sorted: reordering is rare enough on a voice route that waiting on
-    /// it would cost every packet latency to save the odd one. A packet that
-    /// turns up after its moment has passed has already been concealed, so
-    /// it's dropped.
+    /// Plays in arrival order rather than sorting: reordering is rare enough
+    /// that waiting would cost every packet latency. Late packets were already
+    /// concealed, so they're dropped.
     pub(super) fn receive(&mut self, sequence: u16, opus: &[u8]) {
         let gap = self
             .expected
@@ -74,16 +58,14 @@ impl Incoming {
             for _ in 1..gap {
                 self.decode(&[], false);
             }
-            // A packet can carry a rougher copy of the one before it, which
-            // decoding with FEC recovers. Without one, Opus conceals instead.
+            // With FEC this recovers the previous frame from this packet; without, Opus conceals.
             self.decode(opus, true);
         }
         self.decode(opus, false);
     }
 
     fn decode(&mut self, opus: &[u8], fec: bool) {
-        // Concealment and recovery fill exactly the room they're given, which
-        // has to be a whole frame; a real packet says how long it is itself.
+        // Concealment and FEC fill exactly the room given, so it must be one frame.
         let room = if opus.is_empty() || fec {
             self.frame * CHANNELS
         } else {

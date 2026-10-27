@@ -15,11 +15,8 @@ use std::ops::Range;
 use crate::screens::home::HomeScreen;
 
 impl HomeScreen {
-    /// Tells the message list that `old_range` became `count` rows.
-    ///
-    /// The newest message carries the space under the conversation, so a
-    /// change at the tail also re-lays out the row that was newest: it gains
-    /// or loses that space, and the list would otherwise keep its old height.
+    /// The newest message carries the space under the conversation, so a change at
+    /// the tail also re-lays out the row that was newest.
     pub(super) fn splice_messages(&self, old_range: Range<usize>, count: usize) {
         if old_range.end == self.messages_list.item_count() && old_range.start > 0 {
             self.messages_list

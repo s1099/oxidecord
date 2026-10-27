@@ -1,18 +1,9 @@
-//! Voice calls: the connection to Discord's voice servers and the audio that
-//! travels over it.
+//! Voice calls: songbird handles the handshake, transport, encryption and Opus;
+//! this module feeds it the gateway's parameters and wires up [`audio`].
 //!
-//! The websocket handshake, UDP transport, encryption, and Opus coding are
-//! songbird's; this module supplies the parameters the gateway hands back,
-//! wires the microphone and speakers to it ([`audio`]), and reports back what
-//! the UI needs to draw.
-//!
-//! Everything here runs on the shared Tokio runtime. [`VoiceEngine`] is the
-//! only handle the rest of the app holds: commands go down a channel, events
-//! come back up another, so no songbird type crosses into gpui's thread.
-//!
-//! Screen sharing is a separate connection with its own server, in
-//! [`stream`]: songbird has no way to send video, so that one is spoken
-//! directly.
+//! Runs on the shared Tokio runtime. [`VoiceEngine`] is the only handle the app
+//! holds (commands down, events up), so no songbird type reaches gpui's thread.
+//! Screen sharing lives in [`stream`] because songbird can't send video.
 
 mod audio;
 pub mod stream;
@@ -38,12 +29,9 @@ use audio::{AudioIo, Sender};
 
 pub use audio::{input_devices, output_devices};
 
-/// Everything needed to open a voice connection, gathered from the pair of
-/// gateway dispatches that follow a join.
 pub struct VoiceConnection {
     pub channel_id: Id<ChannelMarker>,
-    /// The guild the channel is in. A DM call has none, and Discord expects
-    /// the channel's own id in its place.
+    /// `None` for a DM call; Discord expects the channel's own id in its place.
     pub guild_id: Option<Id<GuildMarker>>,
     pub user_id: Id<UserMarker>,
     pub session_id: String,
@@ -53,18 +41,14 @@ pub struct VoiceConnection {
 
 pub enum VoiceEvent {
     Connected,
-    /// The call ended on its own: the connection dropped, or the user was
-    /// disconnected from the far end.
+    /// The call ended without the user asking.
     Disconnected,
-    /// Who is transmitting right now, sent whenever the set changes.
+    /// Sent only when the set changes.
     Speaking(HashSet<Id<UserMarker>>),
     Failed(String),
 }
 
-/// Drives one call at a time.
-///
-/// Dropping the engine closes the command channel, which ends the task and
-/// tears down whatever call was live.
+/// Drives one call at a time. Dropping it ends the task and any live call.
 pub struct VoiceEngine {
     commands: UnboundedSender<Command>,
     speakers: CurrentAudio,
@@ -75,15 +59,11 @@ enum Command {
     Disconnect,
     Mute(bool),
     Deafen(bool),
-    /// Switch to another microphone, by the id [`input_devices`] reported.
     InputDevice(Option<String>),
-    /// Switch to other speakers, by the id [`output_devices`] reported.
     OutputDevice(Option<String>),
 }
 
 impl VoiceEngine {
-    /// Starts the engine. Events are delivered on `events` until the receiver
-    /// is dropped.
     pub fn start(events: UnboundedSender<VoiceEvent>) -> Self {
         let (commands, rx) = unbounded();
         let speakers = CurrentAudio::default();
@@ -91,8 +71,7 @@ impl VoiceEngine {
         Self { commands, speakers }
     }
 
-    /// Somewhere for a watched stream's sound to go: the call's speakers,
-    /// whichever pair is open, and nowhere while there's no call.
+    /// The call's current speakers; a no-op while there's no call.
     pub fn stream_audio(&self) -> StreamAudio {
         StreamAudio {
             speakers: self.speakers.clone(),
@@ -107,25 +86,21 @@ impl VoiceEngine {
         self.send(Command::Disconnect);
     }
 
-    /// Stops sending the microphone. The gateway is told separately, which is
-    /// what puts the muted badge on the user's tile for everyone else.
+    /// The gateway is told separately; that is what shows the muted badge to others.
     pub fn set_muted(&self, muted: bool) {
         self.send(Command::Mute(muted));
     }
 
-    /// Stops playing what everyone else is saying.
     pub fn set_deafened(&self, deafened: bool) {
         self.send(Command::Deafen(deafened));
     }
 
-    /// Picks the microphone to send, taking effect immediately if a call is
-    /// already up. `None` follows the system default.
+    /// `None` follows the system default.
     pub fn set_input_device(&self, device: Option<String>) {
         self.send(Command::InputDevice(device));
     }
 
-    /// Picks the speakers the call plays through, taking effect immediately
-    /// if a call is already up. `None` follows the system default.
+    /// `None` follows the system default.
     pub fn set_output_device(&self, device: Option<String>) {
         self.send(Command::OutputDevice(device));
     }
@@ -135,57 +110,43 @@ impl VoiceEngine {
     }
 }
 
-/// The call as the engine task holds it: songbird's driver and the audio
-/// devices feeding it. Dropping it ends the call.
 struct Call {
     driver: Driver,
     audio: SharedAudio,
-    /// The microphone, playing into the call as a track like any other. Held
-    /// so it can be stopped and replaced when the device changes.
+    /// Held so it can be replaced when the device changes.
     mic: TrackHandle,
 }
 
 impl Drop for Call {
     fn drop(&mut self) {
-        // The driver's event handlers hold the devices too, and outlive it by
-        // however long its shutdown takes, so the devices are closed here
-        // rather than when the last handle goes.
+        // Driver handlers also hold the devices and outlive it, so close them here.
         if let Ok(audio) = self.audio.lock() {
             audio.stop();
         }
     }
 }
 
-/// The call's audio devices, as everything that touches them holds them.
-///
-/// Switching either device reopens both, and the driver's tick handler
-/// has to reach whichever pair is current — its own clone would otherwise go
-/// on filling a closed one, and playback would stop at the first switch.
+/// Switching a device reopens both, so handlers go through the inner `Arc` to
+/// reach the current pair; a private clone would keep feeding a closed one.
 type SharedAudio = Arc<Mutex<Arc<AudioIo>>>;
 
-/// The current call's devices, as reached from outside the engine task.
 type CurrentAudio = Arc<Mutex<Option<SharedAudio>>>;
 
 /// A watched stream's way into the call's speakers.
 ///
-/// Stream audio plays through the call's devices and mixer rather than a
-/// stream of its own: it then follows the output device the user picked,
-/// falls silent while deafened, and mixes with the call like another voice.
-/// A stream can only be watched from inside a call, so there's always one to
-/// play through.
+/// Plays through the call's devices and mixer so it follows the chosen output,
+/// goes silent while deafened, and mixes like another voice.
 #[derive(Clone)]
 pub struct StreamAudio {
     speakers: CurrentAudio,
 }
 
 impl StreamAudio {
-    /// Plays one Opus frame from the stream, every layer of encryption
-    /// already off.
+    /// `opus` must already be fully decrypted.
     pub fn receive(&self, ssrc: u32, sequence: u16, opus: &[u8]) {
         self.with_audio(|audio| audio.receive(Sender::Stream(ssrc), sequence, opus));
     }
 
-    /// Stops playing the stream's sound, once it's no longer watched.
     pub fn forget(&self, ssrc: u32) {
         self.with_audio(|audio| audio.forget(Sender::Stream(ssrc)));
     }
@@ -205,10 +166,7 @@ impl StreamAudio {
     }
 }
 
-/// Who owns which RTP stream, and who was audible on the last tick.
-///
-/// Packets identify their sender by SSRC only; the mapping to a user arrives
-/// separately, in the voice websocket's speaking updates.
+/// Packets carry only an SSRC; the user mapping arrives in speaking updates.
 #[derive(Default)]
 struct Speakers {
     users: HashMap<u32, Id<UserMarker>>,
@@ -230,8 +188,7 @@ async fn run(
     while let Some(command) = commands.next().await {
         match command {
             Command::Connect(connection) => {
-                // Only one call at a time: leaving the old one first stops its
-                // devices before the new one opens them.
+                // Drop the old call first so its devices close before the new ones open.
                 call = None;
 
                 match connect(*connection, events.clone(), muted, deafened, &devices).await {
@@ -291,8 +248,7 @@ async fn connect(
     deafened: bool,
     devices: &Devices,
 ) -> Result<Call, ConnectionError> {
-    // Decryption is off by default, since a bot usually only sends. Decoding
-    // stays off: packets are decoded in `audio`, for the reasons given there.
+    // Decrypt only; packets are decoded in `audio`.
     let config = Config::default().decode_mode(DecodeMode::Decrypt);
     let mut driver = Driver::new(config);
 
@@ -338,15 +294,12 @@ async fn connect(
     driver.connect(info(&connection)).await?;
 
     driver.mute(muted);
-    // The microphone plays into the call like any other track, and never ends.
     let mic = driver.play_input(mic_input);
 
     Ok(Call { driver, audio, mic })
 }
 
-/// The microphone and speakers the user picked, by the ids
-/// [`input_devices`] and [`output_devices`] reported. `None` follows the
-/// system default.
+/// Ids as reported by [`input_devices`] and [`output_devices`]; `None` is the default.
 #[derive(Default)]
 struct Devices {
     input: Option<String>,
@@ -359,15 +312,10 @@ impl Devices {
     }
 }
 
-/// Reopens both devices, after either has been switched, and hands the call
-/// the new microphone.
+/// Reopens both devices and hands the call the new microphone.
 ///
-/// The old track can't simply be repointed: it declared the old device's
-/// sample rate to the mixer, and the new device rarely runs at the same one.
-/// The pair is opened together on one thread, so switching either reopens
-/// both, which costs a few milliseconds of playback — only when the user
-/// switches, and simpler than rebuilding half of the audio thread underneath a
-/// live track.
+/// The old track can't be repointed: it told the mixer the old sample rate. The
+/// pair shares one thread, so both reopen, costing a few ms of playback.
 fn reopen_devices(call: &mut Call, devices: &Devices, deafened: bool) {
     let Ok(mut current) = call.audio.lock() else {
         return;
@@ -378,8 +326,7 @@ fn reopen_devices(call: &mut Call, devices: &Devices, deafened: bool) {
     let mic_input = audio.mic_input();
 
     let _ = call.mic.stop();
-    // Closing the old pair after the new one is open keeps the gap down to the
-    // few milliseconds the devices take to start.
+    // Close the old pair only after the new one is open to keep the gap short.
     current.stop();
     *current = audio;
     drop(current);
@@ -387,15 +334,9 @@ fn reopen_devices(call: &mut Call, devices: &Devices, deafened: bool) {
     call.mic = call.driver.play_input(mic_input);
 }
 
-/// Songbird's connection parameters.
-///
-/// `guild_id` is only ever sent on as the voice server's `server_id`, which for
-/// a DM call is the channel's own id — so a guildless call substitutes it and
-/// connects the same way.
+/// A DM call has no guild; the voice `server_id` is then the channel's own id.
 fn info(connection: &VoiceConnection) -> ConnectionInfo {
-    // songbird is built against a different twilight release, so its id
-    // conversions don't apply to this crate's ids; the raw value is the only
-    // thing they have in common.
+    // songbird uses a different twilight release, so convert via the raw value.
     ConnectionInfo {
         channel_id: ChannelId::from(connection.channel_id.into_nonzero()),
         endpoint: connection.endpoint.clone(),
@@ -410,7 +351,6 @@ fn info(connection: &VoiceConnection) -> ConnectionInfo {
     }
 }
 
-/// Learns which user an RTP stream belongs to.
 struct SpeakingHandler {
     speakers: Arc<Mutex<Speakers>>,
 }
@@ -429,7 +369,6 @@ impl EventHandler for SpeakingHandler {
     }
 }
 
-/// Forgets a user's stream when they leave the call.
 struct DisconnectHandler {
     audio: SharedAudio,
     speakers: Arc<Mutex<Speakers>>,
@@ -467,11 +406,8 @@ impl EventHandler for DisconnectHandler {
     }
 }
 
-/// Hands every packet to the speakers the moment it arrives.
-///
-/// By now songbird has taken off both the transport encryption and DAVE's,
-/// and the offsets it reports step over the header extension, the DAVE
-/// trailer, and any RTP padding, leaving the Opus frame alone.
+/// songbird has already removed transport encryption and DAVE, and its offsets
+/// skip the header extension, DAVE trailer and RTP padding, leaving the Opus frame.
 struct PacketHandler {
     audio: SharedAudio,
 }
@@ -483,8 +419,7 @@ impl EventHandler for PacketHandler {
             return None;
         };
 
-        // The fixed RTP header, then four bytes per contributing source; the
-        // offsets songbird reports count from the end of those.
+        // Fixed header plus 4 bytes per CSRC; songbird's offsets count from there.
         let raw = &packet.packet[..];
         let header = 12 + 4 * usize::from(*raw.first()? & 0x0f);
         let sequence = u16::from_be_bytes([*raw.get(2)?, *raw.get(3)?]);
@@ -500,7 +435,6 @@ impl EventHandler for PacketHandler {
     }
 }
 
-/// One 20ms tick of the call: who was heard in it, for the tiles.
 struct TickHandler {
     speakers: Arc<Mutex<Speakers>>,
     events: UnboundedSender<VoiceEvent>,
@@ -522,8 +456,7 @@ impl EventHandler for TickHandler {
             Err(_) => return None,
         };
 
-        // Tiles only repaint when the set changes; at 50 ticks a second,
-        // sending every one would repaint the call for no reason.
+        // 50 ticks a second; only send changes so tiles don't repaint needlessly.
         if let Ok(mut speakers) = self.speakers.lock()
             && speakers.audible != audible
         {
@@ -535,7 +468,6 @@ impl EventHandler for TickHandler {
     }
 }
 
-/// Reports a call that ended without the user asking.
 struct DriverDisconnectHandler {
     events: UnboundedSender<VoiceEvent>,
 }

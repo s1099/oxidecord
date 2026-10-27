@@ -14,7 +14,6 @@ use crate::screens::home::view::markdown::MarkdownOptions;
 use super::Media;
 
 const BAR_WIDTH: f32 = 4.;
-/// The source guild's icon in the footer.
 const SOURCE_ICON_SIZE: f32 = 16.;
 
 impl HomeScreen {
@@ -36,9 +35,8 @@ impl HomeScreen {
             .child(Icon::default().path("icons/redo-2.svg").small())
             .child("Forwarded");
 
-        // Discord names the guild a forward came from. A forward out of a DM,
-        // or out of a guild the user has since left, has no name to show, so
-        // it's credited with just the time.
+        // A forward out of a DM, or a guild the user has since left, has no guild name to show,
+        // so it's credited with just the time.
         let guild = forward
             .guild_id
             .and_then(|guild_id| self.guilds.iter().find(|guild| guild.id == guild_id));

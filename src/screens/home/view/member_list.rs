@@ -17,17 +17,13 @@ use crate::ui::theme;
 
 use super::profile::CARD_WIDTH;
 
-/// The list's width, as in Discord.
 pub(super) const MEMBER_LIST_WIDTH: f32 = 240.;
 
-/// Every row's height, headers included: the list is virtual, which takes
-/// rows of one size.
+/// Every row's height, headers included: the virtual list needs one size.
 const ROW_HEIGHT: f32 = 44.;
 
-/// Placeholder name widths, cycled so unsynced rows don't all look alike.
 const SKELETON_WIDTHS: [f32; 6] = [96., 120., 72., 108., 84., 128.];
 
-/// Offline members fade, as in Discord, so who's around reads at a glance.
 const OFFLINE_OPACITY: f32 = 0.35;
 
 impl HomeScreen {
@@ -41,8 +37,6 @@ impl HomeScreen {
         let list = self.member_list.as_ref()?;
         let theme = cx.theme();
 
-        // Until the first sync there's no telling how long the list is, so a
-        // screenful of placeholders stands in.
         let body = if list.rows.is_empty() {
             v_flex()
                 .size_full()
@@ -87,9 +81,8 @@ impl HomeScreen {
                     Some(MemberListItem::Member(member)) => self.render_member_row(&member, cx),
                     None => skeleton_row(index).into_any_element(),
                 };
-                // The list sizes each item to its content; this one spans the
-                // list, so a row's hover and click cover its whole width
-                // rather than just its name.
+                // The list sizes items to content; spanning the list makes hover and click cover
+                // the whole row.
                 div().w_full().px_2().child(row).into_any_element()
             })
             .collect()
@@ -104,9 +97,7 @@ impl HomeScreen {
                 .and_then(|guild_id| self.guild_roles.get(&guild_id)?.get(role_id))
                 .map_or_else(|| "Role".to_owned(), |role| role.name.clone()),
         };
-        // A header row in the ops carries only the group's id; the count is
-        // in the update's own group list, which is kept current with every
-        // update.
+        // A header op carries only the group's id; the count comes from the update's group list.
         let count = self
             .member_list
             .as_ref()
@@ -146,7 +137,7 @@ impl HomeScreen {
                     member.avatar_url.clone(),
                     px(32.),
                 ))
-                // Offline members show no status at all in Discord's list.
+                // Discord shows no status for offline members.
                 .when(!offline, |this| {
                     this.child(div().absolute().right(px(-3.)).bottom(px(-3.)).child(
                         status_indicator(
@@ -201,8 +192,7 @@ impl HomeScreen {
             },
         );
 
-        // The card would cover the list if it opened beside the pointer, so
-        // it opens to the left of the list, level with the row.
+        // Opens left of the list, level with the row; beside the pointer it would cover the list.
         let name = member.name.clone();
         let avatar_url = member.avatar_url.clone();
         h_flex()
@@ -222,8 +212,8 @@ impl HomeScreen {
             .on_mouse_down(
                 MouseButton::Left,
                 cx.listener(move |this, event: &MouseDownEvent, window, cx| {
-                    // Handled on mouse-down, like a message's avatar, so the
-                    // card's dismiss layer doesn't see the same press.
+                    // Mouse-down, like a message's avatar, so the card's dismiss layer doesn't see
+                    // the same press.
                     cx.stop_propagation();
                     let list_left =
                         window.viewport_size().width - px(INSET + 1. + MEMBER_LIST_WIDTH);
@@ -242,7 +232,6 @@ impl HomeScreen {
     }
 }
 
-/// A row still to be synced: an avatar and a name, greyed out.
 fn skeleton_row(index: usize) -> impl IntoElement {
     h_flex()
         .w_full()

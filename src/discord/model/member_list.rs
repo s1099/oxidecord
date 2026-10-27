@@ -1,11 +1,8 @@
-//! A channel's member list, as Discord streams it to a client subscribed to
-//! it: everyone who can see the channel, grouped under hoisted roles and then
-//! by whether they're online.
+//! A channel's member list, grouped under hoisted roles then online/offline.
 //!
-//! The list is never sent whole. The client subscribes to index ranges of it,
-//! and Discord answers with a `SYNC` of each range followed by edits —
-//! inserts, updates, deletes — at positions in the full list, headers
-//! included. None of this is in Discord's own documentation or the userdocs.
+//! It is never sent whole: the client subscribes to index ranges, and Discord
+//! answers with a `SYNC` of each range followed by inserts, updates and deletes
+//! at positions in the full list, headers included. Undocumented.
 
 use serde::Deserialize;
 use twilight_model::id::{
@@ -18,15 +15,13 @@ use super::settings::PresenceStatus;
 
 pub struct MemberListUpdate {
     pub guild_id: Id<GuildMarker>,
-    /// Which list this is: channels that the same people can see share one,
-    /// and its id is a hash of their overwrites, or `everyone`.
+    /// Channels the same people can see share a list; the id is a hash of
+    /// their overwrites, or `everyone`.
     pub list_id: String,
-    /// Every group in the list as it now stands, empty ones included.
     pub groups: Vec<MemberListGroup>,
     pub ops: Vec<MemberListOp>,
 }
 
-/// A section of the list and how many members it holds.
 #[derive(Clone, PartialEq, Eq)]
 pub struct MemberListGroup {
     pub kind: MemberGroupKind,
@@ -43,10 +38,8 @@ pub enum MemberGroupKind {
     Offline,
 }
 
-/// An edit to the list, at an index into it.
 #[derive(Clone)]
 pub enum MemberListOp {
-    /// The items from `start` on, as they are now.
     Sync {
         start: usize,
         items: Vec<MemberListItem>,
@@ -62,8 +55,7 @@ pub enum MemberListOp {
     Delete {
         index: usize,
     },
-    /// The range, inclusive, is no longer kept current — usually because the
-    /// client stopped subscribing to it.
+    /// Inclusive range no longer kept current, usually after unsubscribing.
     Invalidate {
         start: usize,
         end: usize,
@@ -72,8 +64,8 @@ pub enum MemberListOp {
 
 #[derive(Clone)]
 pub enum MemberListItem {
-    /// A header. Discord leaves the count off these, so it reads zero; the
-    /// count is in [`MemberListUpdate::groups`].
+    /// Discord leaves the count off headers, so it reads zero; see
+    /// [`MemberListUpdate::groups`].
     Group(MemberListGroup),
     Member(ListMember),
 }
@@ -86,8 +78,7 @@ pub struct ListMember {
     pub roles: Vec<Id<RoleMarker>>,
     pub status: PresenceStatus,
     pub bot: bool,
-    /// Their custom status, or else what they're doing, as the line under
-    /// their name reads.
+    /// Custom status, else what they're doing.
     pub activity: Option<String>,
 }
 
@@ -185,8 +176,7 @@ fn convert_op(op: RawOp) -> MemberListOp {
         },
         RawOp::Insert { index, item } => match convert_item(item) {
             Some(item) => MemberListOp::Insert { index, item },
-            // Keeps the indices after it lined up; the row stays a
-            // placeholder.
+            // Keeps later indices lined up; the row stays a placeholder.
             None => MemberListOp::Invalidate {
                 start: index,
                 end: index,
@@ -251,8 +241,7 @@ fn convert_member(raw: RawListMember) -> Option<ListMember> {
     })
 }
 
-/// The line under a member's name: their custom status when they've set one,
-/// as Discord prefers it, else the first thing they're doing.
+/// Custom status if set, as Discord prefers, else the first activity.
 fn activity_line(activities: Vec<RawActivity>) -> Option<String> {
     if let Some(custom) = activities
         .iter()

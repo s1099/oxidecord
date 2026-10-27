@@ -1,7 +1,6 @@
 //! SVG markup the app ships itself.
 
-/// Lucide icons the app needs that gpui-kit-assets doesn't bundle.
-/// Stroke-based with `currentColor`, so they tint with the text color.
+/// Lucide icons gpui-kit-assets doesn't bundle. `currentColor` strokes, so they tint with text.
 pub(super) const EXTRA_ICONS: &[(&str, &str)] = &[
     (
         "icons/users.svg",
@@ -95,7 +94,6 @@ pub(super) const EXTRA_ICONS: &[(&str, &str)] = &[
         "icons/smile.svg",
         r#"<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" x2="9.01" y1="9" y2="9"/><line x1="15" x2="15.01" y1="9" y2="9"/></svg>"#,
     ),
-    // The emoji picker's categories.
     (
         "icons/clock.svg",
         r#"<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>"#,

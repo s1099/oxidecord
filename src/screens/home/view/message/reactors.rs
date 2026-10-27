@@ -1,9 +1,7 @@
 //! Who reacted to a message: the tooltip over a reaction pill, and the
 //! "View Reactions" dialog listing everyone by emoji.
-//!
-//! Both are views of their own that read the screen's reactor cache and
-//! re-render as it fills. A cache entry is dropped when its reaction changes,
-//! so each of them asks for the list again whenever it finds it missing.
+//! Both read the screen's reactor cache and re-render as it fills. An entry is dropped when
+//! its reaction changes, so each re-requests the list whenever it finds it missing.
 
 use gpui_kit::component::{
     ActiveTheme as _, Sizable as _, WindowExt as _, h_flex, spinner::Spinner, v_flex,
@@ -18,8 +16,7 @@ use crate::screens::home::view::avatar;
 use crate::ui::button::Button;
 use crate::ui::depth::{self, Finish, Level, Lit as _, radius};
 
-/// How many reactors the tooltip names before summing up the rest, like
-/// Discord.
+/// How many reactors the tooltip names before summing up the rest.
 const TOOLTIP_NAMES: usize = 3;
 
 /// Roughly how tall the tooltip is, for its lighting.
@@ -31,8 +28,7 @@ const EMOJI_COLUMN_WIDTH: f32 = 96.;
 const REACTOR_AVATAR_SIZE: f32 = 24.;
 
 impl HomeScreen {
-    /// Opens the dialog listing who reacted to a message, on `emoji`'s tab, or
-    /// the first reaction's.
+    /// Opens on `emoji`'s tab, or the first reaction's.
     pub(in crate::screens::home) fn view_reactions(
         &mut self,
         message_id: Id<MessageMarker>,
@@ -81,7 +77,6 @@ fn ensure_reactors(
     });
 }
 
-/// A reaction's emoji at `size`: custom ones as their image, unicode as text.
 fn emoji_element(emoji: &discord::ReactionEmoji, size: Pixels) -> AnyElement {
     match (emoji.image_url(), emoji) {
         (Some(url), _) => img(url).size(size).into_any_element(),
@@ -113,7 +108,6 @@ fn reacted_line(names: &[&str], count: u64, label: &str) -> String {
     format!("{who} reacted with {label}")
 }
 
-/// The tooltip over a reaction pill: the emoji, large, beside who reacted.
 pub(super) struct ReactionTooltip {
     screen: Entity<HomeScreen>,
     message_id: Id<MessageMarker>,
@@ -200,8 +194,6 @@ impl Render for ReactionTooltip {
     }
 }
 
-/// The body of the "View Reactions" dialog: the message's reactions down the
-/// left, and everyone who reacted with the selected one on the right.
 struct ReactionsDialog {
     screen: Entity<HomeScreen>,
     message_id: Id<MessageMarker>,

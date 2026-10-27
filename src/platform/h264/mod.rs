@@ -1,19 +1,13 @@
 //! Live H.264 decode, for watching someone else's Go Live stream.
 //!
-//! Like [`super::video`], nothing here ships a codec: Windows decodes through
-//! Media Foundation's H.264 decoder. Unlike a clip, a stream has no file and
-//! no clock of its own to pace against — frames are shown the moment they're
-//! decoded, since the network already delivered them at the sender's rate.
+//! Like [`super::video`], no codec ships here: Windows decodes through Media
+//! Foundation. A stream has no clock to pace against, so frames are shown as
+//! soon as they're decoded; the network already delivered them at the sender's rate.
 //!
-//! One [`LiveDecoder`] runs on a thread of its own. The stream connection
-//! feeds it Annex B access units through the [`DecoderInput`] half, and
-//! decoded pictures come back as [`DecoderEvent`]s, already converted to BGRA
-//! and scaled to the size they'll be drawn at. Every access unit is decoded
-//! — later frames are predicted from it — but only as many pictures are
-//! converted as the UI is keeping up with, the same frames-in-flight budget
-//! inline video uses.
-//!
-//! Dropping either half stops the thread.
+//! A [`LiveDecoder`] thread takes Annex B access units through [`DecoderInput`]
+//! and emits BGRA [`DecoderEvent`]s scaled to the drawn size. Every access unit
+//! is decoded (later frames predict from it) but only as many pictures are
+//! converted as the UI keeps up with. Dropping either half stops the thread.
 
 #[cfg_attr(windows, path = "windows.rs")]
 #[cfg_attr(not(windows), path = "unsupported.rs")]
@@ -25,7 +19,6 @@ use std::sync::mpsc;
 
 use futures::channel::mpsc::UnboundedSender;
 
-/// Decoded pictures that may be waiting on the UI before more are skipped.
 /// See [`super::video`]'s own limit for why this is small.
 const MAX_FRAMES_IN_FLIGHT: usize = 2;
 
@@ -42,12 +35,11 @@ pub enum DecoderEvent {
     Failed(String),
 }
 
-/// State shared with the decoder thread. Atomics, because the thread reads
-/// them for every picture and must never wait on the UI.
+/// Atomics, because the thread reads them for every picture and must never wait on the UI.
 struct Control {
     stopped: AtomicBool,
     frames_in_flight: AtomicUsize,
-    /// The size pictures are scaled to fit, width in the high half.
+    /// Width in the high half.
     target: AtomicU64,
 }
 
@@ -61,7 +53,7 @@ impl Control {
         ((packed >> 32) as u32, packed as u32)
     }
 
-    /// Whether another picture may be sent, reserving a slot when it may.
+    /// Reserves a slot when it returns true.
     fn reserve_frame(&self) -> bool {
         self.frames_in_flight
             .fetch_update(Ordering::AcqRel, Ordering::Acquire, |in_flight| {
@@ -71,25 +63,22 @@ impl Control {
     }
 }
 
-/// The UI's half: where pictures are drawn, and when they've been.
 pub struct LiveDecoder {
     control: Arc<Control>,
 }
 
-/// The connection's half: where access units go in.
 pub struct DecoderInput {
     frames: mpsc::Sender<Vec<u8>>,
 }
 
 impl DecoderInput {
-    /// Queues one access unit. Returns false once the decoder has stopped.
+    /// Returns false once the decoder has stopped.
     pub fn decode(&self, frame: Vec<u8>) -> bool {
         self.frames.send(frame).is_ok()
     }
 }
 
-/// Starts a decoder thread, delivering pictures on `events` scaled to fit
-/// `target` (physical pixels).
+/// `target` is in physical pixels.
 pub fn start(
     target: (u32, u32),
     events: UnboundedSender<DecoderEvent>,
@@ -120,12 +109,11 @@ pub fn start(
 }
 
 impl LiveDecoder {
-    /// Changes the size pictures are scaled to fit, from the next one on.
     pub fn set_target(&self, target: (u32, u32)) {
         self.control.target.store(pack(target), Ordering::Release);
     }
 
-    /// Reports that a picture has been drawn and released, freeing a slot.
+    /// Call once a picture is drawn and released, freeing a slot.
     pub fn frame_consumed(&self) {
         let _ = self.control.frames_in_flight.fetch_update(
             Ordering::AcqRel,
@@ -145,8 +133,7 @@ fn pack((width, height): (u32, u32)) -> u64 {
     (u64::from(width) << 32) | u64::from(height)
 }
 
-/// The size a `width` × `height` picture is drawn at inside `target`: as large
-/// as fits, keeping its shape, and never larger than it is.
+/// As large as fits inside `target`, keeping shape, never upscaling.
 fn fit(width: u32, height: u32, target: (u32, u32)) -> (u32, u32) {
     let (width, height) = (f64::from(width), f64::from(height));
     let scale = (f64::from(target.0.max(1)) / width)
@@ -158,7 +145,6 @@ fn fit(width: u32, height: u32, target: (u32, u32)) -> (u32, u32) {
     )
 }
 
-/// How a decoder's YUV maps to RGB.
 #[derive(Clone, Copy)]
 struct ColorSpace {
     /// BT.709 rather than BT.601.
@@ -167,8 +153,7 @@ struct ColorSpace {
     full_range: bool,
 }
 
-/// Fixed-point (16.16) coefficients for one colour space: luma scale and
-/// offset, then V→R, U→G, V→G, U→B.
+/// Fixed-point (16.16): luma scale and offset, then V→R, U→G, V→G, U→B.
 struct Coefficients {
     y_scale: i32,
     y_offset: i32,
@@ -203,27 +188,25 @@ impl ColorSpace {
     }
 }
 
-/// An NV12 picture as a decoder left it: a luma plane, then interleaved
-/// half-resolution chroma, both `pitch` bytes a row.
+/// A luma plane, then interleaved half-resolution chroma, both `pitch` bytes a row.
 struct Nv12<'a> {
     luma: &'a [u8],
     chroma: &'a [u8],
     pitch: usize,
-    /// The visible part, which a decoder pads out to whole macroblocks.
+    /// The visible part; decoders pad to whole macroblocks.
     width: usize,
     height: usize,
     color: ColorSpace,
 }
 
 impl Nv12<'_> {
-    /// Converts to BGRA, scaled to `size`. Luma is sampled bilinearly, which
-    /// is what keeps a shared screen's text legible when it's drawn smaller
-    /// than it was sent; chroma is half resolution already and only picked.
+    /// Luma is sampled bilinearly to keep shared text legible when shrunk;
+    /// chroma is half resolution already and only picked.
     fn to_bgra(&self, size: (u32, u32)) -> Vec<u8> {
         let (out_width, out_height) = (size.0 as usize, size.1 as usize);
         let mut out = vec![0u8; out_width * out_height * 4];
         let c = self.color.coefficients();
-        // Source position of each output pixel's centre, in 16.16.
+        // 16.16 steps to each output pixel's centre.
         let step_x = ((self.width << 16) / out_width) as i64;
         let step_y = ((self.height << 16) / out_height) as i64;
         let max_x = (self.width - 1) as i64;
@@ -251,7 +234,7 @@ impl Nv12<'_> {
                 let pair = (x0 / 2) * 2;
                 let u = i64::from(chroma[pair]) - 128;
                 let v = i64::from(chroma[pair + 1]) - 128;
-                // Half a unit up, so the shifts below round rather than truncate.
+                // +0.5 so the shifts below round.
                 let y = (y - i64::from(c.y_offset)) * i64::from(c.y_scale) + 32768;
 
                 let r = (y + i64::from(c.vr) * v) >> 16;

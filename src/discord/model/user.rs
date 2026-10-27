@@ -7,63 +7,55 @@ use super::cdn;
 use super::time::format_snowflake_date;
 use super::upload::{DEFAULT_UPLOAD_LIMIT, premium_upload_limit};
 
-/// Size the profile popout renders the avatar and banner at.
 const PROFILE_AVATAR_SIZE: u32 = 160;
 const PROFILE_BANNER_SIZE: u32 = 480;
 
 #[derive(Clone)]
 pub struct CurrentUser {
     pub id: Id<UserMarker>,
-    /// Display name: the global display name when set, else the username.
+    /// Global display name when set, else the username.
     pub name: String,
     pub username: String,
     pub avatar_url: Option<String>,
-    /// Whether they have any tier of Nitro, which is what lets custom emoji be
-    /// used outside their own guild and animated ones at all.
+    /// Any tier of Nitro: custom emoji outside their own guild, and animated ones.
     pub premium: bool,
-    /// The largest file their Nitro lets them send anywhere. A boosted guild
-    /// may allow more.
+    /// From Nitro alone; a boosted guild may allow more.
     pub upload_limit: u64,
 }
 
-/// Another user, as shown in the profile popout opened from their avatar.
 #[derive(Clone)]
 pub struct UserProfile {
-    /// Display name: the global display name when set, else the username.
+    /// Global display name when set, else the username.
     pub name: String,
     pub username: String,
     pub avatar_url: Option<String>,
     pub banner_url: Option<String>,
-    /// The banner's solid colour, used when the user has no banner image.
-    /// Packed as `0xRRGGBB`.
+    /// Packed `0xRRGGBB`, shown when there is no banner image.
     pub accent_color: Option<u32>,
-    /// The "About Me" text. `None` when unset or when only the fallback
-    /// `GET /users/{id}` data was available, which doesn't carry a bio.
+    /// `None` when unset or when only the fallback `GET /users/{id}` data
+    /// was available, which has no bio.
     pub bio: Option<String>,
     pub pronouns: Option<String>,
-    /// When the account was registered, derived from the snowflake and
-    /// formatted as `Jan 5, 2021`.
+    /// Derived from the snowflake, formatted `Jan 5, 2021`.
     pub created_at: String,
     pub bot: bool,
 }
 
-/// Someone who reacted to a message, as the reactions list shows them.
 #[derive(Clone)]
 pub struct Reactor {
     pub id: Id<UserMarker>,
-    /// Display name: the global display name when set, else the username.
+    /// Global display name when set, else the username.
     pub name: String,
     pub username: String,
     pub avatar_url: Option<String>,
 }
 
-/// `GET /users/{id}/profile`, the endpoint the Discord client itself uses for
-/// the profile popout. It has no twilight model, so it's deserialized here.
+/// `GET /users/{id}/profile`; twilight has no model for it.
 #[derive(Deserialize)]
 pub(in crate::discord) struct RawProfile {
     user: RawProfileUser,
-    /// The user's global profile, whose banner/bio/accent override the ones on
-    /// `user` (which are the per-guild values when a guild was requested).
+    /// Global profile; overrides `user`'s banner/bio/accent, which are
+    /// per-guild when a guild was requested.
     #[serde(default)]
     user_profile: Option<RawProfileDetails>,
 }
@@ -103,8 +95,7 @@ impl RawProfile {
         let details = self.user_profile;
         let user = self.user;
 
-        // The global profile wins wherever it has a value; `user` is the
-        // fallback for accounts that only set the fields in one place.
+        // The global profile wins wherever it has a value.
         let banner = details
             .as_ref()
             .and_then(|details| details.banner.clone())
@@ -139,9 +130,8 @@ impl RawProfile {
     }
 }
 
-/// Builds a [`UserProfile`] from the plain `GET /users/{id}` user, used when
-/// the richer profile endpoint isn't available to this token. The bio and
-/// pronouns aren't part of that response, so they're left unset.
+/// Fallback for when `GET /users/{id}/profile` isn't available to this token;
+/// that response has no bio or pronouns.
 pub(in crate::discord) fn convert_user_profile(user: twilight_model::user::User) -> UserProfile {
     UserProfile {
         name: user
@@ -197,7 +187,6 @@ pub(in crate::discord) fn convert_reactor(user: twilight_model::user::User) -> R
     }
 }
 
-/// The small avatar shown beside a user's name in a message or a DM row.
 pub(super) fn small_avatar_url(user: &twilight_model::user::User) -> Option<String> {
     user.avatar
         .map(|hash| cdn::small_avatar_url(user.id.get(), &hash.to_string()))

@@ -1,9 +1,6 @@
-//! The composer's autocomplete: spotting the `@`, `#` or `:` word being typed
-//! at the cursor, ranking what could finish it, and turning the mentions it
-//! put in back into the markup Discord expects when the message is sent.
-//!
-//! What's on offer is gathered by the caller; this module only matches and
-//! orders it.
+//! The composer's autocomplete: spotting the `@`, `#` or `:` word at the cursor,
+//! ranking candidates (gathered by the caller), and turning chosen mentions
+//! back into Discord's markup on send.
 
 use std::ops::Range;
 
@@ -14,11 +11,9 @@ use twilight_model::id::{
 
 use super::emoji::PickerEmoji;
 
-/// How many suggestions are offered at once, as in Discord.
 pub(in crate::screens::home) const LIMIT: usize = 10;
 
-/// Emoji suggestions wait for this many characters after the colon, so a
-/// colon in ordinary prose doesn't open the list, as in Discord.
+/// Keeps a colon in ordinary prose from opening the list, as in Discord.
 const EMOJI_MIN_QUERY: usize = 2;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -28,13 +23,11 @@ pub(in crate::screens::home) enum Trigger {
     Emoji,
 }
 
-/// The word being completed: from its trigger character up to the cursor.
 #[derive(PartialEq, Eq, Debug)]
 pub(in crate::screens::home) struct Word<'a> {
     pub trigger: Trigger,
-    /// Byte range in the text, trigger included.
+    /// Byte range, trigger included.
     pub range: Range<usize>,
-    /// What follows the trigger.
     pub query: &'a str,
 }
 
@@ -50,20 +43,17 @@ pub(in crate::screens::home) enum Suggestion {
         id: Id<ChannelMarker>,
         name: String,
         kind: crate::discord::ChannelKind,
-        /// The category it's filed under, shown beside it as in Discord.
         category: Option<String>,
     },
     Broadcast(Broadcast),
     Emoji {
         emoji: PickerEmoji,
-        /// The guild a custom emoji is from.
         guild: Option<String>,
     },
 }
 
 impl Suggestion {
-    /// What tells one suggestion from another, so the highlighted one can stay
-    /// highlighted as the list is rebuilt around it.
+    /// Identity that keeps the highlight when the list is rebuilt.
     pub fn key(&self) -> String {
         match self {
             Self::User { id, .. } => format!("user-{id}"),
@@ -91,7 +81,6 @@ impl Broadcast {
         }
     }
 
-    /// Discord's wording for what it does.
     pub fn description(self) -> &'static str {
         match self {
             Self::Everyone => "Notify everyone who has permission to view this channel.",
@@ -100,8 +89,7 @@ impl Broadcast {
     }
 }
 
-/// The trigger word ending at `cursor`, if there is one. It has to start the
-/// text or follow whitespace, so an email address doesn't count as a mention.
+/// Must start the text or follow whitespace, so an email address isn't a mention.
 pub(in crate::screens::home) fn word_at(text: &str, cursor: usize) -> Option<Word<'_>> {
     let before = text.get(..cursor)?;
     let start = before
@@ -129,10 +117,8 @@ pub(in crate::screens::home) fn word_at(text: &str, cursor: usize) -> Option<Wor
     })
 }
 
-/// How well `name` matches a lowercased `query`, lower being better: names
-/// starting with it, then ones with a later word starting with it, then any
-/// containing it. Ties go to the shorter name, the likelier finished. `None`
-/// if it doesn't match at all.
+/// Lower is better: prefix, then a later word's prefix, then substring. Ties go
+/// to the shorter name.
 pub(in crate::screens::home) fn match_rank(name: &str, query: &str) -> Option<(u8, usize)> {
     if query.is_empty() {
         return Some((0, 0));
@@ -153,8 +139,7 @@ pub(in crate::screens::home) fn match_rank(name: &str, query: &str) -> Option<(u
     Some((rank, name.len()))
 }
 
-/// The best [`LIMIT`] of the ranked candidates, best first. The sort is
-/// stable, so equal matches keep the order they were gathered in.
+/// The sort is stable, so equal matches keep gathered order.
 pub(in crate::screens::home) fn best<T>(
     ranked: impl IntoIterator<Item = ((u8, usize), T)>,
 ) -> Vec<T> {
@@ -167,9 +152,8 @@ pub(in crate::screens::home) fn best<T>(
         .collect()
 }
 
-/// `text` with each mention the autocomplete put in, as `(shown, markup)`,
-/// turned into its markup. Longer names go first, so `@Sam` can't eat the
-/// front of an `@Samantha` chosen alongside it.
+/// Replaces each `(shown, markup)` mention. Longer names go first so `@Sam`
+/// can't eat the front of `@Samantha`.
 pub(in crate::screens::home) fn resolve_mentions(
     text: &str,
     mentions: &[(String, String)],
@@ -195,9 +179,7 @@ mod tests {
         assert_eq!(word.query, "ali");
 
         assert_eq!(word_at("#", 1).unwrap().trigger, Trigger::Channel);
-        // Only up to the cursor.
         assert_eq!(word_at("@alice", 3).unwrap().query, "al");
-        // Past the word, nothing's being completed.
         assert_eq!(word_at("@alice ", 7), None);
     }
 

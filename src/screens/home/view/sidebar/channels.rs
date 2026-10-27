@@ -7,8 +7,7 @@ use crate::screens::home::HomeScreen;
 
 use super::shell;
 
-/// Row widths for the loading skeleton, fixed so it doesn't reshuffle between
-/// frames.
+/// Skeleton row widths, fixed so it doesn't reshuffle between frames.
 const SKELETON_WIDTHS: [f32; 16] = [
     120., 88., 104., 72., 132., 96., 116., 80., 124., 92., 108., 76., 128., 100., 112., 84.,
 ];

@@ -10,7 +10,6 @@ use super::ring::SampleRing;
 use super::{CHANNELS, Shutdown};
 use crate::platform::audio::in_device_format;
 
-/// A microphone or speaker the user can pick between, as the menus list it.
 pub struct AudioDevice {
     /// Stable across runs and reboots, so it's what a preference stores.
     pub id: String,
@@ -40,8 +39,7 @@ fn listed(devices: impl Iterator<Item = cpal::Device>) -> Vec<AudioDevice> {
         .collect()
 }
 
-/// The chosen microphone, or the system default when none is chosen or the
-/// chosen one has been unplugged since.
+/// Falls back to the default when none is chosen or it has been unplugged.
 pub(super) fn chosen_input(host: &cpal::Host, id: Option<&str>) -> Option<cpal::Device> {
     id.and_then(|id| id.parse::<DeviceId>().ok())
         .and_then(|id| host.device_by_id(&id))
@@ -58,18 +56,13 @@ pub(super) fn output_config(device: cpal::Device) -> Option<(cpal::Device, Suppo
     Some((device, supported))
 }
 
-/// How many of a microphone's channels the capture ring carries.
-///
-/// The raw input the mixer is handed can only describe mono or stereo, so a
-/// device offering more — a mic array, a capture interface — is read as the
-/// stereo pair it starts with rather than refused outright.
+/// The raw input handed to the mixer can only describe mono or stereo, so
+/// devices with more channels are read as their first pair.
 pub(super) fn ring_channels(device_channels: u16) -> usize {
     usize::from(device_channels).clamp(1, CHANNELS)
 }
 
-/// Opens both streams and holds them until the call ends. Runs on its own
-/// thread: cpal streams are `!Send` on some platforms, so they can't be handed
-/// back to the caller.
+/// Runs on its own thread because cpal streams are `!Send` on some platforms.
 pub(super) fn run_devices(
     input: Option<(cpal::Device, SupportedStreamConfig)>,
     output: Option<(cpal::Device, SupportedStreamConfig)>,
@@ -84,13 +77,10 @@ pub(super) fn run_devices(
         return;
     }
 
-    // Both streams stop when they're dropped, so the thread's only job from
-    // here is to stay alive for as long as the call does.
+    // Streams stop when dropped, so just stay alive for the call.
     shutdown.wait();
 }
 
-/// Fills the capture ring with what the device hears, as `f32` at the device's
-/// own rate; the mixer is told that rate and does the resampling.
 fn build_input(
     device: &cpal::Device,
     config: SupportedStreamConfig,
@@ -123,16 +113,13 @@ where
         .build_input_stream(
             config,
             move |data: &[T], _: &_| push_capture(data, device_channels, &capture),
-            // Usually the device going away mid-call, which is worth knowing
-            // about when a call has gone one-way.
+            // Usually the device vanishing mid-call.
             |err| eprintln!("microphone stream error: {err}"),
             None,
         )
         .ok()
 }
 
-/// Copies one callback's worth of microphone into the ring, keeping only the
-/// channels [`ring_channels`] promised the mixer.
 fn push_capture<T>(data: &[T], device_channels: usize, capture: &SampleRing)
 where
     T: Copy,

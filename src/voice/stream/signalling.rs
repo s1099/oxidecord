@@ -1,19 +1,14 @@
-//! The stream's voice websocket: the handshake, heartbeats, and DAVE.
+//! The stream's voice websocket (gateway v8, the stream's own server and
+//! token): handshake, heartbeats and DAVE. Spoken directly because songbird
+//! can't announce video; the DAVE handshake is ported from songbird's, with
+//! davey doing the MLS.
 //!
-//! This is the same voice gateway a call talks to, at version 8, with the
-//! stream's own server and token. songbird can't be pointed at it — it has
-//! no way to announce video — so the protocol is spoken here directly, and
-//! DAVE's handshake is ported from songbird's with davey doing the MLS.
+//! DAVE is an MLS group per connection: the server proposes members, one
+//! commits, and every member then derives the same keys. Until
+//! [`Dave::protect`] has a ready session frames are held back, not sent.
 //!
-//! DAVE runs as an MLS group per connection: the voice server proposes
-//! members as they connect, one member commits, and once the commit lands
-//! every member derives the same keys. Media is only end-to-end encrypted
-//! once that's happened, so until [`Dave::protect`] has a ready session,
-//! frames are held back rather than sent.
-//!
-//! A viewer speaks the same protocol, announcing that it sends nothing and
-//! learning from the server's `VIDEO` messages which SSRCs carry the
-//! streamer's picture.
+//! A viewer announces it sends nothing and learns the streamer's SSRCs from
+//! the server's `VIDEO` messages.
 
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
@@ -58,49 +53,39 @@ mod op {
     pub const MLS_INVALID_COMMIT_WELCOME: u8 = 31;
 }
 
-/// Close code for a connection the server ended on purpose: the stream was
-/// deleted, or the user was disconnected from the call.
+/// The server ended it on purpose: stream deleted, or user disconnected from the call.
 const CLOSE_DISCONNECTED: u16 = 4014;
 
-/// What the voice server says the stream's media goes to.
 pub(super) struct Ready {
     pub ip: IpAddr,
     pub port: u16,
     pub ssrcs: Ssrcs,
-    /// The transport cipher picked from the ones the server offered.
     pub mode: &'static str,
 }
 
-/// Where a streamer's picture arrives, as the server's `VIDEO` says.
 #[derive(Clone, Copy)]
 pub(super) struct RemoteVideo {
     pub ssrc: u32,
-    /// Where retransmissions arrive, when the sender has said.
     pub rtx_ssrc: Option<u32>,
 }
 
-/// What a message from the server meant for the rest of the stream.
 pub(super) enum Signal {
     Nothing,
-    /// The server closed the connection. `None` when it ended the stream on
-    /// purpose, the reason otherwise.
+    /// `None` when the server ended the stream on purpose.
     Closed(Option<String>),
 }
 
 pub(super) struct Signalling {
     ws: WebSocketStream<MaybeTlsStream<TcpStream>>,
-    /// The last sequence number the server sent, acknowledged on every
-    /// heartbeat. Version 8 replays anything missed past it on a resume.
+    /// Acked on every heartbeat; v8 replays anything missed past it on resume.
     seq_ack: i64,
     pub heartbeat: Duration,
     pub dave: Dave,
-    /// DAVE messages that arrived before the session description, which is
-    /// what says whether there's a DAVE session to give them to. Replayed
-    /// once it lands.
+    /// DAVE messages that arrived before the session description (which says
+    /// whether there is a DAVE session). Replayed once it lands.
     early: Option<Vec<Vec<u8>>>,
-    /// The streamer's video, for a viewer. Kept here rather than handed back
-    /// as a [`Signal`] because the server can announce it during the
-    /// handshake, before anyone is reading signals.
+    /// Not a [`Signal`] because the server can announce it during the handshake,
+    /// before anyone reads signals.
     pub remote: Option<RemoteVideo>,
 }
 
@@ -182,9 +167,7 @@ struct Epoch {
 }
 
 impl Signalling {
-    /// Connects and identifies, returning once the server has said hello and
-    /// where to send media. Anything else it says meanwhile is handled as it
-    /// arrives.
+    /// Returns once the server has said hello and where to send media.
     pub(super) async fn connect(connection: &StreamConnection) -> Result<(Self, Ready), String> {
         let url = format!("wss://{}/?v={VOICE_GATEWAY_VERSION}", connection.endpoint);
         let (ws, _) = tokio_websockets::ClientBuilder::new()
@@ -212,8 +195,7 @@ impl Signalling {
                 "session_id": connection.session_id,
                 "token": connection.token,
                 "video": true,
-                // One stream, sent at full quality. Simulcast would offer
-                // viewers a choice of sizes, at the cost of encoding each.
+                // One full-quality stream; simulcast would mean encoding each size.
                 "streams": [{ "type": "screen", "rid": "100", "quality": 100 }],
                 "max_dave_protocol_version": davey::DAVE_PROTOCOL_VERSION,
             }),
@@ -242,13 +224,12 @@ impl Signalling {
         };
         this.heartbeat = heartbeat;
 
-        // The streams come back in the order they were offered, and one was.
+        // Only one stream was offered.
         let stream = ready
             .streams
             .first()
             .ok_or("The stream server assigned no video stream")?;
-        // aes-256-gcm where the server offers it, as Discord asks; the
-        // xchacha fallback is the one every server must support.
+        // AES-GCM where offered, as Discord asks; xchacha is the one every server supports.
         let mode = if ready.modes.iter().any(|mode| mode == AES_MODE) {
             AES_MODE
         } else if ready.modes.iter().any(|mode| mode == XCHACHA_MODE) {
@@ -270,8 +251,7 @@ impl Signalling {
         Ok((this, ready))
     }
 
-    /// Tells the server where media will come from, and waits for the keys
-    /// to encrypt it with. Returns the transport cipher and its key.
+    /// Returns the transport cipher and its key.
     pub(super) async fn select_protocol(
         &mut self,
         external: SocketAddr,
@@ -319,7 +299,6 @@ impl Signalling {
         }
     }
 
-    /// Announces the video: its SSRCs, and the size and rate it'll arrive at.
     pub(super) async fn announce_video(
         &mut self,
         ssrcs: Ssrcs,
@@ -348,8 +327,7 @@ impl Signalling {
         )
         .await?;
 
-        // A stream's "speaking" flag is soundshare rather than microphone,
-        // and it's what the client shows the stream as live on.
+        // For a stream, "speaking" means soundshare, and the client shows the stream live on it.
         self.send_json(
             op::SPEAKING,
             json!({ "speaking": 2, "delay": 0, "ssrc": ssrcs.audio }),
@@ -357,9 +335,7 @@ impl Signalling {
         .await
     }
 
-    /// Tells the server this connection only watches: its video is
-    /// inactive, and it wants the streamer's at full quality. The server
-    /// forwards no video until it's heard a `VIDEO` from each end.
+    /// The server forwards no video until it has heard a `VIDEO` from each end.
     pub(super) async fn announce_watching(&mut self, ssrcs: Ssrcs) -> Result<(), String> {
         self.send_json(
             op::VIDEO,
@@ -395,7 +371,6 @@ impl Signalling {
         let _ = self.ws.close().await;
     }
 
-    /// Waits for the next message and acts on it.
     pub(super) async fn next(&mut self) -> Result<Signal, String> {
         let Some(message) = self.ws.next().await else {
             return Ok(Signal::Closed(Some("The stream server went away".into())));
@@ -426,8 +401,7 @@ impl Signalling {
         Ok(Signal::Nothing)
     }
 
-    /// Reads messages until a JSON one arrives, handling binary ones on the
-    /// way. `None` when the connection closed.
+    /// Handles binary messages on the way. `None` when the connection closed.
     async fn next_json(&mut self) -> Result<Option<Envelope>, String> {
         loop {
             let Some(message) = self.ws.next().await else {
@@ -469,9 +443,8 @@ impl Signalling {
                         .iter()
                         .find(|stream| stream.ssrc == payload.video_ssrc)
                         .or_else(|| payload.streams.iter().find(|stream| stream.ssrc != 0));
-                    // A zero SSRC with no streams is the sender clearing its
-                    // video; what's known of it stays, since a stream that
-                    // resumes does so on the same SSRCs.
+                    // Zero SSRC with no streams is the sender clearing its video; keep
+                    // what's known, since a resumed stream reuses the same SSRCs.
                     let ssrc = stream.map_or(payload.video_ssrc, |stream| stream.ssrc);
                     if ssrc != 0 {
                         self.remote = Some(RemoteVideo {
@@ -517,8 +490,7 @@ impl Signalling {
             }
             op::DAVE_PREPARE_EPOCH => {
                 let epoch: Epoch = parse(envelope.d)?;
-                // Epoch 1 is a fresh group: whatever session there was is
-                // over, and a new one starts at the version given.
+                // Epoch 1 is a fresh group.
                 if epoch.epoch == 1 {
                     self.dave.protocol_version = epoch.protocol_version;
                     if let Some(key_package) = self.dave.reinit()? {
@@ -531,8 +503,7 @@ impl Signalling {
         Ok(())
     }
 
-    /// DAVE's MLS messages, which arrive as binary frames: a sequence number,
-    /// the opcode, then the payload.
+    /// Binary frames: sequence number, opcode, payload.
     async fn handle_binary(&mut self, data: &[u8]) -> Result<(), String> {
         let [seq_high, seq_low, opcode, payload @ ..] = data else {
             return Ok(());
@@ -607,8 +578,7 @@ impl Signalling {
                         }
                     }
                     Err(err) => {
-                        // The group moved on without us. Say so, and rejoin
-                        // with a fresh key package.
+                        // The group moved on without us; rejoin with a fresh key package.
                         eprintln!("DAVE: couldn't join the group: {err}");
                         self.send_json(
                             op::MLS_INVALID_COMMIT_WELCOME,
@@ -655,18 +625,15 @@ impl Signalling {
 
 pub(super) struct Dave {
     user_id: u64,
-    /// DAVE's channel id for a stream is the stream server's id less one —
-    /// the voice server derives it the same way, and an MLS group built on
-    /// any other id is one no viewer is in.
+    /// The stream server's id less one, as the voice server derives it; a group
+    /// on any other id is one no viewer is in.
     channel_id: u64,
     pub(super) session: Option<DaveSession>,
     /// Zero when the connection isn't end-to-end encrypted at all.
     protocol_version: u16,
-    /// Transitions announced but not yet executed, by id, with the protocol
-    /// version each moves to.
+    /// Announced but unexecuted transitions, by id, with their target protocol version.
     pending: HashMap<u16, u16>,
-    /// Everyone connected to the stream, the user included. Proposals adding
-    /// anyone else are refused.
+    /// Including the user. Proposals adding anyone else are refused.
     members: HashSet<u64>,
 }
 
@@ -682,8 +649,7 @@ impl Dave {
         }
     }
 
-    /// Starts over at the current protocol version, returning the key
-    /// package to announce if there's a session to join with.
+    /// Returns the key package to announce, if there's a session to join with.
     fn reinit(&mut self) -> Result<Option<Vec<u8>>, String> {
         let Some(version) = NonZeroU16::new(self.protocol_version) else {
             if let Some(session) = &mut self.session {
@@ -721,9 +687,7 @@ impl Dave {
         self.protocol_version == 0 || self.session.as_ref().is_some_and(DaveSession::is_ready)
     }
 
-    /// Undoes [`Self::protect`] on a frame from `sender`: a picture, or the
-    /// Opus of the stream's sound. `None` when it can't be decrypted — most
-    /// often because the group hasn't formed yet.
+    /// `None` when it can't be decrypted, most often because the group hasn't formed.
     pub(super) fn unprotect(
         &mut self,
         sender: u64,
@@ -734,8 +698,7 @@ impl Dave {
             return Some(frame);
         }
         let session = self.session.as_mut()?;
-        // Every frame fails until the group forms; that isn't worth a line
-        // each.
+        // Every frame fails until the group forms; don't log each.
         if !session.is_ready() {
             return None;
         }
@@ -748,10 +711,8 @@ impl Dave {
         }
     }
 
-    /// End-to-end encrypts a frame, or passes it through on a connection
-    /// that isn't encrypted. `None` while the group is still forming, when a
-    /// frame can't be sent at all: anything sent then is something no viewer
-    /// could decrypt.
+    /// Passes through when unencrypted. `None` while the group forms: anything
+    /// sent then is undecryptable by viewers.
     pub(super) fn protect<'a>(&mut self, frame: &'a [u8]) -> Option<Cow<'a, [u8]>> {
         if self.protocol_version == 0 {
             return Some(Cow::Borrowed(frame));

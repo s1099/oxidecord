@@ -13,16 +13,13 @@ use crate::discord;
 use crate::screens::home::HomeScreen;
 use crate::screens::home::state::Typist;
 
-/// How often the indicator is re-sent while the user keeps typing. Discord
-/// shows it for ten seconds per trigger; re-sending a little before that keeps
-/// it from flickering off between keystrokes.
+/// Discord shows it for ten seconds per trigger; re-sending a bit sooner avoids
+/// flicker between keystrokes.
 const TYPING_INTERVAL: Duration = Duration::from_secs(8);
 
-/// How long someone else's indicator lasts without being renewed.
 const TYPING_TIMEOUT: Duration = Duration::from_secs(10);
 
 impl HomeScreen {
-    /// Called on every change to the composer's text.
     pub(in crate::screens::home) fn on_composer_changed(&mut self, cx: &mut Context<Self>) {
         let Some(channel_id) = self.selected_channel else {
             return;
@@ -46,7 +43,6 @@ impl HomeScreen {
         .detach();
     }
 
-    /// Someone started, or is still, typing in `channel_id`.
     pub(in crate::screens::home) fn handle_typing(
         &mut self,
         channel_id: Id<ChannelMarker>,
@@ -84,7 +80,6 @@ impl HomeScreen {
         .detach();
     }
 
-    /// Their message arrived, which ends their typing early.
     pub(in crate::screens::home) fn stop_typing(
         &mut self,
         channel_id: Id<ChannelMarker>,

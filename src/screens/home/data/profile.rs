@@ -7,12 +7,11 @@ use crate::discord;
 use crate::screens::home::{HomeScreen, ProfilePopup};
 
 impl HomeScreen {
-    /// Opens the profile card for `user_id`, anchored at `position`. `name` and
-    /// `avatar_url` come from the message that was clicked, so the card never
-    /// opens blank while the fetch is in flight.
+    /// `name` and `avatar_url` come from the clicked message so the card never opens
+    /// blank while fetching.
     ///
-    /// Closing is the card's own business: its dismiss layer swallows any press
-    /// outside it, so a second click on the same avatar never reaches this.
+    /// Closing is the card's own business: its dismiss layer swallows presses outside
+    /// it, so a second click on the same avatar never reaches this.
     pub(in crate::screens::home) fn open_profile(
         &mut self,
         user_id: Id<UserMarker>,

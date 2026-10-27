@@ -67,21 +67,17 @@ pub(super) struct ReadyPayload {
     /// with the rest following in `GUILD_CREATE`.
     #[serde(default)]
     pub(super) guilds: Vec<GatewayGuild>,
-    /// The signed-in user's member in each guild, in the same order as
-    /// `guilds`, when the session asked for deduplicated payloads. Otherwise
-    /// they arrive in each guild's own `members`.
+    /// The user's member per guild, in `guilds` order, when the session asked for
+    /// deduplicated payloads; otherwise in each guild's own `members`.
     #[serde(default)]
     pub(super) merged_members: Vec<Vec<RawMember>>,
-    /// A plain list, or versioned when the session asked for it.
     #[serde(default, deserialize_with = "versioned_list")]
     pub(super) read_state: Vec<RawReadState>,
     #[serde(default, deserialize_with = "versioned_list")]
     pub(super) user_guild_settings: Vec<RawGuildSettings>,
-    /// DMs and group DMs, of which only how far each has got is read here —
-    /// the DM list fetches the rest when it's opened.
+    /// Only how far each has got is read; the DM list fetches the rest when opened.
     #[serde(default, deserialize_with = "skip_invalid")]
     pub(super) private_channels: Vec<RawChannelUnread>,
-    /// Friends' presences, unless the session asked for them merged.
     #[serde(default, deserialize_with = "skip_invalid")]
     pub(super) presences: Vec<RawPresence>,
     #[serde(default)]
@@ -120,7 +116,6 @@ pub(super) struct RawPresence {
     status: String,
 }
 
-/// The presences that name a user and a status the app knows.
 pub(super) fn convert_presences(
     presences: impl IntoIterator<Item = RawPresence>,
 ) -> Vec<(Id<UserMarker>, PresenceStatus)> {
@@ -140,10 +135,8 @@ pub(super) struct ReadySupplementalPayload {
     pub(super) merged_presences: Option<MergedPresences>,
 }
 
-/// A guild as `READY` and `GUILD_CREATE` send it, of which only what's needed
-/// is read: who is already sitting in its voice channels, what a role mention
-/// should be called, and which roles the user holds. An unavailable guild
-/// arrives with none of these.
+/// A guild as `READY` and `GUILD_CREATE` send it. An unavailable guild arrives with none
+/// of the fields read.
 #[derive(Deserialize)]
 pub(super) struct GatewayGuild {
     pub(super) id: Id<GuildMarker>,
@@ -167,10 +160,8 @@ pub(super) struct GatewayGuild {
     pub(super) joined_at: Option<Timestamp>,
     #[serde(default)]
     owner_id: Option<Id<UserMarker>>,
-    /// Its boost level, which raises how large a file can be sent there.
     #[serde(default)]
     premium_tier: Option<u8>,
-    /// The notification level members get until they pick their own.
     #[serde(default)]
     default_message_notifications: Option<u8>,
     /// Where the guild's own fields sit when the session asked for them
@@ -246,13 +237,11 @@ pub(super) struct ChannelChangePayload {
     pub(super) guild_id: Option<Id<GuildMarker>>,
 }
 
-/// `GUILD_DELETE`: the user left the guild, or it went unavailable.
 #[derive(Deserialize)]
 pub(super) struct GuildDeletePayload {
     pub(super) id: Id<GuildMarker>,
 }
 
-/// `GUILD_MEMBER_UPDATE`.
 #[derive(Deserialize)]
 pub(super) struct MemberUpdatePayload {
     pub(super) guild_id: Id<GuildMarker>,
@@ -260,7 +249,8 @@ pub(super) struct MemberUpdatePayload {
     pub(super) member: RawMember,
 }
 
-/// `GUILD_MEMBERS_CHUNK`, the answer to [`GatewaySender::request_members`](super::GatewaySender::request_members).
+/// `GUILD_MEMBERS_CHUNK`, the answer to
+/// [`GatewaySender::request_members`](super::GatewaySender::request_members).
 #[derive(Deserialize)]
 pub(super) struct MembersChunkPayload {
     pub(super) guild_id: Id<GuildMarker>,
@@ -268,7 +258,6 @@ pub(super) struct MembersChunkPayload {
     pub(super) members: Vec<RawMember>,
 }
 
-/// `GUILD_ROLE_CREATE` and `GUILD_ROLE_UPDATE`.
 #[derive(Deserialize)]
 pub(super) struct RoleUpdatePayload {
     pub(super) guild_id: Id<GuildMarker>,
@@ -337,9 +326,8 @@ pub(super) struct ReadyUser {
     pub(super) id: Id<UserMarker>,
 }
 
-/// Deserializes a list item by item, dropping the items that don't fit `T`
-/// instead of failing the whole payload. The items are borrowed from the frame
-/// first, so the skipping costs no copies.
+/// Deserializes a list item by item, dropping items that don't fit `T` instead of failing
+/// the payload. Items are borrowed from the frame first, so skipping costs no copies.
 fn skip_invalid<'de, D, T>(deserializer: D) -> Result<Vec<T>, D::Error>
 where
     D: Deserializer<'de>,

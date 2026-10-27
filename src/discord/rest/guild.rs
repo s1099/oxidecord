@@ -18,14 +18,10 @@ pub async fn fetch_guilds() -> Result<Vec<Guild>, String> {
     .await
 }
 
-/// Fetches a guild's channels, keeping only the ones the current user holds
-/// `VIEW_CHANNEL` on — the rest are what Discord itself hides from the sidebar.
-/// Each surviving channel also records whether the user holds `SEND_MESSAGES`
-/// and `MANAGE_MESSAGES`.
-///
-/// `base_permissions` and `owner` come from the guild list (see [`Guild`]), so
-/// the only extra request here is the member object — which of their roles
-/// apply — used to resolve each channel's overwrites locally.
+/// Fetches a guild's channels, keeping those the user holds `VIEW_CHANNEL` on and
+/// recording `SEND_MESSAGES` and `MANAGE_MESSAGES`. `base_permissions` and `owner` come
+/// from the guild list, so the only extra request is the member object, whose role ids
+/// match channel overwrites.
 pub async fn fetch_channels(
     guild_id: Id<GuildMarker>,
     base_permissions: Permissions,
@@ -46,11 +42,8 @@ pub async fn fetch_channels(
         )?;
 
         let user_id = member.user.id;
-        // We already know the user's aggregate guild-wide permissions, so
-        // seed the calculator with those as the `@everyone` baseline and
-        // list the member's roles with empty permissions — the roles are
-        // only needed by id, to match channel overwrites, not to recompute
-        // the baseline.
+        // The guild-wide permissions are already known, so they seed the `@everyone` baseline;
+        // roles are listed with empty permissions since only their ids matter for overwrites.
         let member_roles: Vec<(Id<RoleMarker>, Permissions)> = member
             .roles
             .iter()
@@ -61,9 +54,6 @@ pub async fn fetch_channels(
         Ok(channels
             .into_iter()
             .filter_map(|channel| {
-                // Apply the channel's own overwrites to the baseline: drop
-                // the channel if the user can't even view it, and carry
-                // whether they may post so the composer can say otherwise.
                 let permissions = {
                     let overwrites = channel.permission_overwrites.as_deref().unwrap_or(&[]);
                     let mut calculator = PermissionCalculator::new(

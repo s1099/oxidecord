@@ -1,5 +1,4 @@
-//! Links to a message, as Discord's "Copy Message Link" writes them, which
-//! open the message in the app rather than the browser.
+//! Message links ("Copy Message Link"), opened in the app rather than the browser.
 
 use twilight_model::id::{
     Id,
@@ -15,8 +14,8 @@ pub struct MessageLink {
 }
 
 impl MessageLink {
-    /// Reads `https://discord.com/channels/<guild or @me>/<channel>/<message>`,
-    /// from any of the hosts Discord's clients have copied links from.
+    /// Reads `https://discord.com/channels/<guild or @me>/<channel>/<message>`
+    /// on any host Discord's clients have produced links with.
     pub fn parse(url: &str) -> Option<Self> {
         let rest = url
             .strip_prefix("https://")
@@ -30,7 +29,6 @@ impl MessageLink {
         if host != "discord.com" && host != "discordapp.com" {
             return None;
         }
-        // A query or fragment doesn't change which message it is.
         let path = path.split(['?', '#']).next()?;
         let mut parts = path.trim_end_matches('/').split('/');
         if parts.next()? != "channels" {

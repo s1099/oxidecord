@@ -13,10 +13,9 @@ pub struct GuildEmoji {
     pub id: Id<EmojiMarker>,
     pub name: String,
     pub animated: bool,
-    /// False once the guild loses the boost level that paid for the slot; the
-    /// emoji stays listed but nobody can send it.
+    /// False once the guild loses the boost level that paid for the slot.
     pub available: bool,
-    /// The roles allowed to use it. Empty means everyone.
+    /// Empty means everyone.
     pub roles: Vec<Id<RoleMarker>>,
 }
 
@@ -25,7 +24,6 @@ impl GuildEmoji {
         cdn::emoji_url(self.id, self.animated)
     }
 
-    /// The form Discord renders as this emoji when it's sent in a message.
     pub fn markdown(&self) -> String {
         let prefix = if self.animated { "a" } else { "" };
         format!("<{prefix}:{}:{}>", self.name, self.id)

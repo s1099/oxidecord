@@ -13,10 +13,9 @@ use crate::ui::depth::radius;
 use super::CAMERA_UNAVAILABLE;
 
 impl HomeScreen {
-    /// The card under the rail and sidebar: the call strip when there's a
-    /// call, the account row always. Discord draws it as one surface floating
-    /// over both columns, with a margin of the window's colour at its sides
-    /// and bottom. None above: the lists end right where it starts.
+    /// The card under the rail and sidebar: the call strip when in a call, the account row always.
+    /// One surface floating over both columns, with a margin of the window colour at its sides
+    /// and bottom. None above, so the lists end where it starts.
     pub(in crate::screens::home) fn render_sidebar_footer(
         &self,
         cx: &Context<Self>,
@@ -34,8 +33,6 @@ impl HomeScreen {
         )
     }
 
-    /// The strip at the top of the card while a call is up: where the call is,
-    /// and the ways out of it.
     fn render_voice_panel(&self, cx: &Context<Self>) -> Option<impl IntoElement> {
         let call = self.voice.as_ref()?;
         let theme = cx.theme();
@@ -48,8 +45,6 @@ impl HomeScreen {
             theme.muted_foreground
         };
 
-        // Divided from the account row below it by a hairline, within the one
-        // card.
         Some(
             div().child(
                 div()
@@ -133,8 +128,6 @@ impl HomeScreen {
         )
     }
 
-    /// The panel's line about the screen share: what's live, or why the last
-    /// one stopped.
     fn render_share_status(
         &self,
         call: &VoiceCall,

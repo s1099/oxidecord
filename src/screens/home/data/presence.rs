@@ -8,8 +8,8 @@ use crate::discord;
 use crate::screens::home::HomeScreen;
 
 impl HomeScreen {
-    /// Switches the user's status: on the gateway at once, so everyone sees
-    /// it, and in settings-proto, so it sticks across restarts and clients.
+    /// On the gateway at once, and in settings-proto so it persists across restarts
+    /// and clients.
     pub(in crate::screens::home) fn set_presence_status(
         &mut self,
         status: discord::PresenceStatus,
@@ -29,8 +29,7 @@ impl HomeScreen {
         .detach();
     }
 
-    /// Takes `status` as the user's, telling the gateway. Commands sent before
-    /// the session has identified wait for it, so this is safe at any point.
+    /// Commands sent before the session has identified wait for it.
     pub(in crate::screens::home) fn apply_presence_status(
         &mut self,
         status: discord::PresenceStatus,
@@ -41,9 +40,8 @@ impl HomeScreen {
         }
     }
 
-    /// The status to show for a user. The gateway never reports the user's
-    /// own presence, so theirs is the one they picked; anyone it hasn't
-    /// mentioned is offline.
+    /// The gateway never reports the user's own presence, so theirs is the picked
+    /// one; anyone it hasn't mentioned is offline.
     pub(in crate::screens::home) fn user_status(
         &self,
         user_id: Id<UserMarker>,

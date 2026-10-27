@@ -1,6 +1,5 @@
-//! Editing a message in place: opening one for editing, saving it (applied
-//! locally first and rolled back if the request fails), and taking edits made
-//! elsewhere as they arrive over the gateway.
+//! Editing a message in place: opening, saving (applied locally, rolled back on
+//! failure), and edits arriving over the gateway.
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -18,8 +17,7 @@ use crate::ui::depth;
 const EDIT_MAX_ROWS: usize = 16;
 
 impl HomeScreen {
-    /// Whether the current user wrote `message`. Discord only ever lets the
-    /// author edit, whatever else they may manage in the channel.
+    /// Discord lets only the author edit, whatever else they manage.
     pub(in crate::screens::home) fn is_own_message(&self, message: &discord::Message) -> bool {
         self.current_user
             .as_ref()
@@ -28,8 +26,6 @@ impl HomeScreen {
             == Some(message.author_id)
     }
 
-    /// Swaps the message's text for an edit box holding it, with the cursor at
-    /// the end, ready to type.
     pub(in crate::screens::home) fn start_editing(
         &mut self,
         message_id: Id<MessageMarker>,
@@ -77,7 +73,6 @@ impl HomeScreen {
         cx.notify();
     }
 
-    /// Closes the edit box without saving, handing focus back to the composer.
     pub(in crate::screens::home) fn cancel_edit(
         &mut self,
         window: &mut Window,
@@ -90,11 +85,8 @@ impl HomeScreen {
         cx.notify();
     }
 
-    /// Saves the edit box's text over the message.
-    ///
-    /// Unchanged text just closes the box. Clearing the text of a message with
-    /// nothing else in it would leave it empty, which Discord treats as a
-    /// request to delete it, so that asks first.
+    /// Unchanged text just closes the box. Clearing a message with nothing else in
+    /// it would leave it empty, which Discord treats as a delete, so that asks first.
     pub(in crate::screens::home) fn save_edit(
         &mut self,
         window: &mut Window,
@@ -128,9 +120,8 @@ impl HomeScreen {
             return self.confirm_delete_from_edit(message_id, window, cx);
         }
 
-        // Show the new text now, as Discord does; the request usually
-        // succeeds, and the box closing onto the old text would read as the
-        // edit being lost.
+        // Shown now, as Discord does; the box closing onto the old text would read as
+        // the edit being lost.
         let previous = (message.content.clone(), message.edited);
         message.set_content(content.clone());
         message.edited = SystemTime::now()
@@ -174,8 +165,6 @@ impl HomeScreen {
         .detach();
     }
 
-    /// Asks whether to delete a message whose text was cleared in the edit box.
-    /// Declining leaves the box open to carry on editing.
     fn confirm_delete_from_edit(
         &mut self,
         message_id: Id<MessageMarker>,
@@ -205,9 +194,7 @@ impl HomeScreen {
         });
     }
 
-    /// Up in an empty composer opens the user's latest message in the
-    /// conversation for editing. Anywhere else, the arrow moves the cursor as
-    /// usual.
+    /// Only in an empty composer; elsewhere the arrow moves the cursor as usual.
     pub(in crate::screens::home) fn on_edit_last_message(
         &mut self,
         _: &EditLastMessage,
@@ -233,8 +220,6 @@ impl HomeScreen {
         self.start_editing(message_id, window, cx);
     }
 
-    /// Takes an edit to a message in the open conversation, made here or
-    /// anywhere else.
     pub(in crate::screens::home) fn handle_message_update(
         &mut self,
         incoming: discord::IncomingMessage,

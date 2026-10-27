@@ -1,24 +1,16 @@
 //! Media Foundation decode.
 //!
-//! The source reader is asked for `RGB32`, which on a little-endian machine is
-//! byte-for-byte the BGRA gpui wants, so the pixel format costs nothing: the
-//! video processor the reader inserts handles it, on the GPU where the driver
-//! supports it.
+//! The source reader is asked for `RGB32`, which on little-endian is byte-for-byte
+//! the BGRA gpui wants, converted by the reader's video processor.
 //!
-//! Scaling is asked for the same way but rarely granted — the source reader
-//! rejects an output size the file doesn't natively have — so frames are
-//! box-averaged down to the size they'll be drawn at as they're copied out of
-//! the decoder's buffer. That pass is the one place this backend touches every
-//! pixel, and it's what keeps a frame in the UI at a few hundred kilobytes
-//! instead of the several megabytes a full-size one would be.
+//! Scaling is asked for too but rarely granted (the reader rejects sizes the
+//! file doesn't natively have), so frames are box-averaged down to the drawn
+//! size as they're copied out of the decoder's buffer.
 //!
-//! Audio is pulled from the same reader, resampled by Media Foundation to
-//! whatever rate the output device opened at, so no resampler is needed on
-//! this side either.
-//!
-//! The two streams are read separately rather than through `ANY_STREAM`: each
-//! is read only when its own buffer has room, which is what keeps the decoder
-//! paced to the speakers instead of racing ahead of them.
+//! Audio comes from the same reader, resampled by Media Foundation to the
+//! output device's rate. The streams are read separately rather than through
+//! `ANY_STREAM`, each only when its own buffer has room, which keeps the
+//! decoder paced to the speakers.
 
 use std::collections::VecDeque;
 use std::os::windows::ffi::OsStrExt as _;
@@ -33,34 +25,24 @@ use windows::core::{GUID, Interface as _, PCWSTR};
 use super::clock::{AudioRing, CHANNELS, Clock};
 use super::{Session, VideoEvent, VideoFrame};
 
-/// Decoded frames held back waiting for their moment.
-///
-/// Three is enough to absorb the jitter in decode times without letting the
-/// decoder run meaningfully ahead of the clock — which is the point, since
-/// every frame waiting here is memory held for a picture nobody has seen yet.
+/// Enough to absorb decode-time jitter without running ahead of the clock;
+/// each waiting frame is memory held for a picture nobody has seen.
 const MAX_PENDING_FRAMES: usize = 3;
 
-/// How early a frame may be released. Half a frame at 60Hz: releasing on the
-/// exact timestamp means every frame is fractionally late by the time it is
-/// drawn, which reads as a stutter.
+/// Half a frame at 60Hz. Releasing on the exact timestamp makes every frame
+/// fractionally late by draw time, which reads as stutter.
 const RELEASE_SLACK: Duration = Duration::from_millis(8);
 
-/// How long the loop idles when every buffer is full. Short enough that a
-/// frame coming due is not noticeably late.
 const IDLE: Duration = Duration::from_millis(4);
 
-/// How many reads in a row may come back with nothing before a clip being
-/// decoded whole is given up on.
+/// Consecutive empty reads before `decode_all` gives up.
 const MAX_EMPTY_READS: u32 = 256;
 
 /// Media Foundation counts in 100ns units.
 const HNS_PER_SEC: u64 = 10_000_000;
 
-/// The alpha every decoded pixel is given on the way out.
-///
-/// `RGB32` leaves its fourth byte undefined and Media Foundation fills it with
-/// zero, which gpui reads as fully transparent — copied through as-is, a video
-/// draws as nothing at all.
+/// `RGB32` leaves its fourth byte undefined and Media Foundation zeroes it,
+/// which gpui reads as fully transparent; copied as-is a video draws as nothing.
 const OPAQUE: u8 = 255;
 
 pub(super) fn decode(session: Session) -> Result<(), String> {
@@ -68,10 +50,8 @@ pub(super) fn decode(session: Session) -> Result<(), String> {
     run(session)
 }
 
-/// Decodes every frame of a clip at once, video only, for a GIF to loop on
-/// its own. Frames are thinned to an even stride when keeping all of them
-/// would run past `budget` bytes, and the clip is cut short where the frame
-/// rate is unknown and the budget runs out anyway.
+/// Video only. Frames are thinned to an even stride when all of them would
+/// exceed `budget` bytes; with an unknown frame rate the clip is cut at the budget.
 pub(super) fn decode_all(
     path: &std::path::Path,
     target: (u32, u32),
@@ -81,8 +61,7 @@ pub(super) fn decode_all(
 
     let reader = open_reader(path)?;
     let mut format = configure_video(&reader, target)?;
-    // Nothing reads the audio, and a selected stream nobody drains stalls the
-    // reader once its queue fills.
+    // A selected stream nobody drains stalls the reader once its queue fills.
     unsafe {
         let _ = reader.SetStreamSelection(MF_SOURCE_READER_FIRST_AUDIO_STREAM.0 as u32, false);
     }
@@ -97,15 +76,13 @@ pub(super) fn decode_all(
 
     let mut frames = Vec::new();
     let mut index = 0usize;
-    // Unlike playback there is no clock to idle against, so a reader that
-    // keeps coming back empty without ending would otherwise spin forever.
+    // No clock to idle against, so a reader returning empty forever would spin.
     let mut retries = 0;
     while frames.len() < max_frames && retries < MAX_EMPTY_READS {
         let read = if index.is_multiple_of(stride) {
             read_video(&reader, &mut format)?.map(|frame| frames.push(frame))
         } else {
-            // Decoding is sequential, so a skipped frame is still read — just
-            // never copied out of the decoder's buffer.
+            // Decoding is sequential, so a skipped frame is still read, just not copied.
             read_sample(
                 &reader,
                 MF_SOURCE_READER_FIRST_VIDEO_STREAM.0 as u32,
@@ -140,8 +117,7 @@ fn run(session: Session) -> Result<(), String> {
 
     let reader = open_reader(path)?;
     let mut video = configure_video(&reader, target)?;
-    // A file whose audio can't be configured still plays, silently; so does
-    // one on a machine with no output device.
+    // Unconfigurable audio plays silently.
     let audio = audio.filter(|(_, rate)| configure_audio(&reader, *rate).is_ok());
 
     let mut clock = match &audio {
@@ -157,7 +133,7 @@ fn run(session: Session) -> Result<(), String> {
     }
 
     let mut pending: VecDeque<VideoFrame> = VecDeque::new();
-    // Audio the ring had no room for yet, carried to the next pass.
+    // Audio the ring had no room for.
     let mut leftover: Vec<f32> = Vec::new();
     let mut was_paused = false;
     let mut video_done = false;
@@ -187,10 +163,8 @@ fn run(session: Session) -> Result<(), String> {
             audio_done = audio.is_none();
         }
 
-        // Release whichever frame is current. When several have come due at
-        // once the earlier ones are dropped rather than drawn: the UI fell
-        // behind, and catching up by showing stale frames in a burst looks
-        // worse than skipping to the right one.
+        // When several frames are due, drop the earlier ones: the UI fell
+        // behind, and a burst of stale frames looks worse than skipping.
         let now = clock.position();
         let mut due = None;
         while pending
@@ -200,8 +174,7 @@ fn run(session: Session) -> Result<(), String> {
             due = pending.pop_front();
         }
         if let Some(frame) = due {
-            // No slot means the foreground has not drawn the frames it already
-            // has, so this one is dropped too.
+            // No slot: the foreground hasn't drawn what it has, so drop this one too.
             if control.reserve_frame() && !emit(VideoEvent::Frame(frame)) {
                 return Ok(());
             }
@@ -216,8 +189,7 @@ fn run(session: Session) -> Result<(), String> {
             return Ok(());
         }
 
-        // Audio that didn't fit last time goes in before anything new is read,
-        // so samples stay in order.
+        // Keeps samples in order.
         if let (Some(ring), false) = (&ring, leftover.is_empty()) {
             let taken = ring.try_push(&leftover);
             leftover.drain(..taken);
@@ -227,14 +199,12 @@ fn run(session: Session) -> Result<(), String> {
             continue;
         }
 
-        // Audio first: it is the clock, and an underrun is heard where a late
-        // frame is only seen.
+        // Audio first: it's the clock, and an underrun is heard where a late frame is only seen.
         let want_audio = !audio_done && ring.as_ref().is_some_and(|ring| ring.has_room());
         let want_video = !video_done && pending.len() < MAX_PENDING_FRAMES;
-        // Except when there is no picture queued at all. At the start of a clip
-        // the ring has room for everything, so audio-first would decode the
-        // whole buffer before the first frame — by which time the clock has run
-        // on and those frames are already stale enough to be dropped.
+        // Except with no picture queued: at clip start the ring has room for
+        // everything, so audio-first would decode its whole buffer before the
+        // first frame, by which time those frames are stale and dropped.
         let starving = want_video && pending.is_empty();
 
         if want_audio && !starving {
@@ -262,19 +232,16 @@ fn drained(ring: Option<&AudioRing>) -> bool {
     ring.is_none_or(AudioRing::is_drained)
 }
 
-/// Holds COM and the Media Foundation platform open for as long as decoding
-/// runs, and closes both however the decoder exits.
 struct MediaFoundation {
-    /// Whether COM was initialized *by this thread*. It won't have been if the
-    /// thread is somehow already in an apartment, and uninitializing one this
-    /// guard didn't open would tear it out from under whoever did.
+    /// False if the thread was already in an apartment; uninitializing one we
+    /// didn't open would tear it out from under its owner.
     owns_com: bool,
 }
 
 impl MediaFoundation {
     fn startup() -> Result<Self, String> {
-        // MTA, because the source reader's own worker threads call back into
-        // the media source and an STA would marshal every one of those.
+        // MTA, since the reader's worker threads call back into the source and an STA would marshal
+        // each.
         let owns_com = unsafe { CoInitializeEx(None, COINIT_MULTITHREADED) }.is_ok();
 
         match unsafe { MFStartup(MF_VERSION, MFSTARTUP_FULL) } {
@@ -301,9 +268,8 @@ impl Drop for MediaFoundation {
 }
 
 fn open_reader(path: &std::path::Path) -> Result<IMFSourceReader, String> {
-    // `MF_SOURCE_READER_ENABLE_VIDEO_PROCESSING` is what lets the output type
-    // below ask for a format and a size the file doesn't natively have: it
-    // tells the reader to insert a converter rather than reject the request.
+    // Lets the output type ask for a format the file doesn't natively have by
+    // inserting a converter instead of rejecting the request.
     let attributes = unsafe {
         let mut attributes = None;
         MFCreateAttributes(&mut attributes, 1)
@@ -326,28 +292,21 @@ fn open_reader(path: &std::path::Path) -> Result<IMFSourceReader, String> {
         .map_err(|err| format!("Nothing on this machine can play this video: {err}"))
 }
 
-/// How the decoded video comes out, and what it is turned into on the way to
-/// the UI.
 struct VideoFormat {
-    /// The picture inside what Media Foundation decodes: the visible area,
-    /// which is smaller than the decoded buffer when the decoder pads it.
+    /// The visible area, smaller than the decoded buffer when the decoder pads it.
     source_width: u32,
     source_height: u32,
-    /// Where the picture starts inside the decoded buffer.
     crop_x: u32,
     crop_y: u32,
-    /// Rows in the decoded buffer, padding included.
+    /// Padding included.
     frame_height: u32,
-    /// Bytes between the start of one row and the next, as Media Foundation
-    /// reports it. Negative means the image is stored bottom-up.
+    /// Negative means the image is stored bottom-up.
     stride: i32,
-    /// What frames are handed over at, never larger than the source.
+    /// Never larger than the source.
     width: u32,
     height: u32,
-    /// Frames per second, when the file says.
     frame_rate: Option<f64>,
-    /// The box frames are fitted into, kept so the format can be read again
-    /// when the decoder changes it mid-stream.
+    /// Kept to re-read the format when the decoder changes it mid-stream.
     target: (u32, u32),
 }
 
@@ -361,30 +320,24 @@ fn configure_video(reader: &IMFSourceReader, target: (u32, u32)) -> Result<Video
     let video = MF_SOURCE_READER_FIRST_VIDEO_STREAM.0 as u32;
 
     unsafe {
-        // Everything off, then only what is going to be read — an unselected
-        // stream isn't decoded, so this is what stops a subtitle or a second
-        // audio track costing anything.
+        // An unselected stream isn't decoded, so subtitles or extra audio tracks cost nothing.
         let _ = reader.SetStreamSelection(MF_SOURCE_READER_ALL_STREAMS.0 as u32, false);
         let _ = reader.SetStreamSelection(video, true);
         let _ = reader.SetStreamSelection(MF_SOURCE_READER_FIRST_AUDIO_STREAM.0 as u32, true);
     }
 
-    // Worth asking, because a pipeline that scales for us does it on the GPU
-    // for free. In practice the source reader refuses an output size the file
-    // doesn't natively have (`MF_E_INVALIDMEDIATYPE`) even with video
-    // processing enabled, so the native size is the path normally taken and
-    // `read_video` scales on the way out.
+    // Worth asking since it would scale on the GPU, but the reader normally
+    // refuses a non-native size (`MF_E_INVALIDMEDIATYPE`) even with video
+    // processing, so `read_video` scales instead.
     if set_video_type(reader, video, Some(target)).is_err() {
         set_video_type(reader, video, None)
             .map_err(|err| format!("Nothing on this machine can decode this video: {err}"))?;
     }
 
-    // Read back what was actually agreed to, which after a fallback is not
-    // what was asked for.
+    // After a fallback the agreed format isn't what was asked for.
     current_format(reader, target)
 }
 
-/// The format the video stream is coming out in right now.
 fn current_format(reader: &IMFSourceReader, target: (u32, u32)) -> Result<VideoFormat, String> {
     let video = MF_SOURCE_READER_FIRST_VIDEO_STREAM.0 as u32;
     let actual = unsafe { reader.GetCurrentMediaType(video) }
@@ -397,24 +350,21 @@ fn current_format(reader: &IMFSourceReader, target: (u32, u32)) -> Result<VideoF
         return Err(String::from("The video reports no picture size."));
     }
 
-    // Absent for some pipelines, where a tightly packed top-down image is the
-    // safe assumption. Only a fallback now: the buffer's own pitch is
-    // preferred where it has one, because this is what the format wants rather
-    // than what the decoder did.
+    // Absent for some pipelines; tightly packed top-down is the safe guess.
+    // Only a fallback: the buffer's own pitch wins, since this is what the
+    // format wants, not what the decoder did.
     let stride = unsafe { actual.GetUINT32(&MF_MT_DEFAULT_STRIDE) }
         .map_or(frame_width as i32 * 4, |stride| stride as i32);
 
-    // H.264 decodes in 16-pixel blocks, so a decoder that switches to its real
-    // output size mid-stream pads the frame out to them, and the aperture is
-    // what says which part is picture. Drawn whole, the padding is a green
-    // strip down the right and along the bottom.
+    // H.264 decodes in 16-pixel blocks, so the frame is padded and the aperture
+    // says which part is picture. Drawn whole, the padding is a green strip on
+    // the right and bottom.
     let (crop_x, crop_y, source_width, source_height) =
         aperture(&actual, frame_width, frame_height).unwrap_or((0, 0, frame_width, frame_height));
 
-    // Stored pixels aren't always square. Anamorphic sources — plenty of phone
-    // and camera footage — store a narrower picture and expect it stretched on
-    // display, so shape the output by the display size and let the sampling
-    // below read the stored one.
+    // Anamorphic sources (common in phone footage) store a narrower picture
+    // and expect it stretched, so shape the output by display size and let the
+    // sampling read the stored one.
     let (par_num, par_den) = unsafe { actual.GetUINT64(&MF_MT_PIXEL_ASPECT_RATIO) }
         .map_or((1u64, 1u64), |par| {
             ((par >> 32).max(1), (par as u32 as u64).max(1))
@@ -444,14 +394,12 @@ fn current_format(reader: &IMFSourceReader, target: (u32, u32)) -> Result<VideoF
     })
 }
 
-/// The visible part of a decoded frame as `(x, y, width, height)`, when the
-/// format names one that fits inside it.
+/// `(x, y, width, height)` of the visible part, when the format names one inside the frame.
 fn aperture(media_type: &IMFMediaType, width: u32, height: u32) -> Option<(u32, u32, u32, u32)> {
     [MF_MT_MINIMUM_DISPLAY_APERTURE, MF_MT_GEOMETRIC_APERTURE]
         .iter()
         .find_map(|key| {
-            // An `MFVideoArea`: two fixed-point offsets, of which only the
-            // whole part means anything for pixels, then the size.
+            // An `MFVideoArea`: fixed-point offsets (only the whole part matters), then the size.
             let mut blob = [0u8; 16];
             unsafe { media_type.GetBlob(key, &mut blob, None) }.ok()?;
             let x = i16::from_le_bytes([blob[2], blob[3]]);
@@ -471,18 +419,13 @@ fn aperture(media_type: &IMFMediaType, width: u32, height: u32) -> Option<(u32, 
         })
 }
 
-/// The largest box with the picture's display aspect ratio that fits inside
-/// `target`.
-///
-/// The frame's true shape is settled here rather than by the caller, because
-/// what the caller knows is what Discord reported — which can disagree with
-/// the file over anamorphic pixels, and is absent altogether for some
-/// attachments.
+/// The largest box with the display aspect ratio that fits inside `target`.
+/// Settled here, not by the caller: Discord's reported size can disagree with
+/// the file over anamorphic pixels, or be absent.
 fn fit(display_width: f64, display_height: f64, target: (u32, u32)) -> (u32, u32) {
     let scale = (f64::from(target.0) / display_width)
         .min(f64::from(target.1) / display_height)
-        // Upscaling here would cost memory to invent detail the source doesn't
-        // have; a small video is handed over at its own size and drawn larger.
+        // Upscaling would cost memory to invent detail; a small video is drawn larger instead.
         .min(1.);
     (
         ((display_width * scale).round() as u32).max(1),
@@ -498,11 +441,9 @@ fn set_video_type(
     unsafe {
         let media_type = MFCreateMediaType()?;
         media_type.SetGUID(&MF_MT_MAJOR_TYPE, &MFMediaType_Video)?;
-        // RGB32 is BGRA in memory order on a little-endian machine, so the
-        // frames land in exactly the layout `RenderImage` takes.
+        // BGRA in memory order on little-endian: the layout `RenderImage` takes.
         media_type.SetGUID(&MF_MT_SUBTYPE, &MFVideoFormat_RGB32)?;
         if let Some((width, height)) = size {
-            // Width in the high half, height in the low half.
             media_type.SetUINT64(
                 &MF_MT_FRAME_SIZE,
                 (u64::from(width.max(1)) << 32) | u64::from(height.max(1)),
@@ -512,8 +453,7 @@ fn set_video_type(
     }
 }
 
-/// Asks for the audio track as stereo `f32` at the output device's own rate,
-/// leaving the resampling and downmixing to Media Foundation.
+/// Stereo `f32` at the device's rate; Media Foundation resamples and downmixes.
 fn configure_audio(reader: &IMFSourceReader, sample_rate: u32) -> windows::core::Result<()> {
     const BITS: u32 = 32;
     let block_align = BITS / 8 * CHANNELS as u32;
@@ -535,8 +475,7 @@ fn configure_audio(reader: &IMFSourceReader, sample_rate: u32) -> windows::core:
     }
 }
 
-/// The clip's run time. Zero when the source won't say, which leaves the
-/// progress bar empty rather than stopping playback.
+/// Zero when the source won't say, which leaves the progress bar empty.
 fn duration_of(reader: &IMFSourceReader) -> Duration {
     unsafe {
         let Ok(mut value) =
@@ -559,15 +498,13 @@ fn seek(reader: &IMFSourceReader, position: Duration) -> Result<(), String> {
         inner.vt = VT_I8;
         inner.Anonymous.hVal = hns;
 
-        // A null time format means the default, which is the 100ns units the
-        // rest of the reader speaks.
+        // A null time format means the default 100ns units.
         let result = reader.SetCurrentPosition(&GUID::from_u128(0), &value);
         let _ = PropVariantClear(&mut value);
         result.map_err(|err| format!("Couldn't seek: {err}"))
     }
 }
 
-/// One decoded video frame, if the reader had one ready.
 fn read_video(
     reader: &IMFSourceReader,
     format: &mut VideoFormat,
@@ -589,12 +526,9 @@ fn read_video(
             .ConvertToContiguousBuffer()
             .map_err(|err| format!("Couldn't read a video frame: {err}"))?;
 
-        // The 2D interface where the buffer has one, because it reports the
-        // pitch the buffer is *actually* laid out with and a pointer to the
-        // top row. `MF_MT_DEFAULT_STRIDE` only says what the format would
-        // like, and a decoder that pads its rows to a wider alignment than
-        // that leaves every row offset a little further than the last — which
-        // is seen as the picture shearing across the frame.
+        // Prefer the 2D interface: it reports the pitch the buffer is actually
+        // laid out with. `MF_MT_DEFAULT_STRIDE` is only what the format would
+        // like, and a decoder padding rows wider shears the picture.
         let two_d = buffer.cast::<IMF2DBuffer>().ok();
 
         let source = match &two_d {
@@ -604,9 +538,8 @@ fn read_video(
                 two_d
                     .Lock2D(&mut scanline0, &mut pitch)
                     .map_err(|err| format!("Couldn't read a video frame: {err}"))?;
-                // Lock2D hands back the first row of the *picture*, so a
-                // bottom-up buffer is already accounted for by a negative
-                // pitch walking backwards from it.
+                // Lock2D returns the picture's first row, so a bottom-up buffer
+                // is a negative pitch walking back from it.
                 Source {
                     scanline0,
                     pitch: pitch as isize,
@@ -625,8 +558,7 @@ fn read_video(
                     Source::from_flat(data, length as usize, format).map(Source::cropped)
                 else {
                     let _ = buffer.Unlock();
-                    // Too short to hold the picture it claims to; skipping one
-                    // frame is better than reading past the buffer.
+                    // Too short for its picture; skip the frame rather than read past the buffer.
                     return Ok(Read::Retry);
                 };
                 source
@@ -657,11 +589,8 @@ fn read_video(
     }))
 }
 
-/// A locked decoder buffer, addressed one picture row at a time.
-///
-/// `scanline0` always points at the *top* row of the picture and `pitch` is
-/// signed, so a bottom-up buffer is just a negative step backwards from it and
-/// nothing below has to know which way round the source was stored.
+/// `scanline0` is always the picture's top row and `pitch` is signed, so
+/// nothing below needs to know whether the source is stored bottom-up.
 struct Source<'a> {
     scanline0: *const u8,
     pitch: isize,
@@ -669,15 +598,11 @@ struct Source<'a> {
 }
 
 impl<'a> Source<'a> {
-    /// A buffer locked through the plain `IMFMediaBuffer` interface, where the
-    /// only pitch on offer is the one the media type advertised.
-    ///
-    /// `None` when the buffer is too short to hold the picture it claims to,
-    /// which is the one case where reading rows would run off the end of it.
+    /// For a buffer locked through plain `IMFMediaBuffer`, where only the
+    /// advertised pitch is known. `None` when it's too short for its picture.
     fn from_flat(data: *const u8, available: usize, format: &'a VideoFormat) -> Option<Self> {
         let pitch = format.stride as isize;
-        // The whole decoded frame, padding included: the picture is cropped out
-        // of it afterwards.
+        // The whole decoded frame, padding included; `cropped` trims it.
         let row_bytes = (format.crop_x + format.source_width) as usize * 4;
         let rows = format.frame_height as usize;
         let needed = pitch.unsigned_abs() * (rows - 1) + row_bytes;
@@ -685,8 +610,7 @@ impl<'a> Source<'a> {
             return None;
         }
 
-        // A negative stride means the picture is stored bottom-up: the top row
-        // of the picture is the last row in the buffer.
+        // Negative stride: bottom-up, so the top row is last in the buffer.
         let scanline0 = if pitch < 0 {
             // SAFETY: `needed` above proved the buffer spans every row.
             unsafe { data.add(pitch.unsigned_abs() * (rows - 1)) }
@@ -701,8 +625,6 @@ impl<'a> Source<'a> {
         })
     }
 
-    /// Moves the start from the top-left of the decoded frame to the top-left
-    /// of the picture inside it.
     fn cropped(self) -> Self {
         let offset = self.format.crop_y as isize * self.pitch + self.format.crop_x as isize * 4;
         Self {
@@ -712,12 +634,9 @@ impl<'a> Source<'a> {
         }
     }
 
-    /// One row of the picture.
-    ///
     /// # Safety
     ///
-    /// Only valid while the buffer is locked, and only for `y` inside the
-    /// picture's height.
+    /// Only while the buffer is locked, and for `y` inside the picture's height.
     unsafe fn row(&self, y: usize) -> &[u8] {
         let row_bytes = self.format.source_width as usize * 4;
         unsafe {
@@ -727,8 +646,7 @@ impl<'a> Source<'a> {
     }
 }
 
-/// Copies the picture out unchanged, for the case where the decoder already
-/// produced the size being drawn.
+/// For when the decoder already produced the drawn size.
 fn copy_rows(source: &Source, out: &mut [u8]) {
     let row_bytes = source.format.width as usize * 4;
     for y in 0..source.format.height as usize {
@@ -740,21 +658,16 @@ fn copy_rows(source: &Source, out: &mut [u8]) {
     }
 }
 
-/// Box-averages the picture down to the size it will be drawn at.
-///
-/// This is where the memory saving actually happens: the source reader refuses
-/// to scale for us, so a 1440p frame arrives at four and a half megabytes and
-/// leaves at a few hundred kilobytes. Averaging the whole box rather than
-/// picking one pixel per output costs a single pass over the source and is the
-/// difference between a readable thumbnail and an aliased one — text and thin
-/// lines in a screen recording fall apart under nearest-neighbour.
+/// Box-averages down to the drawn size. This is where the memory saving
+/// happens: a 1440p frame arrives at ~4.5MB and leaves at a few hundred KB.
+/// Averaging the box rather than picking a pixel keeps text and thin lines in
+/// screen recordings readable.
 fn downscale(source: &Source, out: &mut [u8]) {
     let format = source.format;
     let (out_width, out_height) = (format.width as usize, format.height as usize);
     let (src_width, src_height) = (format.source_width as usize, format.source_height as usize);
 
-    // Which source rows and columns each output pixel covers. Precomputed for
-    // the columns because the same spans are walked for every row.
+    // Source columns each output pixel covers; the same spans serve every row.
     let spans: Vec<(usize, usize)> = (0..out_width)
         .map(|x| {
             let start = x * src_width / out_width;
@@ -777,8 +690,7 @@ fn downscale(source: &Source, out: &mut [u8]) {
             for (x, &(start, end)) in spans.iter().enumerate() {
                 let slot = &mut sums[x * 3..][..3];
                 for pixel in row[start * 4..end * 4].chunks_exact(4) {
-                    // Blue, green, red. The fourth byte isn't summed because
-                    // it isn't kept — see `OPAQUE`.
+                    // BGR only; alpha is forced, see `OPAQUE`.
                     slot[0] += u32::from(pixel[0]);
                     slot[1] += u32::from(pixel[1]);
                     slot[2] += u32::from(pixel[2]);
@@ -797,7 +709,6 @@ fn downscale(source: &Source, out: &mut [u8]) {
     }
 }
 
-/// One packet of decoded audio as interleaved stereo `f32`.
 fn read_audio(reader: &IMFSourceReader) -> Result<Read<Vec<f32>>, String> {
     let sample = match read_sample(reader, MF_SOURCE_READER_FIRST_AUDIO_STREAM.0 as u32, None)? {
         Read::Ready((sample, _)) => sample,
@@ -817,8 +728,7 @@ fn read_audio(reader: &IMFSourceReader) -> Result<Read<Vec<f32>>, String> {
             .map_err(|err| format!("Couldn't read the audio: {err}"))?;
 
         let bytes = std::slice::from_raw_parts(data, length as usize);
-        // Read four bytes at a time rather than reinterpreting the buffer:
-        // nothing promises it is aligned for `f32`.
+        // Not reinterpreted: nothing promises `f32` alignment.
         let samples = bytes
             .chunks_exact(4)
             .map(|chunk| f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]))
@@ -829,12 +739,8 @@ fn read_audio(reader: &IMFSourceReader) -> Result<Read<Vec<f32>>, String> {
     }
 }
 
-/// What one read off a stream produced.
-///
-/// [`Read::Retry`] is the one worth spelling out: a read can legitimately come
-/// back with no sample without the stream having ended — a format change, or
-/// the reader simply having nothing ready — and treating that as the end would
-/// truncate the clip.
+/// `Retry` is a read with no sample but no end of stream (a format change, or
+/// nothing ready); treating it as the end would truncate the clip.
 enum Read<T> {
     Ready(T),
     Retry,
@@ -851,11 +757,9 @@ impl<T> Read<T> {
     }
 }
 
-/// The next sample off `stream`. A video stream passes its `format`, which is
-/// read again whenever the decoder changes it: H.264 decoders commonly start
-/// out at the size the container declares and switch to the padded size they
-/// really decode at a few frames in, and copying rows out at the old size
-/// after that shears the picture diagonally.
+/// A video stream passes its `format`, re-read when the decoder changes it:
+/// H.264 decoders often start at the container's size and switch to the padded
+/// size a few frames in, and copying at the old size shears the picture.
 fn read_sample(
     reader: &IMFSourceReader,
     stream: u32,

@@ -1,10 +1,8 @@
-//! The composer's autocomplete: what's offered for the `@`, `#` or `:` word at
-//! the cursor, moving through it from the keyboard, and writing the chosen
-//! one into the composer.
+//! The composer's autocomplete for the `@`, `#` or `:` word at the cursor:
+//! suggestions, keyboard navigation, and writing the choice into the composer.
 //!
-//! Members are offered from whoever the app already knows of in the
-//! conversation, and as each name is typed the gateway is searched for the
-//! rest of the guild; the answer refreshes the list when it lands.
+//! Members come from whoever the app already knows in the conversation; a
+//! gateway search for the rest of the guild refreshes the list when it lands.
 
 use std::collections::HashSet;
 
@@ -27,9 +25,7 @@ use crate::screens::home::{
 use super::emoji::remember_emoji;
 
 impl HomeScreen {
-    /// Called on every change to the composer's text, and when the gateway
-    /// names more members: offers suggestions for the word at the cursor, or
-    /// takes them away.
+    /// Runs on every composer text change and when the gateway names more members.
     pub(in crate::screens::home) fn refresh_autocomplete(&mut self, cx: &mut Context<Self>) {
         let (text, cursor) = {
             let input = self.message_input.read(cx);
@@ -57,8 +53,7 @@ impl HomeScreen {
             return self.close_autocomplete(cx);
         }
 
-        // Rebuilt under the highlight as members arrive or the word grows, so
-        // the highlight follows what it was on rather than its position.
+        // Rebuilt under the highlight so it follows the item it was on, not its position.
         let selected = self
             .autocomplete
             .as_ref()
@@ -100,8 +95,7 @@ impl HomeScreen {
         self.step_autocomplete(1, cx);
     }
 
-    /// Without suggestions showing, the arrow goes on to its other bindings:
-    /// editing the last message, or moving the cursor.
+    /// With no suggestions showing the key propagates (edit last message, move cursor).
     fn step_autocomplete(&mut self, step: isize, cx: &mut Context<Self>) {
         let Some(autocomplete) = &mut self.autocomplete else {
             cx.propagate();
@@ -124,14 +118,12 @@ impl HomeScreen {
             .map(|autocomplete| autocomplete.selected)
         {
             Some(selected) => self.accept_suggestion(selected, window, cx),
-            // Tab indents, as it would anywhere else in the input.
             None => cx.propagate(),
         }
     }
 
-    /// Escape puts the suggestions away until the cursor leaves the word.
-    /// With none showing it drops the reply being composed, and after that
-    /// reads the conversation, as Discord's does.
+    /// Dismisses suggestions until the cursor leaves the word; else drops the reply
+    /// being composed, then marks the conversation read, as Discord does.
     pub(in crate::screens::home) fn on_autocomplete_escape(
         &mut self,
         _: &Escape,
@@ -164,8 +156,6 @@ impl HomeScreen {
         }
     }
 
-    /// Replaces the word being completed with the suggestion at `index`, and
-    /// a space to carry on typing after.
     pub(in crate::screens::home) fn accept_suggestion(
         &mut self,
         index: usize,
@@ -178,8 +168,8 @@ impl HomeScreen {
         let Some(suggestion) = autocomplete.items.get(index) else {
             return;
         };
-        // Mentions go in readable and are swapped for their markup on send,
-        // the way Discord's composer shows a name rather than an id.
+        // Mentions go in readable and are swapped for markup on send, as Discord's
+        // composer does.
         let text = match suggestion {
             Suggestion::User { id, name, .. } => {
                 self.remember_mention(format!("@{name}"), format!("<@{id}>"))
@@ -218,10 +208,8 @@ impl HomeScreen {
         shown
     }
 
-    /// Asks the gateway for the open guild's members whose names start with
-    /// `query`, once per query a session. A user session only knows a sliver
-    /// of a guild's members, so without this only people already seen in the
-    /// conversation could be mentioned.
+    /// Searches the gateway for members by name prefix, once per query per session;
+    /// a user session only knows a sliver of a guild's members.
     fn search_members(&mut self, query: &str) {
         if query.is_empty() {
             return;
@@ -237,8 +225,6 @@ impl HomeScreen {
         }
     }
 
-    /// Takes the members a chunk names, and offers them if they finish the
-    /// word being typed.
     pub(in crate::screens::home) fn add_guild_members(
         &mut self,
         guild_id: Id<GuildMarker>,
@@ -248,8 +234,7 @@ impl HomeScreen {
         let known = self.guild_members.entry(guild_id).or_default();
         let mut changed = false;
         for member in members {
-            // Every live message names its author again, mostly unchanged,
-            // which isn't worth recomputing the suggestions over.
+            // Every live message re-names its author, mostly unchanged; skip recomputing.
             changed |= known
                 .get(&member.user_id)
                 .is_none_or(|known| known.name != member.name);
@@ -266,9 +251,8 @@ impl HomeScreen {
         }
     }
 
-    /// The people in the conversation matching `query`: those who've spoken
-    /// most recently first, then the member list, then whoever else the
-    /// gateway has named.
+    /// Recent speakers first, then the member list, then whoever else the gateway
+    /// has named.
     fn user_suggestions(&self, query: &str) -> Vec<Suggestion> {
         let guild_id = self.selected_guild.filter(|_| self.view == View::Guild);
         let known = guild_id.and_then(|guild_id| self.guild_members.get(&guild_id));
@@ -345,8 +329,7 @@ impl HomeScreen {
         suggestions
     }
 
-    /// `@everyone` and `@here`, below the members as in Discord, where the
-    /// user may use them: in a guild channel that grants `MENTION_EVERYONE`.
+    /// Below the members, as in Discord; only where `MENTION_EVERYONE` is granted.
     fn broadcast_suggestions(&self, query: &str) -> Vec<Suggestion> {
         let allowed = self.view == View::Guild
             && self
@@ -362,8 +345,7 @@ impl HomeScreen {
             .collect()
     }
 
-    /// The open guild's channels matching `query`, in sidebar order. None in
-    /// a DM, which has no channels to link.
+    /// Sidebar order; none in a DM.
     fn channel_suggestions(&self, query: &str) -> Vec<Suggestion> {
         if self.view != View::Guild {
             return Vec::new();
@@ -393,8 +375,7 @@ impl HomeScreen {
         )
     }
 
-    /// The emoji the user may send here matching `query`: custom ones by
-    /// name, then unicode ones by shortcode.
+    /// Custom emoji by name, then unicode by shortcode.
     fn emoji_suggestions(&self, query: &str) -> Vec<Suggestion> {
         let custom = self.usable_custom_emoji().filter_map(|emoji| {
             Some((

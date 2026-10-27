@@ -22,7 +22,6 @@ pub const MESSAGE_PAGE_SIZE: usize = 50;
 /// allows; a response with fewer means the list is complete.
 pub const REACTORS_PAGE_SIZE: usize = 100;
 
-/// Which page of a channel's history [`fetch_messages`] fetches.
 #[derive(Clone, Copy)]
 pub enum MessagePage {
     Latest,
@@ -30,11 +29,9 @@ pub enum MessagePage {
     /// The messages just newer than this one, which needn't be real — any
     /// snowflake does, an ack's included.
     After(Id<MessageMarker>),
-    /// The messages either side of this one, and it.
     Around(Id<MessageMarker>),
 }
 
-/// Fetches a page of messages in a channel, oldest first.
 pub async fn fetch_messages(
     channel_id: Id<ChannelMarker>,
     page: MessagePage,
@@ -92,7 +89,6 @@ pub async fn fetch_pins(channel_id: Id<ChannelMarker>) -> Result<Vec<Message>, S
     .await
 }
 
-/// Adds (`add`) or removes the current user's reaction with `emoji`.
 pub async fn toggle_reaction(
     channel_id: Id<ChannelMarker>,
     message_id: Id<MessageMarker>,
@@ -115,8 +111,6 @@ pub async fn toggle_reaction(
     .await
 }
 
-/// Fetches a page of the users who reacted to a message with `emoji`, in the
-/// order they reacted, starting after the user `after`.
 pub async fn fetch_reactors(
     channel_id: Id<ChannelMarker>,
     message_id: Id<MessageMarker>,
@@ -208,8 +202,7 @@ pub async fn send_message(
             .map(|(index, (filename, file))| Attachment::from_bytes(filename, file, index as u64))
             .collect();
 
-        // Discord requires at least one of content/attachments; both the
-        // content and attachments borrows must outlive the awaited request.
+        // Discord requires content or attachments; both borrows must outlive the awaited request.
         let mut request = client.create_message(channel_id).nonce(nonce);
         if !content.is_empty() {
             request = request.content(&content);
@@ -246,8 +239,7 @@ pub async fn edit_message(
     .await
 }
 
-/// Deletes a message. Permitted for the author's own messages, or anywhere the
-/// user holds `MANAGE_MESSAGES`.
+/// Permitted on the user's own messages, or anywhere they hold `MANAGE_MESSAGES`.
 pub async fn delete_message(
     channel_id: Id<ChannelMarker>,
     message_id: Id<MessageMarker>,

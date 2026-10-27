@@ -8,22 +8,16 @@ use twilight_model::id::{
 
 use crate::discord::model::PresenceStatus;
 
-/// Sends commands up the gateway from outside the receive loop.
-///
-/// Cloneable and cheap: commands are queued on a channel the shard drains, so
-/// they survive a reconnect rather than failing while one is in flight.
+/// Cloneable; commands queue on a channel the shard drains, so they survive a reconnect.
 #[derive(Clone)]
 pub struct GatewaySender {
     pub(super) inner: MessageSender,
 }
 
 impl GatewaySender {
-    /// Sends `VOICE_STATE_UPDATE` (opcode 4): joins `channel_id`, or leaves
-    /// the current channel when it's `None`.
-    ///
-    /// `guild_id` is `None` for a DM call, which Discord accepts as a null
-    /// field — twilight's own command type can't express that, so the payload
-    /// is built here.
+    /// Sends `VOICE_STATE_UPDATE` (opcode 4); a `None` channel leaves. `guild_id` is `None`
+    /// for a DM call, a null field twilight's command type can't express, so the payload is
+    /// built here.
     pub fn update_voice_state(
         &self,
         guild_id: Option<Id<GuildMarker>>,
@@ -44,8 +38,7 @@ impl GatewaySender {
         let _ = self.inner.send(payload.to_string());
     }
 
-    /// Sends `PRESENCE_UPDATE` (opcode 3): shows the user as `status` for the
-    /// rest of the session. Activities are left empty — the app reports none.
+    /// Sends `PRESENCE_UPDATE` (opcode 3) for the rest of the session. Activities are empty.
     pub fn update_presence(&self, status: PresenceStatus) {
         let payload = serde_json::json!({
             "op": 3,
@@ -59,10 +52,9 @@ impl GatewaySender {
         let _ = self.inner.send(payload.to_string());
     }
 
-    /// Sends `REQUEST_CALL_CONNECT` (opcode 13): asks after the call in a DM.
-    /// Without the `AUTO_CALL_CONNECT` capability, a call that started before
-    /// the session did is only reported on request, as a `CALL_CREATE`;
-    /// nothing comes back when there's none.
+    /// Sends `REQUEST_CALL_CONNECT` (opcode 13). Without `AUTO_CALL_CONNECT`, a call that
+    /// started before the session is only reported on request, as `CALL_CREATE`; nothing
+    /// comes back when there's none.
     pub fn request_call_connect(&self, channel_id: Id<ChannelMarker>) {
         let payload = serde_json::json!({
             "op": 13,
@@ -71,8 +63,7 @@ impl GatewaySender {
         let _ = self.inner.send(payload.to_string());
     }
 
-    /// Sends `STREAM_CREATE` (opcode 18): goes live in the call in
-    /// `channel_id`. Discord answers with the stream's server, as dispatches.
+    /// Sends `STREAM_CREATE` (opcode 18); the stream's server comes back as dispatches.
     pub fn create_stream(&self, guild_id: Option<Id<GuildMarker>>, channel_id: Id<ChannelMarker>) {
         let payload = serde_json::json!({
             "op": 18,
@@ -86,8 +77,7 @@ impl GatewaySender {
         let _ = self.inner.send(payload.to_string());
     }
 
-    /// Sends `STREAM_SET_PAUSED` (opcode 22). A new stream starts paused
-    /// until told otherwise.
+    /// Sends `STREAM_SET_PAUSED` (opcode 22). A new stream starts paused.
     pub fn set_stream_paused(&self, stream_key: &str, paused: bool) {
         let payload = serde_json::json!({
             "op": 22,
@@ -96,9 +86,8 @@ impl GatewaySender {
         let _ = self.inner.send(payload.to_string());
     }
 
-    /// Sends `STREAM_WATCH` (opcode 20): starts watching someone's stream in
-    /// the call the user is in. Discord answers with the stream's server, as
-    /// dispatches, or with a `STREAM_DELETE` saying why not.
+    /// Sends `STREAM_WATCH` (opcode 20). Answered with the stream's server as dispatches,
+    /// or a `STREAM_DELETE` saying why not.
     pub fn watch_stream(&self, stream_key: &str) {
         let payload = serde_json::json!({
             "op": 20,
@@ -107,11 +96,10 @@ impl GatewaySender {
         let _ = self.inner.send(payload.to_string());
     }
 
-    /// Sends `REQUEST_GUILD_MEMBERS` (opcode 8) for specific users, whose
-    /// members come back as `GUILD_MEMBERS_CHUNK` dispatches. A user session
-    /// is only sent a sliver of each guild's members up front, and fetched
-    /// history carries none, so this is how a message's author gets a role
-    /// colour. Discord takes at most 100 ids a request.
+    /// Sends `REQUEST_GUILD_MEMBERS` (opcode 8) for specific users; replies are
+    /// `GUILD_MEMBERS_CHUNK`s. A user session gets only a sliver of each guild's members up
+    /// front and fetched history carries none, so this is how an author gets a role colour.
+    /// Discord takes at most 100 ids a request.
     pub fn request_members(&self, guild_id: Id<GuildMarker>, user_ids: &[Id<UserMarker>]) {
         for user_ids in user_ids.chunks(100) {
             let payload = serde_json::json!({
@@ -126,10 +114,8 @@ impl GatewaySender {
         }
     }
 
-    /// Sends `REQUEST_GUILD_MEMBERS` (opcode 8) for up to `limit` members
-    /// whose username or nickname starts with `query`, for the composer's
-    /// mention suggestions. They come back as `GUILD_MEMBERS_CHUNK`s, like
-    /// [`Self::request_members`]'s.
+    /// Sends `REQUEST_GUILD_MEMBERS` (opcode 8) for up to `limit` members whose username or
+    /// nickname starts with `query`; replies like [`Self::request_members`]'s.
     pub fn search_members(&self, guild_id: Id<GuildMarker>, query: &str, limit: u8) {
         let payload = serde_json::json!({
             "op": 8,
@@ -143,11 +129,10 @@ impl GatewaySender {
         let _ = self.inner.send(payload.to_string());
     }
 
-    /// Sends `GUILD_SUBSCRIPTIONS_BULK` (opcode 37): subscribes to the
-    /// member list of `channel_id`, in the index ranges given (inclusive,
-    /// a hundred apiece, as Discord's client asks). Replaces the guild's
-    /// earlier channel subscription. Discord answers with a
-    /// `GUILD_MEMBER_LIST_UPDATE` syncing each range, then keeps them current.
+    /// Sends `GUILD_SUBSCRIPTIONS_BULK` (opcode 37): subscribes to `channel_id`'s member list
+    /// in inclusive index ranges (a hundred apiece, as Discord's client asks), replacing the
+    /// guild's earlier subscription. Discord syncs each range with `GUILD_MEMBER_LIST_UPDATE`,
+    /// then keeps them current.
     ///
     /// Undocumented; the other flags are what Discord's own client sends.
     pub fn subscribe_member_list(
@@ -172,8 +157,7 @@ impl GatewaySender {
         let _ = self.inner.send(payload.to_string());
     }
 
-    /// Sends `STREAM_DELETE` (opcode 19): stops streaming, or stops watching
-    /// a stream that isn't the user's own.
+    /// Sends `STREAM_DELETE` (opcode 19): stops streaming, or watching someone else's stream.
     pub fn delete_stream(&self, stream_key: &str) {
         let payload = serde_json::json!({
             "op": 19,

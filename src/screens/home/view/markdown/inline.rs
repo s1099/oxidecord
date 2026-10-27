@@ -15,7 +15,6 @@ use crate::discord::{self, Inline, Mention};
 use super::Renderer;
 use super::rich_text::{EMOJI_PLACEHOLDER, Marker, RichText, Segment};
 
-/// What clicking a range does.
 #[derive(Clone)]
 pub(super) enum Action {
     /// A bare URL, opened straight away: what it says is where it goes.
@@ -28,11 +27,9 @@ pub(super) enum Action {
         avatar_url: Option<String>,
     },
     Channel(Id<ChannelMarker>),
-    /// Reveals the spoiler with this key.
     Spoiler(SharedString),
 }
 
-/// The formatting in effect at a point in the tree.
 #[derive(Clone, Copy, Default)]
 struct Style {
     bold: bool,
@@ -42,16 +39,15 @@ struct Style {
     mono: bool,
     color: Option<Hsla>,
     background: Option<Hsla>,
-    /// Inside an unrevealed spoiler: drawn as a solid bar, with nothing in it
-    /// clickable, hoverable or painted over it.
+    /// Inside an unrevealed spoiler: a solid bar, nothing in it clickable,
+    /// hoverable or painted over.
     hidden: bool,
     /// Inside a link, whose click wins over a mention's.
     linked: bool,
 }
 
 impl Style {
-    /// Colours the text, unless it's hidden in a spoiler, which keeps its
-    /// solid bar whatever sits inside.
+    /// A hidden spoiler keeps its solid bar whatever sits inside.
     fn tinted(self, color: Option<Hsla>, background: Option<Hsla>) -> Self {
         if self.hidden {
             return self;
@@ -83,7 +79,6 @@ impl Style {
     }
 }
 
-/// Builds one [`RichText`] from inline nodes.
 pub(super) struct Flattener<'a, 'b> {
     renderer: &'a Renderer<'b>,
     text: String,
@@ -91,7 +86,6 @@ pub(super) struct Flattener<'a, 'b> {
     actions: Vec<(Range<usize>, Action)>,
     tooltips: Vec<(Range<usize>, SharedString)>,
     emoji: Vec<(Range<usize>, SharedString)>,
-    /// Each emoji's placeholder and the `:name:` it copies as.
     emoji_names: Vec<(Range<usize>, SharedString)>,
     marker: Option<Marker>,
 }
@@ -115,8 +109,6 @@ impl<'a, 'b> Flattener<'a, 'b> {
         self
     }
 
-    /// Ends the text with a small label outside the markup, such as the
-    /// "(edited)" marker, with `tooltip` on hover.
     pub fn marker(
         &mut self,
         label: &'static str,
@@ -316,8 +308,6 @@ impl<'a, 'b> Flattener<'a, 'b> {
                     .and_then(|guild| screen.guild_roles.get(&guild)?.get(id));
                 match role {
                     Some(role) => {
-                        // A coloured role takes its colour, the way its
-                        // members' names do.
                         let style = match role.color {
                             Some(color) => {
                                 let color: Hsla = rgb(color).into();
@@ -351,8 +341,7 @@ impl<'a, 'b> Flattener<'a, 'b> {
     }
 }
 
-/// Who a user mention names, from the message's own mention list first and
-/// then anyone the app already knows.
+/// The message's own mention list wins, then anyone the app already knows.
 pub(super) struct ResolvedUser {
     pub name: String,
     pub avatar_url: Option<String>,

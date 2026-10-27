@@ -25,37 +25,28 @@ use super::markdown::MarkdownOptions;
 use super::{GROUP_GAP, MESSAGE_PADDING_X};
 use toolbar::Hovered;
 
-/// The avatar beside a group's first message.
 const AVATAR_SIZE: f32 = 40.;
 
-/// Space above and below each message, inside its hover highlight. Kept small
-/// so the highlight hugs the text, like Discord's.
+/// Kept small so the highlight hugs the text, like Discord's.
 const MESSAGE_PADDING_Y: f32 = 2.;
 
-/// How far a continuation message and a reply quote are indented, so both line
-/// up with the content column beside the avatar.
+/// Indent for continuations and reply quotes, aligning both with the content column.
 const CONTENT_INDENT: f32 = 52.;
 
-/// How far the hover time in a continuation's gutter is shifted from the
-/// content's first line box. Tuned by eye against the rendered text: with the
-/// baselines level the smaller time still reads low beside the lowercase
-/// text, so it sits a touch above, as Discord's does.
+/// Tuned by eye: with baselines level the smaller time reads low beside lowercase text,
+/// so it sits a touch above, as in Discord.
 const GUTTER_TIME_NUDGE: f32 = -0.6;
 
-/// The box inline media is fitted into, attachments and embeds alike. Discord
-/// uses similar bounds; the aspect ratio is preserved within them.
+/// The box inline media is fitted into, attachments and embeds alike.
 const MEDIA_MAX_WIDTH: f32 = 400.;
 const MEDIA_MAX_HEIGHT: f32 = 300.;
 
-/// The bar down the left edge of a message that mentions the user.
 const MENTION_BAR_WIDTH: f32 = 2.;
 
 /// Space between a reply quote and the header below it, which its spine spans.
 const REPLY_GAP: f32 = 4.;
 
-/// Scales reported dimensions down into a box, keeping their shape. `None`
-/// when Discord didn't report them, in which case the element is capped rather
-/// than sized.
+/// `None` when Discord reported no dimensions; the element is then capped rather than sized.
 fn fit_within(
     width: Option<u32>,
     height: Option<u32>,
@@ -70,8 +61,6 @@ fn fit_within(
     Some((width * scale, height * scale))
 }
 
-/// What [`HomeScreen::render_media`] draws: the attachments and embeds of a
-/// message or a forward, with the mentions its embeds can name.
 #[derive(Clone, Copy)]
 pub(super) struct Media<'a> {
     images: &'a [discord::ImageAttachment],
@@ -187,8 +176,6 @@ impl HomeScreen {
                         .child("Message failed to send."),
                 )
             })
-            // Dimmed until the server has it, as Discord shows a message in
-            // flight.
             .when(
                 matches!(message.delivery, discord::Delivery::Sending { .. }),
                 |this| this.opacity(0.5),
@@ -202,18 +189,15 @@ impl HomeScreen {
             render_continuation(content, lit.then(|| message.clock_label()), cx)
         };
 
-        // Hovering anywhere over the row highlights its whole width and reveals
-        // the floating action toolbar, like Discord. Using the toolbar counts
-        // as hovering, though it hangs over the row above.
+        // Hovering highlights the whole row and reveals the toolbar; using the toolbar counts as
+        // hovering though it hangs over the row above.
         let message_id = message.id;
-        // The message being replied to wears the reply's color over any
-        // mention tint, as in Discord, so it's clear what the reply is for.
+        // The message being replied to wears the reply's colour over any mention tint.
         let replying = self
             .replying_to
             .as_ref()
             .is_some_and(|target| target.message_id == message_id);
-        // One just jumped to is lit the same way for a moment, so the eye
-        // lands on it.
+        // A just-jumped-to message is lit the same way briefly.
         let flashed = self.flashed_message == Some(message_id);
         let tint = if replying || flashed {
             Some(theme.primary)
@@ -229,8 +213,7 @@ impl HomeScreen {
                 this.set_hovered(Hovered::Message, message_id, *hovered, cx);
             }))
             .map(|this| match tint {
-                // A tint stays under the pointer, only deeper, so hovering
-                // doesn't hide which messages were for you.
+                // Deepens under the pointer rather than vanishing, so mentions stay visible.
                 Some(tint) => this
                     .bg(tint.opacity(if lit { 0.16 } else { 0.1 }))
                     .hover(|this| this.bg(tint.opacity(0.16)))
@@ -247,11 +230,9 @@ impl HomeScreen {
                     .when(lit, |this| this.bg(theme.accent.opacity(0.4)))
                     .hover(|this| this.bg(theme.accent.opacity(0.4))),
             })
-            // A message open for editing stays lit while the pointer is
-            // elsewhere, so it's clear which one the box belongs to.
+            // A message open for editing stays lit, so it's clear which one the box belongs to.
             .when(editing.is_some(), |this| this.bg(theme.accent.opacity(0.4)))
-            // Alt-click marks the conversation unread from here, as in
-            // Discord.
+            // Alt-click marks the conversation unread from here.
             .when(message.delivery == discord::Delivery::Sent, |this| {
                 this.on_click(cx.listener(move |this, event: &ClickEvent, _, cx| {
                     if event.modifiers().alt {
@@ -260,9 +241,8 @@ impl HomeScreen {
                 }))
             })
             .child(inner);
-        // Nothing on the toolbar or the menu applies until the server knows
-        // the message. The toolbar is only built for the message it's up on:
-        // hidden on every other row, it would be dozens of elements apiece
+        // Nothing on the toolbar or menu applies until the server knows the message. The toolbar is
+        // built only for its own message: hidden on every other row it would be dozens of elements
         // thrown away each frame.
         let row = if message.delivery == discord::Delivery::Sent {
             let row = row.when(lit, |row| {
@@ -274,8 +254,7 @@ impl HomeScreen {
             row.into_any_element()
         };
 
-        // The gap between author groups sits outside the row, so it never
-        // lights up with the highlight and the highlight stays tight.
+        // The gap between author groups is outside the row, so the highlight stays tight.
         div()
             .w_full()
             .min_w_0()
@@ -286,10 +265,9 @@ impl HomeScreen {
 
     /// A message's images, videos, files, and embeds, stacked under its text.
     ///
-    /// `message_id` keys the media's element ids and playback. A forward's
-    /// media borrows its forwarding message's id: Discord sends any comment
-    /// on a forward as a message of its own, so a forward never carries media
-    /// of its own for those keys to collide with.
+    /// `message_id` keys the media's element ids and playback. A forward's media borrows its
+    /// forwarding message's id: Discord sends a comment on a forward as a separate message, so
+    /// a forward never carries media of its own to collide with.
     fn render_media(&self, message_id: u64, media: Media, cx: &Context<Self>) -> impl IntoElement {
         let Media {
             images,
@@ -322,10 +300,8 @@ impl HomeScreen {
             })
     }
 
-    /// Whether a message pings the signed-in user, which Discord marks by
-    /// tinting its row: a mention of them by name (a reply that pings counts,
-    /// since it lists the replied-to author among the mentions), of one of
-    /// their roles, or an `@everyone` or `@here` that went out.
+    /// Whether a message pings the signed-in user: a mention by name (a pinging reply counts,
+    /// as it lists the replied-to author), of one of their roles, or a sent `@everyone`/`@here`.
     fn mentions_me(&self, message: &discord::Message) -> bool {
         let Some(self_id) = self.self_user_id else {
             return false;
@@ -333,15 +309,12 @@ impl HomeScreen {
         if message.mention_everyone || message.mentions.iter().any(|user| user.id == self_id) {
             return true;
         }
-        // Role mentions only exist in guilds, and the open guild is the
-        // message's own.
+        // Role mentions only exist in guilds, and the open guild is the message's own.
         self.selected_guild
             .filter(|_| self.view == View::Guild)
             .is_some_and(|guild_id| self.mentions_self_role(message, guild_id))
     }
 
-    /// The first message of an author group: the avatar, name, and timestamp
-    /// over the content, with the reply quote above them when there is one.
     fn render_with_header(
         &self,
         message: &discord::Message,
@@ -359,9 +332,8 @@ impl HomeScreen {
             px(AVATAR_SIZE),
         );
 
-        // Clicking the avatar opens the author's profile card, anchored at the
-        // click. Handled on mouse-down rather than click so the card's dismiss
-        // layer doesn't see the same press and close it again.
+        // Handled on mouse-down rather than click so the card's dismiss layer doesn't see the same
+        // press and close it again.
         let author_id = message.author_id;
         let profile_name = author_name.clone();
         let author_avatar_url = message.author_avatar_url.clone();
@@ -432,12 +404,9 @@ impl HomeScreen {
     }
 }
 
-/// A message continuing the author group above it: just the content, indented
-/// to sit under the first message's, with its send time in the gutter while
-/// the row is lit, as Discord shows it on hover.
-///
-/// The list can't pad its items, so each message carries its own padding, plus
-/// a full width with `min_w_0` so long lines wrap rather than overflow.
+/// A message continuing the author group above it, with its send time in the gutter while
+/// lit. The list can't pad its items, so each carries its own padding, plus a full width with
+/// `min_w_0` so long lines wrap.
 fn render_continuation(
     content: AnyElement,
     time: Option<String>,
@@ -452,9 +421,10 @@ fn render_continuation(
         .py(px(MESSAGE_PADDING_Y))
         .text_sm()
         .when_some(time, |this, time| {
-            // Given the content's first line box, rather than the whole
-            // message: `text_sm` at gpui's default line height of phi. Text
-            // centers in its line box, so the smaller time's baseline would
+            // Aligned to the content's first line box (`text_sm` at gpui's default phi line
+            // height),
+            // not the whole message: text centres in its line box, so the smaller time's baseline
+            // would
             // sit above the content's; the nudge down closes that gap.
             this.child(
                 div()

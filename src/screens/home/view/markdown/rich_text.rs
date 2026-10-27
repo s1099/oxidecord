@@ -21,16 +21,12 @@ use gpui_kit::*;
 use crate::screens::home::selection::{TextKey, TextRegion, TextRegions};
 use crate::ui::tooltip;
 
-/// The blank an emoji is drawn into: an em space and a quarter-em space, so
-/// the gap comes out about as wide as Discord's inline emoji relative to its
-/// text.
+/// An em space plus a quarter-em space, about as wide as Discord's inline emoji.
 pub(super) const EMOJI_PLACEHOLDER: &str = "\u{2003}\u{2005}";
 
-/// Stands in for a marker's label in the text: a word char, so the stand-in
-/// wraps as one word, drawn invisible.
+/// A word char, so the invisible stand-in wraps as one word.
 const MARKER_FILL: char = '.';
 
-/// A small label set after the text, like "(edited)".
 pub(super) struct Marker {
     pub label: SharedString,
     pub size: Pixels,
@@ -38,19 +34,15 @@ pub(super) struct Marker {
     pub tooltip: Option<SharedString>,
 }
 
-/// A marker shaped in layout, ready to place once the text has wrapped.
 struct ShapedMarker {
-    /// Where its stand-in starts in the text.
     start: usize,
     line: ShapedLine,
-    /// How far its baseline sits below where the text's would if it were
-    /// painted in the same line box, so the two line up.
+    /// Offset that lines its baseline up with the text's in the same line box.
     baseline_shift: Pixels,
-    /// Where it lands, from the last prepaint.
     origin: Option<Point<Pixels>>,
 }
 
-/// How much of the text a style covers. Segments run end to end.
+/// Segments run end to end.
 pub(super) struct Segment {
     pub len: usize,
     pub style: HighlightStyle,
@@ -59,11 +51,9 @@ pub(super) struct Segment {
 
 type ClickListener = Rc<dyn Fn(usize, &mut Window, &mut App)>;
 
-/// What a text in the message list's selection needs.
 pub(super) struct Selectable {
     pub key: TextKey,
     pub regions: TextRegions,
-    /// Its share of the selection, if any.
     pub selected: Option<Range<usize>>,
     pub color: Hsla,
 }
@@ -74,10 +64,8 @@ pub(super) struct RichText {
     segments: Vec<Segment>,
     mono_family: SharedString,
     clickable: Vec<Range<usize>>,
-    /// Called with the index into `clickable` of the range clicked.
     on_click: Option<ClickListener>,
     tooltips: Vec<(Range<usize>, SharedString)>,
-    /// Each emoji's placeholder and image URL.
     emoji: Vec<(Range<usize>, SharedString)>,
     marker: Option<Marker>,
     shaped_marker: Option<ShapedMarker>,
@@ -85,13 +73,11 @@ pub(super) struct RichText {
     image_cache: Entity<RetainAllImageCache>,
     inner: Option<Inner>,
     layout: TextLayout,
-    /// The emoji laid out in the last prepaint, ready to paint.
     placed: Vec<AnyElement>,
 }
 
-/// Plain text when nothing in it is interactive: `InteractiveText` repaints
-/// its whole view every time the pointer crosses a character, which the
-/// message list shouldn't pay for text with nothing to hover.
+/// Plain when nothing is interactive: `InteractiveText` repaints its whole view
+/// whenever the pointer crosses a character.
 enum Inner {
     Plain(StyledText),
     Interactive(InteractiveText),
@@ -202,8 +188,7 @@ impl Element for RichText {
             owned.push(' ');
             owned.push_str(&fill);
             runs.push(base.to_run(1));
-            // Set on the run, not via `highlight`: that blends the color over
-            // the base, and transparent over anything leaves it unchanged.
+            // Not via `highlight`: it blends over the base, so transparent changes nothing.
             runs.push(TextRun {
                 color: transparent_black(),
                 ..base.to_run(fill.len())
@@ -264,8 +249,8 @@ impl Element for RichText {
             }
         };
         if let Some(selectable) = &self.selectable {
-            // Plain text has no hitbox of its own, and the selection needs one
-            // to tell a press on the text from one on whatever covers it.
+            // Plain text has no hitbox; the selection needs one to tell a press on the
+            // text from one on whatever covers it.
             let hitbox = hitbox
                 .get_or_insert_with(|| window.insert_hitbox(bounds, HitboxBehavior::Normal))
                 .clone();
@@ -278,9 +263,8 @@ impl Element for RichText {
             });
         }
 
-        // Each emoji is centred in its gap, as tall as it is wide but never
-        // taller than the line. A gap split by a wrap has no one width, so
-        // it gets a line-height square from where it starts.
+        // A gap split by a wrap has no one width, so it gets a line-height square
+        // from where it starts.
         self.placed.clear();
         let line_height = self.layout.line_height();
         for (range, url) in &self.emoji {
@@ -324,8 +308,7 @@ impl Element for RichText {
         cx: &mut App,
     ) {
         if let Some(selectable) = &self.selectable {
-            // Under the glyphs and the runs' own backgrounds, so a mention's
-            // pill and inline code stay legible inside it.
+            // Under the glyphs and run backgrounds so mention pills and code stay legible.
             if let Some(range) = selectable.selected.clone() {
                 paint_selection(&self.layout, bounds, range, selectable.color, window);
             }
@@ -369,9 +352,8 @@ impl IntoElement for RichText {
     }
 }
 
-/// Fills in a selected range one wrapped row at a time, each from where the
-/// range enters the row to where it leaves; a row it runs on past the end of
-/// gets a sliver more, standing for the line break it takes in.
+/// A row the range runs on past the end of gets a sliver more, standing for the
+/// line break.
 fn paint_selection(
     layout: &TextLayout,
     bounds: Bounds<Pixels>,
@@ -422,8 +404,6 @@ fn paint_selection(
     }
 }
 
-/// Shapes a marker's label at its own size, and the invisible stand-in that
-/// holds a gap as wide for it in text set in `base`.
 fn shape_marker(
     marker: &Marker,
     base: &TextStyle,
@@ -447,8 +427,7 @@ fn shape_marker(
     } else {
         marker.label.chars().count()
     };
-    // Both lines are painted centred in the same line box, so the label's
-    // baseline drops by the difference in where each font puts its own.
+    // Both lines are centred in one line box, so baselines differ by each font's metrics.
     let baseline = |ascent: Pixels, descent: Pixels| (line_height - ascent - descent) / 2. + ascent;
     let baseline_shift =
         baseline(fill_shape.ascent, fill_shape.descent) - baseline(line.ascent, line.descent);

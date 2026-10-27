@@ -1,12 +1,8 @@
-//! The speakers, for a video's audio track.
+//! The speakers for a video's audio track.
 //!
-//! Separate from the call's output in [`crate::voice`] on purpose: a video is
-//! played while a call may be running, and the two want different buffering —
-//! a call trades latency away to survive network jitter, a local file has none
-//! to survive.
-//!
-//! cpal streams are `!Send` on some platforms, so the stream lives on a thread
-//! of its own that does nothing but hold it open until playback ends.
+//! Separate from the call's output in [`crate::voice`]: a call trades latency
+//! for network jitter tolerance, a local file has no jitter. cpal streams are
+//! `!Send` on some platforms, so a thread just holds the stream open.
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -19,26 +15,17 @@ use super::clock::{AudioRing, CHANNELS};
 use crate::platform::audio::{chosen_output, in_device_format, sanitize};
 use crate::platform::prefs;
 
-/// How often the holder thread checks whether playback has ended. The stream
-/// stops when it is dropped, so this only bounds teardown, and nothing is
-/// audible in the meantime.
+/// Only bounds teardown latency; the stream stops when dropped.
 const STOP_POLL: Duration = Duration::from_millis(50);
 
-/// Opens the output device the user picked, or the system default, and
-/// returns the ring the decoder fills.
-///
-/// The device's own sample rate comes back with it, because the decoder asks
-/// Media Foundation to resample to exactly that — letting the OS do it costs
-/// nothing and saves carrying a resampler here.
-///
-/// `None` when there is no usable output device, which is not fatal: the
-/// caller falls back to a wall clock and plays the video silently.
+/// Returns the ring the decoder fills and the device's sample rate, which the
+/// decoder has Media Foundation resample to so no resampler is needed here.
+/// `None` without a usable device; the caller then plays silently.
 pub(super) fn start(stop: Arc<AtomicBool>) -> Option<(Arc<AudioRing>, u32)> {
     let host = cpal::default_host();
-    // Picked here, on the caller's thread, because the decoder needs the rate
-    // before it can configure its audio output — only the stream is `!Send`.
-    // Read fresh for each clip, off the UI thread, so a switch made since the
-    // last one applies.
+    // Picked on the caller's thread because the decoder needs the rate to
+    // configure its audio; only the stream is `!Send`. Read per clip so a
+    // device switch applies.
     let chosen = prefs::load().output_device;
     let device = chosen_output(&host, chosen.as_deref())?;
     let config = device.default_output_config().ok()?;
@@ -74,8 +61,7 @@ fn run(
         return;
     };
 
-    // The stream stops when it is dropped, so this thread's only job from here
-    // is to outlive the playback it belongs to.
+    // The stream stops when dropped, so this thread just has to outlive playback.
     while !stop.load(Ordering::Acquire) {
         std::thread::sleep(STOP_POLL);
     }
@@ -93,8 +79,7 @@ where
 {
     let ring = ring.clone();
     let channels = channels.max(1);
-    // Held across callbacks so the audio thread stops allocating once the
-    // device's buffer size has settled.
+    // Reused so the audio thread stops allocating once the buffer size settles.
     let mut scratch: Vec<f32> = Vec::new();
 
     let stream = device
@@ -107,8 +92,7 @@ where
                 ring.fill(&mut scratch);
                 spread(&scratch, out, channels);
             },
-            // Usually the device going away mid-playback, which is worth
-            // knowing about when a video has gone silent.
+            // Usually the device going away mid-playback.
             |err| eprintln!("video audio stream error: {err}"),
             None,
         )
@@ -117,9 +101,7 @@ where
     Some(stream)
 }
 
-/// Lays the ring's stereo frames out for a device with some other channel
-/// count. Anything past stereo gets the downmix, which is better than leaving
-/// those speakers silent.
+/// Channels past stereo get the downmix rather than silence.
 fn spread<T>(stereo: &[f32], out: &mut [T], channels: usize)
 where
     T: SizedSample + FromSample<f32>,

@@ -31,9 +31,8 @@ use webview::LoginWebview;
 //     Token,
 // }
 
-/// Drawn size of the app icon at the top of the card. `logo.png` is the app
-/// icon shrunk ahead of time to twice this, for high-DPI screens: gpui scales
-/// images without mipmaps, so drawing the full 1024px icon this small aliases.
+/// `logo.png` is pre-shrunk to twice this for high-DPI: gpui has no mipmaps,
+/// so drawing the full 1024px icon this small aliases.
 const LOGO_SIZE: f32 = 72.;
 
 pub struct LoginScreen {
@@ -115,9 +114,8 @@ impl LoginScreen {
                     .large()
                     .w_full()
                     .on_click(move |_event, window, cx| {
-                        // The button renders in the main window, so this handle
-                        // points at the window we want to switch to Home once the
-                        // login webview reports a token.
+                        // The button lives in the main window, which switches to Home
+                        // once the webview reports a token.
                         let main_window = window.window_handle();
                         let app = app.clone();
 
@@ -173,8 +171,6 @@ impl LoginScreen {
 
 impl Render for LoginScreen {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        // The page is the sidebar colour, so the card lifts off it the way the
-        // conversation panel does on the home screen.
         let page_bg = cx.theme().sidebar;
 
         let card = depth::card(radius::CARD, cx)
@@ -196,9 +192,8 @@ impl Render for LoginScreen {
         v_flex()
             .size_full()
             .bg(page_bg)
-            // No system title bar, so the window's own controls have to be on
-            // the page. Login has no header to put them in, so they get a strip
-            // of their own; the rest of it drags the window.
+            // No system title bar and no header, so the controls get their own
+            // strip, which also drags the window.
             .child(
                 h_flex()
                     .h(px(40.))

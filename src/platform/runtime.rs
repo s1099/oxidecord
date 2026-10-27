@@ -1,8 +1,7 @@
 //! The app's background Tokio runtime.
 //!
-//! gpui has its own executor, but the crates the app talks to the network with
-//! (twilight, reqwest) need to run inside a Tokio context, so a dedicated
-//! runtime is kept alive on its own thread and shared by every caller.
+//! twilight and reqwest need a Tokio context that gpui's executor doesn't
+//! provide, so one runtime lives on its own thread.
 
 use std::sync::OnceLock;
 
@@ -24,9 +23,7 @@ pub fn handle() -> &'static Handle {
     })
 }
 
-/// Runs `future` on the runtime and resolves with its output. The returned
-/// future can be awaited from any executor, gpui's included; it only fails if
-/// the task panicked.
+/// Runs `future` on the runtime; awaitable from any executor. Errs only if the task panicked.
 pub async fn run<T: Send + 'static>(
     future: impl Future<Output = T> + Send + 'static,
 ) -> Result<T, JoinError> {

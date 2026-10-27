@@ -17,10 +17,8 @@ pub(crate) use pending::{AttachmentData, PendingAttachment, format_size};
 use picker::{UploadBudget, read_picked_file};
 
 impl HomeScreen {
-    /// Handles the paste shortcut in the composer. If the clipboard holds an
-    /// image, it's staged as an attachment and the event is consumed. Otherwise
-    /// (plain text, or the composer isn't focused) propagation continues so the
-    /// text input's own paste handling runs as usual.
+    /// Consumes the paste only when the clipboard holds an image; otherwise the
+    /// text input's own paste runs.
     pub(in crate::screens::home) fn on_paste_attachment(
         &mut self,
         _: &PasteAttachment,
@@ -36,10 +34,8 @@ impl HomeScreen {
         }
     }
 
-    /// Stages any image on the clipboard as an attachment, shown as a thumbnail
-    /// above the composer. Returns whether the clipboard held an image, whether
-    /// or not it could be staged — an image too large to upload is reported in
-    /// an error dialog rather than handed on to the input's text paste.
+    /// Returns whether the clipboard held an image, staged or not: one too large
+    /// to upload gets an error dialog instead of falling through to a text paste.
     fn paste_attachment_from_clipboard(
         &mut self,
         window: &mut Window,
@@ -85,9 +81,6 @@ impl HomeScreen {
         found
     }
 
-    /// Opens the platform file picker and stages every chosen file as an
-    /// attachment. Files that can't be attached — over the upload limit, or
-    /// unreadable — are listed in an error dialog; the rest are still staged.
     pub(in crate::screens::home) fn pick_attachments(
         &mut self,
         window: &mut Window,
@@ -100,18 +93,16 @@ impl HomeScreen {
             prompt: None,
         });
 
-        // Taken now rather than when the files are back, so they're checked
-        // before they're read. The picker is modal, so nothing else gets
-        // staged meanwhile.
+        // Snapshotted now so files are checked before they're read; the picker is
+        // modal, so nothing else stages meanwhile.
         let mut budget = self.upload_budget();
 
         cx.spawn_in(window, async move |this, cx| {
-            // Dismissed without choosing anything, or the picker wouldn't open.
             let Ok(Ok(Some(paths))) = paths.await else {
                 return;
             };
 
-            // Reading the files is blocking I/O, so it stays off the foreground.
+            // Blocking I/O.
             let files = cx
                 .background_spawn(async move {
                     paths
@@ -146,8 +137,8 @@ impl HomeScreen {
         .detach();
     }
 
-    /// What may still be staged for the open conversation. A file can be as
-    /// large as the more generous of the user's Nitro and the guild's boosts.
+    /// A file may be as large as the more generous of the user's Nitro and the
+    /// guild's boosts.
     fn upload_budget(&self) -> UploadBudget {
         let user_limit = self
             .current_user

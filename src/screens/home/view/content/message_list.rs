@@ -14,13 +14,11 @@ use crate::ui::depth::{self, Finish, Level, Lit as _, radius};
 
 use crate::screens::home::view::{GROUP_GAP, MESSAGE_PADDING_X};
 
-/// Space under the newest message, on top of the list's own padding, so it
-/// doesn't sit flush against the composer.
+/// Space under the newest message so it isn't flush against the composer.
 const NEWEST_MESSAGE_GAP: f32 = 12.;
 
 const UNREAD_BAR_HEIGHT: f32 = 28.;
 
-/// The red rule Discord draws above the first message the user hasn't read.
 fn new_messages_divider(cx: &App) -> impl IntoElement {
     let theme = cx.theme();
     h_flex()
@@ -41,8 +39,7 @@ fn new_messages_divider(cx: &App) -> impl IntoElement {
         )
 }
 
-/// Placeholder message rows. The widths are fixed rather than random so the
-/// skeleton doesn't reshuffle on every frame.
+/// Widths are fixed, not random, so the skeleton doesn't reshuffle every frame.
 pub(super) fn skeleton() -> impl IntoElement {
     const WIDTHS: [f32; 12] = [
         420., 280., 360., 200., 480., 320., 260., 440., 300., 380., 220., 460.,
@@ -108,10 +105,9 @@ impl Render for MessageListView {
     }
 }
 
-/// Feeds the mouse to the text selection for a frame. The press and release
-/// listen in the capture phase, which sees every one wherever it lands: a
-/// press outside the list has to drop the selection, and a release has to
-/// settle it before a link under the pointer decides whether it was clicked.
+/// Feeds the mouse to the text selection for a frame. Press and release listen in the capture
+/// phase to see every one: a press outside the list drops the selection, and a release settles
+/// it before a link decides whether it was clicked.
 fn listen_for_selection(
     screen: WeakEntity<HomeScreen>,
     viewport: Bounds<Pixels>,
@@ -174,10 +170,9 @@ impl HomeScreen {
         let messages_list = AnyView::from(self.message_list_view.clone())
             .cached(StyleRefinement::default().flex_1());
 
-        // The vertical padding sits on the container, not on the list: `list`
-        // counts its own padding when it clamps a scroll offset but not when it
-        // reports one, and smooth scrolling needs those two to agree to land on
-        // the bottom and let the list repin there. See `ui::smooth_scroll`.
+        // Vertical padding is on the container, not the list: `list` counts its own padding when
+        // clamping a scroll offset but not when reporting one, and smooth scrolling needs them to
+        // agree to reach the bottom and repin. See `ui::smooth_scroll`.
         let mut container = v_flex()
             .relative()
             .flex_1()
@@ -188,9 +183,8 @@ impl HomeScreen {
                 cx.listener(|this, event, window, _| this.messages_scroll.absorb(event, window)),
             );
         let unread_bar = self.render_unread_bar(cx);
-        // Floats over the list rather than taking a row of its own: appearing
-        // and disappearing in the layout would resize the viewport under a
-        // scroll that is still moving, nudging the messages twice per page.
+        // Floats over the list: a layout row appearing would resize the viewport under a moving
+        // scroll, nudging the messages twice per page.
         if self.older_loading {
             container = container.child(
                 h_flex()
@@ -209,25 +203,21 @@ impl HomeScreen {
             );
         }
 
-        // Note: images inside the list name `self.image_cache` on the element
-        // itself rather than relying on an ancestor `image_cache(..)`. That
-        // wrapper only pushes onto the cache stack during layout and paint,
-        // while `list` renders its items during prepaint, so the stack would be
-        // empty when the images actually resolve and they'd land in gpui's
-        // global asset cache, which never evicts.
+        // Images name `self.image_cache` on the element rather than relying on an ancestor
+        // `image_cache(..)`: that only pushes onto the cache stack during layout and paint, while
+        // `list` renders items in prepaint, so images would land in gpui's global asset cache,
+        // which never evicts.
         container = container.child(messages_list);
-        // Floats for the same reason: opened further back than the present,
-        // the way back to it stays in reach, as Discord's bar does. Added
-        // after the list so it paints over the messages rather than under.
+        // Floats for the same reason: opened further back, the way to the present stays in reach.
+        // Added after the list so it paints over the messages.
         if !self.reached_newest {
             container = container.child(self.render_jump_to_present(cx));
         }
         container.children(unread_bar).into_any_element()
     }
 
-    /// Discord's bar across the top of a conversation with unread messages:
-    /// clicking it goes to the first of them, and its button reads them all.
-    /// It goes once they're acked, which reaching the bottom does.
+    /// Discord's unread bar: clicking goes to the first unread, its button reads them all.
+    /// Gone once acked, which reaching the bottom does.
     fn render_unread_bar(&self, cx: &Context<Self>) -> Option<AnyElement> {
         let (count, more, since) = self.unread_summary()?;
         let theme = cx.theme();
@@ -324,9 +314,8 @@ impl HomeScreen {
             return div().into_any_element();
         };
         let unread_divider = self.unread_divider_index() == Some(ix);
-        // Consecutive messages from the same author share one header, except
-        // replies always show theirs so the quoted preview has room to sit
-        // above the message, like Discord — and the divider breaks a group.
+        // Consecutive messages from one author share a header, except replies always show theirs so
+        // the quoted preview fits above, and the divider breaks a group.
         let show_header = ix == 0
             || unread_divider
             || message.reply.is_some()
@@ -342,10 +331,10 @@ impl HomeScreen {
         } else {
             row
         };
-        // The space belongs to the newest row rather than the list's padding,
-        // so it scrolls away with the conversation instead of shrinking the
-        // viewport. Data-side splices go through `splice_messages`, which
-        // re-lays out the row that loses it.
+        // The space belongs to the newest row, not the list's padding, so it scrolls away instead
+        // of
+        // shrinking the viewport. Data-side splices go through `splice_messages`, which re-lays out
+        // the row that loses it.
         if ix + 1 == self.messages.len() {
             div()
                 .pb(px(NEWEST_MESSAGE_GAP))

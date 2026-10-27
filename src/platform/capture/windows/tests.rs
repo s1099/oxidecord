@@ -9,8 +9,7 @@ use super::encode::encoders;
 use super::*;
 use crate::platform::capture::nal_units;
 
-/// Runs the whole pipeline against the primary display, without the
-/// picker: capture, conversion, and whichever encoder this machine picks.
+/// Whole pipeline against the primary display, bypassing the picker.
 #[test]
 #[ignore = "captures the primary display"]
 fn encodes_the_primary_display() {
@@ -63,7 +62,7 @@ fn encodes_the_primary_display() {
         frames.len()
     );
     assert!(width <= 1280 && height <= 720 && width % 2 == 0 && height % 2 == 0);
-    // Three seconds at 30fps, less what the encoder is still holding.
+    // 3s at 30fps, less what the encoder still holds.
     assert!(frames.len() > 60, "only {} frames", frames.len());
 
     let first = &frames[0];
@@ -78,7 +77,7 @@ fn encodes_the_primary_display() {
             "first frame has no {name}: {kinds:?}"
         );
     }
-    // The one asked for halfway through, on top of the first.
+    // The one requested halfway, plus the first.
     assert!(keyframes >= 2, "a requested keyframe never came");
     for frame in frames.iter().filter(|frame| frame.keyframe) {
         let kinds: Vec<u8> = nal_units(&frame.data)
@@ -94,8 +93,7 @@ fn encodes_the_primary_display() {
     }
 }
 
-/// The fallback for a machine without a hardware encoder, which reads
-/// frames back from the GPU rather than handing over textures.
+/// The software encoder path, which reads frames back from the GPU.
 #[test]
 #[ignore = "needs a GPU"]
 fn software_encoder_encodes() {
@@ -147,7 +145,7 @@ fn software_encoder_encodes() {
         "requested keyframe missing"
     );
 
-    // And back again, through the decoder a viewer watches with.
+    // Round trip through the viewer's decoder.
     let (events, mut decoded) = futures::channel::mpsc::unbounded();
     let (decoder, input) = crate::platform::h264::start((320, 320), events);
     for frame in &frames {

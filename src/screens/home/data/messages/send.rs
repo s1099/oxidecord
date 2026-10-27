@@ -14,9 +14,8 @@ use crate::screens::home::{HomeScreen, View};
 /// Discord's epoch, 2015-01-01, in Unix milliseconds.
 const DISCORD_EPOCH_MS: u64 = 1_420_070_400_000;
 
-/// A snowflake for now, to use as a send's nonce and the pending message's id,
-/// as Discord's own client does. The low bits count up so two sends within a
-/// millisecond still differ.
+/// A snowflake for now, used as the nonce and pending id as Discord's client
+/// does; the low bits count up so same-millisecond sends differ.
 fn next_nonce() -> (u64, i64) {
     static INCREMENT: AtomicU64 = AtomicU64::new(0);
 
@@ -149,9 +148,8 @@ impl HomeScreen {
         .detach();
     }
 
-    /// Replaces the pending copy of a message sent from here with the server's.
-    /// Whichever of the send's response and the gateway's echo lands first
-    /// does it; by the second, there's no pending copy left to match.
+    /// Whichever of the send's response and the gateway's echo lands first does it;
+    /// the second finds no pending copy.
     pub(in crate::screens::home) fn confirm_pending_message(
         &mut self,
         pending_id: Id<MessageMarker>,

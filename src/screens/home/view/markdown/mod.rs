@@ -27,33 +27,22 @@ use crate::ui::{dialogs, tooltip};
 use inline::{Action, Flattener, ResolvedUser};
 use rich_text::{RichText, Segment, Selectable};
 
-/// Follows the text of a message that's been edited, small and muted.
 const EDITED_MARKER: &str = "(edited)";
-/// The size "(edited)" is set in, a step down from the text it follows.
 const EDITED_MARKER_SIZE: f32 = 10.;
-/// How big emoji are drawn in a message of nothing but emoji.
 const JUMBO_SIZE: f32 = 48.;
-/// The width a list's markers are set in, so item text lines up down a list.
 const LIST_MARKER_WIDTH: f32 = 20.;
 const BLOCK_GAP: f32 = 4.;
 
 pub(super) struct MarkdownOptions<'a> {
-    /// Seeds element ids and spoiler keys, so it has to be unique across the
-    /// message list.
+    /// Seeds element ids and spoiler keys; must be unique across the message list.
     pub scope: SharedString,
-    /// The users the text's message mentions, which name its `<@id>`s.
     pub mentions: &'a [discord::MentionedUser],
-    /// Ends the text with "(edited)", whose tooltip says when.
     pub edited: Option<SharedString>,
-    /// Draws a message of only emoji large. Message content only; Discord
-    /// never does it in embeds.
+    /// Message content only; Discord never enlarges emoji in embeds.
     pub jumbo: bool,
-    /// Whether links, mentions and spoilers respond to clicks, and anything
-    /// has a tooltip. Off where the text sits inside something clickable of
-    /// its own, like a linked embed title.
+    /// Off where the text sits inside something clickable, like a linked embed
+    /// title.
     pub interactive: bool,
-    /// Which message, and which part of it, the text is, when the mouse can
-    /// select it. Only the message list's text is selectable.
     pub selectable: Option<TextOwner>,
 }
 
@@ -69,7 +58,6 @@ impl<'a> MarkdownOptions<'a> {
         }
     }
 
-    /// Marks the text as edited at `edited`, already formatted for the tooltip.
     pub fn edited(mut self, edited: Option<impl Into<SharedString>>) -> Self {
         self.edited = edited.map(Into::into);
         self
@@ -97,8 +85,7 @@ struct Palette {
     mention_background: Hsla,
     code_background: Hsla,
     selection: Hsla,
-    /// Opaque, since the text under a hidden spoiler is set in the same
-    /// colour as its bar — anything see-through would show the glyphs.
+    /// Opaque: the text under it is the bar's colour, so see-through shows glyphs.
     spoiler_hidden: Hsla,
     spoiler_revealed: Hsla,
     timestamp_background: Hsla,
@@ -126,14 +113,13 @@ impl Palette {
 
 type ActionHandler = Rc<dyn Fn(&Action, &mut Window, &mut App)>;
 
-/// Everything one call to render markdown shares.
 struct Renderer<'a> {
     screen: &'a HomeScreen,
     options: MarkdownOptions<'a>,
     palette: Palette,
     mono_family: SharedString,
     on_action: ActionHandler,
-    /// Unix seconds, for relative timestamps.
+    /// Unix seconds.
     now: i64,
     next_text: Cell<usize>,
     next_spoiler: Cell<usize>,
@@ -149,7 +135,6 @@ impl<'a> Renderer<'a> {
                     _ if weak
                         .read_with(cx, |this, _| this.has_text_selection())
                         .unwrap_or(false) => {}
-                    // A link to a message opens it here, as Discord's does.
                     Action::Url(url) => {
                         let opened = discord::MessageLink::parse(url).is_some_and(|link| {
                             weak.update(cx, |this, cx| this.open_message_link(link, window, cx))
@@ -207,8 +192,6 @@ impl<'a> Renderer<'a> {
         }
     }
 
-    /// The next text's element id, and its place in the selection's order
-    /// when it's selectable.
     fn next_text(&self) -> (ElementId, Option<TextKey>) {
         let index = self.next_text.replace(self.next_text.get() + 1);
         (
@@ -217,9 +200,7 @@ impl<'a> Renderer<'a> {
         )
     }
 
-    /// Lets the mouse select `text` when it has a key, leaving what it copies
-    /// as for the selection to copy from: its text, with each custom emoji's
-    /// blank copying as the name in `emoji`.
+    /// Each custom emoji's blank copies as the name in `emoji`.
     fn selectable(
         &self,
         rich: RichText,
@@ -247,7 +228,6 @@ impl<'a> Renderer<'a> {
         })
     }
 
-    /// A code block's text, in one run of the block's monospace.
     fn code(&self, code: &str) -> RichText {
         // gpui draws a tab as nothing at all.
         let text: SharedString = code.replace('\t', "    ").into();
@@ -271,8 +251,7 @@ impl<'a> Renderer<'a> {
         self.selectable(rich, key, text, Vec::new())
     }
 
-    /// The key of the next spoiler, stable across frames since the text is
-    /// always walked in the same order.
+    /// Stable across frames because the text is always walked in the same order.
     fn next_spoiler(&self) -> SharedString {
         let index = self.next_spoiler.replace(self.next_spoiler.get() + 1);
         format!("{}-spoiler-{index}", self.options.scope).into()
@@ -311,8 +290,7 @@ impl<'a> Renderer<'a> {
 
     fn blocks(&self, blocks: &[Block], edited: bool) -> Div {
         let last = blocks.len().saturating_sub(1);
-        // "(edited)" joins the last line of text when the text ends in some;
-        // after a list, quote or code block it gets a line of its own.
+        // After a list, quote or code block it gets a line of its own.
         let inline_marker = edited && matches!(blocks.last(), Some(Block::Paragraph(_)));
         v_flex()
             .w_full()
@@ -329,7 +307,6 @@ impl<'a> Renderer<'a> {
             })
     }
 
-    /// "(edited)" on its own, for where it can't join a line of text.
     fn edited_marker(&self) -> Option<impl IntoElement> {
         let when = self.options.edited.clone()?;
         Some(
@@ -438,7 +415,6 @@ impl<'a> Renderer<'a> {
             }))
     }
 
-    /// A message of only emoji, drawn large and wrapped like words.
     fn jumbo(&self, inlines: &[Inline], edited: bool) -> impl IntoElement {
         let scope = &self.options.scope;
         let mut items: Vec<AnyElement> = Vec::new();
@@ -484,8 +460,6 @@ impl<'a> Renderer<'a> {
 }
 
 impl HomeScreen {
-    /// Draws a whole piece of markdown: message content, or an embed's
-    /// description or field value.
     pub(super) fn render_markdown(
         &self,
         markdown: &discord::Markdown,
@@ -501,8 +475,6 @@ impl HomeScreen {
         renderer.blocks(&markdown.blocks, edited).into_any_element()
     }
 
-    /// Draws inline markdown as one run of text: an embed title or field name,
-    /// or a reply's preview line.
     pub(super) fn render_inline_markdown(
         &self,
         inlines: &[Inline],

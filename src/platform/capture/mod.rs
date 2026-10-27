@@ -1,19 +1,13 @@
 //! Screen capture for Go Live, encoded by the operating system.
 //!
-//! Like [`super::video`], nothing here ships a codec. Windows captures through
+//! Like [`super::video`], no codec ships here: Windows captures through
 //! Windows.Graphics.Capture and encodes through Media Foundation's H.264
-//! encoder — the GPU's own where the machine has one — so a stream costs a
-//! few percent of a core rather than the whole of one, and there's no codec
-//! licensing to carry. Other platforms fall back to `unsupported.rs`, which
-//! reports that capture isn't available.
+//! encoder (the GPU's own where available).
 //!
-//! A source is picked first ([`pick_source`]), with the system's own picker.
-//! One [`ScreenCapture`] then drives it on a thread of its own, reporting
-//! encoded frames back over a channel as [`CaptureEvent`]s. The output size is
-//! fixed when the capture starts; a window resized afterwards is scaled to fit
-//! inside it rather than changing the stream's resolution under the viewers.
-//!
-//! Dropping the capture stops the thread.
+//! A source is picked with the system picker ([`pick_source`]); a
+//! [`ScreenCapture`] then drives it on its own thread. The output size is fixed
+//! at start; a resized window is scaled to fit rather than changing the
+//! stream's resolution under the viewers. Dropping the capture stops the thread.
 
 #[cfg_attr(windows, path = "windows/mod.rs")]
 #[cfg_attr(not(windows), path = "unsupported.rs")]
@@ -38,25 +32,23 @@ pub struct CaptureSettings {
     pub bitrate: u32,
 }
 
-/// One encoded frame: an H.264 access unit in Annex B form, start codes and
-/// all, which is what both the DAVE encryptor and the RTP packetizer read.
+/// An H.264 access unit in Annex B form, which is what both the DAVE encryptor
+/// and the RTP packetizer read.
 pub struct EncodedFrame {
     pub data: Vec<u8>,
-    /// Whether it can be decoded on its own. Keyframes carry their parameter
-    /// sets, so a viewer joining on one has everything they need.
+    /// Keyframes carry their parameter sets, so a viewer joining on one can decode.
     pub keyframe: bool,
-    /// When the frame was captured, from the start of the capture.
+    /// Since the start of the capture.
     pub timestamp: Duration,
 }
 
 /// The NAL units in an Annex B buffer, start codes stripped.
 ///
-/// Split the way WebRTC splits them: a three-byte start code preceded by a
-/// zero is a four-byte one, and that one zero is all that's taken. Anything
-/// more would cut into the unit before, and a DAVE-encrypted unit can
-/// legitimately end in zeros — the receiver's decryptor expects them back.
+/// Split like WebRTC: a three-byte start code preceded by a zero is a four-byte
+/// one, and only that one zero is taken. More would cut into the previous unit,
+/// and a DAVE-encrypted unit can legitimately end in zeros.
 pub fn nal_units(data: &[u8]) -> Vec<&[u8]> {
-    // (where the start code begins, where the unit after it begins)
+    // (start code begin, unit begin)
     let mut codes = Vec::new();
     let mut i = 0;
     while i + 3 <= data.len() {
@@ -83,21 +75,17 @@ pub fn nal_units(data: &[u8]) -> Vec<&[u8]> {
 }
 
 pub enum CaptureEvent {
-    /// The source is open and frames will follow at this size.
     Started {
         width: u32,
         height: u32,
     },
     Frame(EncodedFrame),
-    /// The source went away — the window was closed, or the display
-    /// unplugged — and the capture has stopped.
+    /// Window closed or display unplugged; the capture has stopped.
     SourceClosed,
-    /// Capture or encoding failed, and the capture has stopped.
     Failed(String),
 }
 
-/// State shared with the capture thread. Atomics, because the thread checks
-/// them every frame and must never wait on the caller.
+/// Atomics, because the thread checks them every frame and must never wait on the caller.
 struct Control {
     stopped: AtomicBool,
     keyframe: AtomicBool,
@@ -108,7 +96,6 @@ impl Control {
         self.stopped.load(Ordering::Acquire)
     }
 
-    /// Claims a pending keyframe request, leaving none behind.
     fn take_keyframe(&self) -> bool {
         self.keyframe.swap(false, Ordering::AcqRel)
     }
@@ -118,12 +105,8 @@ pub fn is_supported() -> bool {
     backend::is_supported()
 }
 
-/// Opens the system's capture picker over `window` and resolves to whatever
-/// the user chose, or `None` if they cancelled.
-///
-/// The picker is modal to the window it's opened over, so the handle is read
-/// here, while the window is still borrowed; the future that comes back holds
-/// nothing of it.
+/// Resolves to `None` if the user cancels. The handle is read here while the
+/// window is borrowed, so the returned future holds nothing of it.
 pub fn pick_source(
     window: &dyn HasWindowHandle,
 ) -> Result<impl Future<Output = Option<CaptureSource>> + use<>, String> {
@@ -141,8 +124,6 @@ pub struct ScreenCapture {
 }
 
 impl ScreenCapture {
-    /// Starts capturing `source` on a thread of its own. Events are delivered
-    /// on `events` until the capture stops or the receiver is dropped.
     pub fn start(
         source: CaptureSource,
         settings: CaptureSettings,
@@ -171,8 +152,7 @@ impl ScreenCapture {
         Self { control }
     }
 
-    /// Asks for the next frame to be a keyframe, for a viewer who has just
-    /// joined or lost too much to recover from.
+    /// For a viewer who just joined or lost too much to recover.
     pub fn request_keyframe(&self) {
         self.control.keyframe.store(true, Ordering::Release);
     }
@@ -180,8 +160,7 @@ impl ScreenCapture {
 
 impl Drop for ScreenCapture {
     fn drop(&mut self) {
-        // Not joined: the thread notices within a frame and tears down on its
-        // own, and the caller is an async task that mustn't block on it.
+        // Not joined: the caller is an async task that mustn't block.
         self.control.stopped.store(true, Ordering::Release);
     }
 }

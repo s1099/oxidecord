@@ -1,8 +1,7 @@
 //! [`HomeScreen`]'s state and the small types it holds.
 //!
-//! Fields are `pub(super)` so the [`data`](super::data) and [`view`](super::view)
-//! modules — which extend the screen with inherent methods — can reach them,
-//! while nothing outside the home screen can.
+//! Fields are `pub(super)` so [`data`](super::data) and [`view`](super::view) can
+//! reach them but nothing outside the home screen can.
 
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
@@ -40,119 +39,89 @@ use crate::voice::stream::StreamEvent;
 
 const COMPOSER_MAX_ROWS: usize = 12;
 
-/// How many messages from either end of what's loaded the view has to reach
-/// before the next page that way is fetched. A page takes a round trip to
-/// arrive, and a scroll that hits the end before then has nowhere left to go.
+/// Messages from either loaded end at which the next page is fetched; it takes
+/// a round trip, and a scroll reaching the end first would stall.
 const PAGE_PREFETCH: usize = 10;
 
-/// Which list occupies the sidebar: a guild's channels, or the DM list.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(super) enum View {
     Guild,
     DirectMessages,
 }
 
-/// The roles each member of one guild holds.
 pub(super) type MemberRoles = HashMap<Id<UserMarker>, Vec<Id<RoleMarker>>>;
 
-/// The message a pending reply is aimed at, shown as a banner above the
-/// message bar. Kept minimal: enough to label the banner and reference the
-/// target when the reply is sent.
 #[derive(Clone)]
 pub(super) struct ReplyTarget {
     pub message_id: Id<MessageMarker>,
     pub author_name: String,
 }
 
-/// Someone else typing in a conversation, shown above the message bar until
-/// `until` passes or their message arrives.
+/// Shown until `until` passes or their message arrives.
 pub(super) struct Typist {
     pub user_id: Id<UserMarker>,
-    /// Their guild name, from the dispatch. A DM's typists are named from the
-    /// conversation's messages instead.
+    /// From the dispatch; a DM's typists are named from its messages instead.
     pub name: Option<String>,
     pub until: Instant,
 }
 
-/// The message being edited in place, and the input standing in for its text.
-///
-/// The input is made per edit rather than kept on the screen like the
-/// composer's: it only exists while a message is open for editing, and a fresh
-/// one comes with no leftover undo history from the last.
+/// The input is made per edit so it starts with no undo history from the last.
 pub(super) struct EditingMessage {
     pub message_id: Id<MessageMarker>,
     pub input: Entity<TextareaState>,
 }
 
-/// The open profile popout: which user it's for, where it's anchored, and the
-/// placeholder shown from the message that opened it while the fetch is in
-/// flight.
 pub(super) struct ProfilePopup {
     pub user_id: Id<UserMarker>,
-    /// Window coordinates the card is anchored to, taken from the click on the
-    /// avatar.
+    /// Window coordinates of the avatar click.
     pub position: Point<Pixels>,
     pub name: String,
     pub avatar_url: Option<String>,
-    /// `None` until the profile fetch resolves; the card renders a skeleton in
-    /// the meantime.
+    /// `None` until the fetch resolves; the card shows a skeleton.
     pub profile: Option<discord::UserProfile>,
     pub error: Option<String>,
 }
 
-/// The open pinned-messages popout for the open conversation.
 pub(super) struct PinsPopup {
     pub channel_id: Id<ChannelMarker>,
-    /// Window coordinates of the click on the header's pin button, which the
-    /// popout hangs below.
+    /// Window coordinates of the pin button click; the popout hangs below.
     pub position: Point<Pixels>,
     /// Most recently pinned first. Empty while loading.
     pub messages: Vec<discord::Message>,
-    /// Lays the pins out the way the message list lays out messages: each on
-    /// its own, at the list's width. Nested in the popout's own flex layout,
-    /// text in a pin is measured as if it had no width, and the pin keeps the
-    /// height of all those wrapped lines as empty space.
+    /// A list rather than nested flex: inside the popout's flex layout, pin text
+    /// is measured as if it had no width and keeps the height of every wrapped
+    /// line as empty space.
     pub list: ListState,
     pub loading: bool,
     pub error: Option<String>,
 }
 
-/// The image open full size over the whole screen, as Discord's lightbox.
 pub(super) struct ImageViewer {
-    /// What's already on screen in the message, drawn stretched while the
-    /// larger copy loads so the viewer never opens empty.
+    /// Already on screen; drawn stretched while the larger copy loads.
     pub preview_url: SharedString,
-    /// The copy scaled to the window. Dropped from the image cache when the
-    /// viewer closes, being far bigger than anything in the message list.
+    /// Window-sized; dropped from the image cache on close, being far bigger than list images.
     pub full_url: SharedString,
-    /// The original, for "Open in Browser".
     pub source_url: String,
-    /// A copy at the original's resolution, fetched the first time the image
-    /// is zoomed past what the window-sized one holds. Dropped on close too.
+    /// Original resolution, fetched on the first zoom past `full_url`. Dropped on close too.
     pub zoomed_url: Option<SharedString>,
-    /// Intrinsic dimensions, when Discord reported them.
     pub width: Option<u32>,
     pub height: Option<u32>,
-    /// Whether the larger copies have to be asked for as animated WebP to stay
-    /// moving; see [`discord::animated_webp`].
+    /// Larger copies must be requested as animated WebP to keep moving; see
+    /// [`discord::animated_webp`].
     pub animated_webp: bool,
-    /// How far the image is zoomed past fitting the window: 1 fits it.
+    /// 1 fits the window.
     pub zoom: f32,
-    /// How far the image's centre is panned from the window's.
     pub offset: Point<Pixels>,
-    /// The pan under way: where the pointer went down, and the offset then.
+    /// Pointer position and `offset` at the press.
     pub drag: Option<(Point<Pixels>, Point<Pixels>)>,
 }
 
-/// Where an emoji chosen from the picker goes.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(super) enum EmojiTarget {
     Composer,
-    /// A reaction on this message, opened from its hover toolbar.
     Reaction(Id<MessageMarker>),
 }
 
-/// Who reacted to a message with one emoji, as far as it's been fetched.
 #[derive(Default)]
 pub(super) struct Reactors {
     pub users: Vec<discord::Reactor>,
@@ -160,69 +129,53 @@ pub(super) struct Reactors {
     /// The last page came back short, so `users` is everyone.
     pub complete: bool,
     pub error: Option<String>,
-    /// The fetch in flight. Held so forgetting the entry cancels it, and a
-    /// page of a list that has since changed can't land in its replacement.
+    /// Held so forgetting the entry cancels the fetch and a stale page can't
+    /// land in its replacement.
     pub _task: Option<Task<()>>,
 }
 
 pub(super) struct EmojiPicker {
-    /// Window coordinates of the click that opened it, which the picker sits
-    /// beside.
+    /// Window coordinates of the opening click.
     pub position: Point<Pixels>,
     pub target: EmojiTarget,
     pub search: Entity<InputState>,
-    /// The recently used as they were when the picker opened, so choosing one
-    /// doesn't reshuffle the list under the pointer.
+    /// Snapshot from opening, so choosing one doesn't reshuffle under the pointer.
     pub recent: Vec<super::emoji::PickerEmoji>,
-    /// The list as last laid out. Rebuilt when the search changes rather than
-    /// every frame — the screen repaints for every video frame, and this is a
-    /// couple of thousand emoji.
+    /// Rebuilt on search change, not per frame: the screen repaints for every
+    /// video frame and this is a couple of thousand emoji.
     pub layout: Rc<PickerLayout>,
-    /// Sections folded down to their header, by the chevron beside it.
     pub collapsed: HashSet<SectionKind>,
-    /// The emoji under the pointer, named in the footer.
     pub hovered: Option<super::emoji::PickerEmoji>,
     pub scroll: SmoothScroll,
-    /// The category rail down the picker's left side.
     pub rail_scroll: ScrollHandle,
     pub _search_changed: Subscription,
 }
 
-/// The suggestions offered above the composer for the `@`, `#` or `:` word
-/// being typed at the cursor.
 pub(super) struct Autocomplete {
     pub trigger: Trigger,
-    /// The word's byte range in the composer's text, trigger included: what
-    /// accepting a suggestion replaces.
+    /// Byte range of the word, trigger included; what accepting replaces.
     pub range: Range<usize>,
     pub query: String,
     pub items: Vec<Suggestion>,
     pub selected: usize,
 }
 
-/// The open guild channel's member list, as far as Discord has synced it.
 pub(super) struct MemberList {
     pub guild_id: Id<GuildMarker>,
     pub channel_id: Id<ChannelMarker>,
-    /// The list Discord is sending, from its first sync. Kept across a switch
-    /// to another channel in the guild, since channels the same people can
+    /// Kept across a channel switch within the guild: channels the same people
     /// see share a list and Discord carries on with it.
     pub id: Option<String>,
     pub groups: Vec<discord::MemberListGroup>,
-    /// Every row of the list, headers included, at Discord's indices. `None`
-    /// for a row in a range that isn't synced, drawn as a placeholder.
+    /// Headers included, at Discord's indices; `None` for unsynced rows (placeholders).
     pub rows: Vec<Option<discord::MemberListItem>>,
-    /// The index ranges subscribed to, as last sent.
     pub ranges: Vec<[usize; 2]>,
     pub scroll: UniformListScrollHandle,
 }
 
-/// One video attachment or embed in the message list: which playback is
-/// which, and a source of element ids unique across every message on screen.
-///
-/// A message id alone isn't enough — one message can carry several of either —
-/// and the index is the message's own, so it stays stable as the list is
-/// spliced at either end.
+/// Identifies one video attachment or embed. A message id alone isn't enough
+/// (a message can carry several), and the message's own index stays stable as
+/// the list is spliced at either end.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(super) struct MediaKey {
     pub message_id: u64,
@@ -230,9 +183,8 @@ pub(super) struct MediaKey {
 }
 
 impl MediaKey {
-    /// A gpui id for one of this attachment's elements. Both halves of the key
-    /// go in: two messages can each hold a video at index 0, and sharing an id
-    /// between them would share their interaction state too.
+    /// Both halves go in: two messages can each hold a video at index 0, and a
+    /// shared id would share interaction state.
     pub fn element_id(self, role: &str) -> ElementId {
         ElementId::from(SharedString::from(format!(
             "{role}-{}-{}",
@@ -240,9 +192,8 @@ impl MediaKey {
         )))
     }
 
-    /// The key a spoiler cover over this attachment is revealed by, in
-    /// `revealed_spoilers`. `role` tells an image from a video, since each is
-    /// indexed separately.
+    /// Key into `revealed_spoilers`. `role` tells an image from a video, which
+    /// are indexed separately.
     pub fn spoiler_key(self, role: &str) -> SharedString {
         SharedString::from(format!(
             "attachment-{role}-spoiler-{}-{}",
@@ -250,7 +201,6 @@ impl MediaKey {
         ))
     }
 
-    /// A hover group shared by the whole item.
     pub fn group(self) -> SharedString {
         SharedString::from(format!("media-{}-{}", self.message_id, self.index))
     }
@@ -258,321 +208,219 @@ impl MediaKey {
 
 #[derive(Clone, PartialEq, Eq)]
 pub(super) enum PlaybackState {
-    /// Until the first frame lands, which covers both the download and the
-    /// decoder opening the file.
+    /// Until the first frame lands: covers the download and the decoder opening.
     Loading,
     Playing,
-    /// The clip ran out, so the card offers to play it again rather than
-    /// sitting on the last frame.
     Ended,
-    /// Why playback stopped badly. Shown over the poster.
     Failed(String),
 }
 
-/// Only one plays at a time: decoding a second clip nobody is watching is
-/// exactly the cost this feature exists to avoid, so starting one stops the
-/// other.
+/// Only one plays at a time; starting one stops the other.
 pub(super) struct VideoPlayback {
     pub key: MediaKey,
-    /// Dropping this stops the decoder, closes the output device, and deletes
-    /// the downloaded file.
+    /// Dropping it stops the decoder, closes the output device and deletes the file.
     pub player: VideoPlayer,
-    /// The frame currently on screen. Held so it can be handed back to gpui's
-    /// sprite atlas when the next one replaces it — every frame takes a slot
-    /// there, and at 30 a second an un-evicted one is a leak with a timer on
-    /// it.
+    /// Held to hand back to gpui's sprite atlas when the next replaces it; every
+    /// frame takes a slot, so an un-evicted one is a leak.
     pub frame: Option<Arc<RenderImage>>,
-    /// Zero until the source reports one, and for a stream that never does.
+    /// Zero until the source reports one.
     pub duration: Duration,
     pub position: Duration,
     pub state: PlaybackState,
-    /// The progress bar, which doubles as the scrubber. Its value is a
-    /// fraction of the run time rather than a time, so it needs no resetting
-    /// when the duration arrives after the first frames.
+    /// A fraction of the run time, not a time, so a duration arriving after
+    /// the first frames needs no reset.
     pub scrubber: Entity<SliderState>,
 }
 
-/// The message list, drawn as a view of its own so the window can replay it
-/// from the last frame. It redraws whenever the screen is notified, as it
-/// would inline, but not when something animating in a view of its own (the
-/// typing dots) redraws around it — which would otherwise rebuild every
-/// visible message each frame.
+/// A view of its own so the window can replay it from the last frame instead
+/// of rebuilding every visible message when the typing dots animate.
 pub(super) struct MessageListView {
     pub(super) screen: WeakEntity<HomeScreen>,
 }
 
-/// The typing indicator's pulsing dots. A view of their own, since an
-/// animation redraws the view it's drawn in on every frame.
+/// A view of its own, since an animation redraws its view every frame.
 pub(super) struct TypingDots;
 
 pub struct HomeScreen {
     pub(super) view: View,
     pub(super) guilds: Vec<Guild>,
-    /// The signed-in user, shown in the sidebar account panel. `None` until the
-    /// `GET /users/@me` fetch resolves (or if it fails).
+    /// `None` until `GET /users/@me` resolves (or if it fails).
     pub(super) current_user: Option<discord::CurrentUser>,
-    /// The guild list laid out for the rail, folders and all.
     pub(super) rail_entries: Vec<RailEntry>,
-    /// The user's folder settings. `None` until the settings-proto fetch
-    /// resolves, or if it fails — the rail falls back to the plain guild order.
+    /// `None` until the settings-proto fetch resolves; the rail uses plain guild order.
     pub(super) guild_folders: Option<discord::GuildFolders>,
-    /// The status the user picked, from settings-proto. `None` until that
-    /// fetch resolves; the account panel shows online meanwhile, and nothing
-    /// is sent to the gateway until it's known.
+    /// From settings-proto. Until it resolves the panel shows online and
+    /// nothing is sent to the gateway.
     pub(super) presence_status: Option<discord::PresenceStatus>,
-    /// Other users' statuses, as far as the gateway has said. Anyone missing
-    /// is shown offline: Discord only sends the presences of friends and
-    /// people who share a guild, and never sends offline ones up front.
+    /// Anyone missing is shown offline: Discord sends presences only for friends
+    /// and shared-guild users, and never offline ones up front.
     pub(super) user_presences: HashMap<Id<UserMarker>, discord::PresenceStatus>,
-    /// Folders the user has opened, by folder id. Folders start collapsed.
+    /// By folder id; folders start collapsed.
     pub(super) expanded_folders: HashSet<i64>,
     pub(super) selected_guild: Option<Id<GuildMarker>>,
     pub(super) loading: bool,
     pub(super) error: Option<String>,
     /// Set through `set_channel_groups`, which keeps `channel_index` in step.
     pub(super) channel_groups: Vec<ChannelGroup>,
-    /// Where each of `channel_groups`' channels sits in it, as (group,
-    /// channel) indices: channels are looked up by id for every message drawn.
+    /// (group, channel) indices; channels are looked up by id for every message drawn.
     pub(super) channel_index: HashMap<Id<ChannelMarker>, (usize, usize)>,
-    /// Every guild's channels as far as they're known: from the gateway,
-    /// which sends them all with `READY`, or from a fetch where it hasn't
-    /// yet. Opening a guild draws its list from here at once.
+    /// From `READY`, or a fetch where it hasn't arrived. Opening a guild draws
+    /// from here at once.
     pub(super) guild_channels: HashMap<Id<GuildMarker>, Vec<discord::Channel>>,
-    /// Guilds whose list in `guild_channels` has changed since it was sent.
-    /// Opening one still draws what's there, and refetches it underneath.
+    /// Changed since sent; opening one draws what's there and refetches underneath.
     pub(super) stale_guild_channels: HashSet<Id<GuildMarker>>,
-    /// Guilds whose channels are being fetched, so a refetch isn't sent twice.
     pub(super) fetching_guild_channels: HashSet<Id<GuildMarker>>,
-    /// The channel last open in each guild, which going back to the guild
-    /// reopens, as Discord's does.
     pub(super) last_guild_channel: HashMap<Id<GuildMarker>, Id<ChannelMarker>>,
     pub(super) selected_channel: Option<Id<ChannelMarker>>,
-    /// The user's DM conversations, loaded lazily the first time the DM view is
-    /// opened. A selected DM reuses `selected_channel` and the message plumbing.
+    /// A selected DM reuses `selected_channel` and the message plumbing.
     pub(super) dms: Vec<DirectMessage>,
     pub(super) dms_loading: bool,
     pub(super) dms_error: Option<String>,
-    /// Set once the DM list has been fetched, so reopening the view doesn't
-    /// refetch it every time.
     pub(super) dms_loaded: bool,
-    /// A background refetch of the loaded DM list is in flight, after a
-    /// message arrived in a conversation the list didn't have.
+    /// Refetch after a message arrived in a conversation the list lacks.
     pub(super) dms_refreshing: bool,
     pub(super) collapsed_categories: HashSet<Id<ChannelMarker>>,
     pub(super) unreads: Unreads,
-    /// The last message that had been read when the open conversation was
-    /// opened, which the "new" divider sits under. `None` when nothing was
-    /// unread.
+    /// Last message read when the conversation opened; the "new" divider sits under it.
     pub(super) unread_marker: Option<Id<MessageMarker>>,
-    /// The user marked a message in the open conversation unread, so it
-    /// isn't acked again until they leave it.
+    /// Suppresses acking until the conversation is left.
     pub(super) marked_unread: bool,
-    /// Acks waiting to be sent, by channel, and the timer that sends them.
+    /// Debounced acks by channel, and the timer that sends them.
     pub(super) pending_acks: HashMap<Id<ChannelMarker>, Id<MessageMarker>>,
     pub(super) ack_flush: Option<Task<()>>,
     pub(super) channels_loading: bool,
     pub(super) channels_error: Option<String>,
     pub(super) messages: Vec<discord::Message>,
-    /// The conversation `messages` belong to, once they've arrived. What's
-    /// cached when it's left.
+    /// Set once `messages` arrive; this is what's cached on leaving.
     pub(super) messages_channel: Option<Id<ChannelMarker>>,
-    /// Recently opened conversations, which reopen from here before their
-    /// newest page is fetched.
     pub(super) history_cache: HistoryCache,
     pub(super) messages_loading: bool,
     pub(super) messages_error: Option<String>,
     pub(super) older_loading: bool,
     pub(super) reached_oldest: bool,
-    /// A newer page is being fetched, scrolled down through history that
-    /// was opened further back than the present.
+    /// Scrolling down through history opened further back than the present.
     pub(super) newer_loading: bool,
-    /// The loaded messages run up to the channel's newest. Only not so when
-    /// the conversation opened at an unread run longer than a page, as
-    /// Discord's does, until paging forward or jumping to the present.
+    /// False only when the conversation opened at an unread run longer than a
+    /// page, until paging forward or jumping to the present.
     pub(super) reached_newest: bool,
-    /// Whether the newest message is currently in view. Used to decide if a
-    /// live message should snap the list to the bottom (following the
-    /// conversation) or be appended silently (the user is reading history).
+    /// Decides whether a live message snaps the list down or is appended silently.
     pub(super) at_bottom: bool,
-    /// Bumped whenever the conversation's messages are replaced wholesale, so
-    /// a page fetched for what was there before doesn't land over them.
+    /// Bumped on wholesale replacement so a page fetched for the old messages can't land.
     pub(super) messages_generation: u64,
-    /// A message to open its channel at, once that channel's conversation
-    /// loads: a link's target, while its guild or channel list is opened.
+    /// A link's target, applied once its channel's conversation loads.
     pub(super) pending_jump: Option<(Id<ChannelMarker>, Id<MessageMarker>)>,
-    /// The message just jumped to, lit up briefly so the eye finds it, and
-    /// the timer that puts it out.
+    /// Highlighted briefly after a jump, and the timer that clears it.
     pub(super) flashed_message: Option<Id<MessageMarker>>,
     pub(super) flash_timer: Option<Task<()>>,
     pub(super) send_error: Option<String>,
-    /// Set while composing a reply; drives the "Replying to …" banner and is
-    /// cleared when the reply is sent, dismissed, or the channel changes.
     pub(super) replying_to: Option<ReplyTarget>,
-    /// The message open for editing, if any. At most one, like Discord; it's
-    /// closed when saved, cancelled, or the channel changes.
+    /// At most one, like Discord.
     pub(super) editing: Option<EditingMessage>,
-    /// Images pasted into the composer, shown as removable thumbnails and
-    /// uploaded when the message is sent. Cleared on send and on channel switch.
     pub(super) pending_attachments: Vec<PendingAttachment>,
-    /// Monotonic id source for `pending_attachments`, so each thumbnail has a
-    /// stable key even if the same image is pasted twice.
+    /// Stable keys for `pending_attachments`, even if the same image is pasted twice.
     pub(super) next_attachment_id: u64,
-    /// The call the user is in, if any. Drives the sidebar's voice panel and
-    /// the call stage in the content pane.
     pub(super) voice: Option<VoiceCall>,
-    /// Self-mute and self-deafen: one stops the microphone being sent, the
-    /// other stops everyone else being played. Deafening silences the
-    /// microphone too, so `voice_muted` can be on without the user having
-    /// pressed mute. They sit on the screen rather than on the call because
-    /// they're kept between calls: leave muted, rejoin muted.
+    /// Deafening silences the microphone too, so `voice_muted` can be on without
+    /// the user pressing mute. Kept here, not on the call, so they survive
+    /// between calls.
     pub(super) voice_muted: bool,
     pub(super) voice_deafened: bool,
-    /// The mute state to go back to when undeafening, so a user who was
-    /// unmuted before gets their microphone back and one who was muted stays
-    /// muted.
+    /// Restored on undeafen.
     pub(super) voice_mute_before_deafen: bool,
-    /// Id of the chosen microphone, remembered between runs. `None` follows
-    /// the system default.
+    /// `None` follows the system default. Persisted in prefs.
     pub(super) voice_input_device: Option<String>,
-    /// Id of the chosen speakers, remembered between runs. `None` follows
-    /// the system default.
+    /// `None` follows the system default. Persisted in prefs.
     pub(super) voice_output_device: Option<String>,
-    /// Everyone the gateway has reported in a voice channel, by user. This is
-    /// what fills every participant list: the tiles on the call stage, and the
-    /// names under each voice channel in the sidebar.
+    /// Source of every participant list: call stage tiles and sidebar names.
     pub(super) voice_states: HashMap<Id<UserMarker>, discord::VoiceUserState>,
-    /// Who is transmitting in the open call, from the audio the driver
-    /// receives rather than from the gateway.
+    /// From received audio, not the gateway.
     pub(super) voice_speaking: HashSet<Id<UserMarker>>,
-    /// Who each ongoing DM call is ringing, by channel. Only calls the gateway
-    /// has reported are here; one with nobody being rung has an empty list.
+    /// Only calls the gateway has reported; nobody being rung is an empty list.
     pub(super) call_ringing: HashMap<Id<ChannelMarker>, Vec<Id<UserMarker>>>,
-    /// The connection parameters for a join that's still in flight.
     pub(super) pending_voice: Option<PendingVoice>,
-    /// Runs the call. Started with the gateway, since a call needs both.
     pub(super) voice_engine: Option<VoiceEngine>,
-    /// The user's screen share into the call, from the moment it's announced
-    /// to the gateway.
+    /// Present from the moment it's announced to the gateway.
     pub(super) screen_share: Option<ScreenShare>,
-    /// Where stream connections report back. One channel for every stream,
-    /// each event tagged with the stream it's about.
+    /// One channel for all streams, each event tagged with its stream.
     pub(super) stream_events: Option<futures::channel::mpsc::UnboundedSender<StreamEvent>>,
-    /// Someone else's stream the user is watching, from the moment it's
-    /// asked for.
+    /// Present from the moment it's requested.
     pub(super) watching: Option<StreamWatch>,
-    /// Pictures from a watch that has ended, waiting to be handed back to
-    /// gpui's sprite atlas on the next render — the one place a window is
-    /// always to hand, whatever ended the watch.
+    /// Returned to gpui's sprite atlas on the next render, the one place a window
+    /// is always at hand whatever ended the watch.
     pub(super) retired_stream_frames: Vec<Arc<RenderImage>>,
-    /// The call stage's tile area as last laid out. Tiles are sized to fill
-    /// it, which takes knowing how big it is before they're built, so a
-    /// change is caught at paint and lays the stage out again.
+    /// Tiles are sized to fill this area before they're built, so a change is
+    /// caught at paint and the stage laid out again.
     pub(super) voice_stage_size: Size<Pixels>,
-    /// The text chat beside a voice channel's stage is open. While it is, the
-    /// open voice channel is the conversation every message path works on.
-    /// Kept across voice channels, as Discord's is, until it's closed.
+    /// While open, the voice channel is the conversation every message path
+    /// works on. Kept across voice channels until closed.
     pub(super) voice_chat_open: bool,
-    /// Sends commands up the gateway — joining and leaving voice channels is
-    /// done with a gateway command, not a REST call.
+    /// Voice join and leave are gateway commands, not REST calls.
     pub(super) gateway: Option<discord::GatewaySender>,
-    /// The signed-in user's id, from whichever of `READY` or `GET /users/@me`
-    /// lands first. The voice connection can't identify itself without it.
+    /// From whichever of `READY` or `GET /users/@me` lands first; voice needs it to identify.
     pub(super) self_user_id: Option<Id<UserMarker>>,
-    /// Whether shift is currently held, tracked so the message toolbar can
-    /// expand its hidden actions inline the way Discord's does.
+    /// Expands the message toolbar's hidden actions inline, as in Discord.
     pub(super) shift_held: bool,
-    /// The message row under the pointer and the message whose toolbar is,
-    /// tracked apart because the toolbar overhangs the row above: moving onto
-    /// it leaves its own row, which mustn't take the toolbar away.
+    /// Tracked apart because the toolbar overhangs the row above: moving onto it
+    /// leaves its own row, which mustn't remove the toolbar.
     pub(super) hovered_message: Option<Id<MessageMarker>>,
     pub(super) hovered_toolbar: Option<Id<MessageMarker>>,
-    /// The message whose toolbar "More" menu is open, which keeps the message
-    /// lit while the pointer is off on the menu.
+    /// Keeps the message lit while the pointer is on the menu.
     pub(super) message_menu: Option<Id<MessageMarker>>,
-    /// Focus for the screen as a whole, held by an empty element inside it and
-    /// focused on startup: key and modifier events only travel the focus path,
-    /// so without it the root's listeners never run.
+    /// Key and modifier events only travel the focus path, so without this the
+    /// root's listeners never run.
     pub(super) focus_handle: FocusHandle,
     pub(super) profile_popup: Option<ProfilePopup>,
-    /// Profiles already fetched this session, so reopening a card is instant
-    /// and repeated clicks don't refetch.
     pub(super) profile_cache: HashMap<Id<UserMarker>, discord::UserProfile>,
-    /// Who reacted with what, fetched as reaction pills are hovered or the
-    /// reactions dialog asks. Each entry is dropped when its reaction changes
-    /// and refetched by whatever is still showing it.
+    /// Dropped when its reaction changes, then refetched by whatever still shows it.
     pub(super) reactors: HashMap<(Id<MessageMarker>, discord::ReactionEmoji), Reactors>,
-    /// Every guild's roles, from the gateway, so a role mention can be named
-    /// and coloured.
     pub(super) guild_roles: HashMap<Id<GuildMarker>, HashMap<Id<RoleMarker>, discord::Role>>,
-    /// The largest file each boosted guild accepts, from the gateway. A guild
-    /// missing here allows only the default.
+    /// A guild missing here allows only the default.
     pub(super) guild_upload_limits: HashMap<Id<GuildMarker>, u64>,
-    /// Every guild's custom emoji, from the gateway, for the emoji picker.
     pub(super) guild_emojis: HashMap<Id<GuildMarker>, Vec<discord::GuildEmoji>>,
     pub(super) emoji_picker: Option<EmojiPicker>,
     pub(super) pins_popup: Option<PinsPopup>,
     pub(super) image_viewer: Option<ImageViewer>,
-    /// The roles each member holds, by guild, as far as the gateway has told
-    /// us. The signed-in user's decide whether a role mention pings them;
-    /// everyone's colour their names.
+    /// The signed-in user's decide whether a role mention pings them.
     pub(super) member_roles: HashMap<Id<GuildMarker>, MemberRoles>,
-    /// Members already asked of the gateway this session, so an author who
-    /// isn't in the guild any more — or a webhook, which never was — isn't
-    /// asked for again with every page.
+    /// Stops an author who left the guild, or a webhook, being re-requested with
+    /// every page.
     pub(super) requested_members: HashSet<(Id<GuildMarker>, Id<UserMarker>)>,
     pub(super) member_list: Option<MemberList>,
-    /// Lists shown before, drawn at once when a channel with one is opened.
     pub(super) member_list_cache: MemberListCache,
-    /// The user closed the member list. Remembered between runs.
+    /// Persisted in prefs.
     pub(super) member_list_hidden: bool,
     /// The message search box in the conversation header. Not wired up yet.
     pub(super) search_input: Entity<InputState>,
-    /// Spoilers clicked open in the open conversation, by the key the view
-    /// gives each one. Cleared with the conversation, as Discord hides them
-    /// again once you leave.
+    /// Cleared with the conversation, as Discord re-hides them on leaving.
     pub(super) revealed_spoilers: HashSet<SharedString>,
-    /// The mouse selection over the message list's text. Cleared with the
-    /// conversation.
     pub(super) text_selection: Option<Selection>,
-    /// Where the list's selectable texts were last laid out, for a press or a
-    /// drag to land on.
     pub(super) text_regions: TextRegions,
-    /// What each selectable text drawn in the conversation copies as. In a
-    /// cell since drawing, which only borrows the screen, fills it.
+    /// In a cell because drawing only borrows the screen.
     pub(super) text_copies: RefCell<TextCopies>,
     pub(super) message_input: Entity<TextareaState>,
-    /// The conversation the typing indicator was last sent to, and when.
     pub(super) typing_sent: Option<(Id<ChannelMarker>, Instant)>,
     pub(super) typists: HashMap<Id<ChannelMarker>, Vec<Typist>>,
     pub(super) autocomplete: Option<Autocomplete>,
-    /// Where the word the user dismissed suggestions for with escape starts,
-    /// so typing on in it doesn't bring them straight back.
+    /// Start of the word dismissed with escape, so typing on doesn't reopen suggestions.
     pub(super) autocomplete_dismissed: Option<usize>,
-    /// Mentions put in the composer by the autocomplete, as the text shown
-    /// there and the markup it's sent as.
+    /// (shown text, sent markup).
     pub(super) composer_mentions: Vec<(String, String)>,
-    /// Guild members the gateway has named, by guild: from mention searches
-    /// and from the requests for messages' authors.
     pub(super) guild_members:
         HashMap<Id<GuildMarker>, HashMap<Id<UserMarker>, discord::GuildMember>>,
-    /// Member searches already sent this session, by guild and lowercased
-    /// query, so retyping a name doesn't ask again.
+    /// By guild and lowercased query, so retyping doesn't ask again.
     pub(super) member_searches: HashSet<(Id<GuildMarker>, String)>,
     pub(super) _composer_changed: Subscription,
-    /// Hands focus back to the screen when what held it goes away, a closed
-    /// menu or edit box, so typing still reaches the composer.
+    /// Refocuses the screen when a menu or edit box closes so typing reaches the composer.
     pub(super) _focus_lost: Subscription,
     pub(super) messages_list: ListState,
     pub(super) message_list_view: Entity<MessageListView>,
     pub(super) typing_dots: Entity<TypingDots>,
     pub(super) video: Option<VideoPlayback>,
-    /// Owns the decoded bitmaps for the currently displayed messages' images.
     /// Cleared on channel switch so image memory doesn't grow without bound.
     pub(super) image_cache: Entity<RetainAllImageCache>,
-    /// The GIF clips decoded for the currently displayed messages, released
-    /// alongside `image_cache`.
+    /// Released alongside `image_cache`.
     pub(super) gifs: LoadedGifs,
-    /// Wheel easing for each scrollable pane; see [`crate::ui::smooth_scroll`].
+    // Wheel easing; see [`crate::ui::smooth_scroll`].
     pub(super) rail_scroll: SmoothScroll,
     pub(super) sidebar_scroll: SmoothScroll,
     pub(super) dm_scroll: SmoothScroll,
@@ -581,9 +429,8 @@ pub struct HomeScreen {
 
 impl HomeScreen {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        // Multi-line so shift-enter can start a new line. Enter itself is
-        // rebound to send (see `SendMessage`); the input's `PressEnter` event
-        // can't be used for that, since it fires for the newlines too.
+        // Enter is rebound to send (see `SendMessage`) because the input's
+        // `PressEnter` event also fires for newlines.
         let message_input = cx.new(|cx| {
             TextareaState::new(window, cx)
                 .auto_grow(1, COMPOSER_MAX_ROWS)
@@ -603,18 +450,13 @@ impl HomeScreen {
             }
         });
 
-        // Bottom-aligned like a chat log; items are measured lazily, and
-        // splicing older items in at the front keeps the scroll position.
+        // Bottom-aligned, so splicing older items in at the front keeps the scroll position.
         let messages_list = ListState::new(0, ListAlignment::Bottom, px(512.));
         let weak = cx.entity().downgrade();
         messages_list.set_scroll_handler(move |event, _window, cx| {
-            // Whether the newest message is in view is read off the list each
-            // frame instead (`sync_at_bottom`): the range here is from before
-            // this event moved it.
+            // `at_bottom` is read off the list each frame (`sync_at_bottom`):
+            // the range here predates this event's scroll.
             let _ = weak.update(cx, |this, cx| {
-                // Far enough ahead that a page usually lands before the scroll
-                // reaches the top, so a continuous scroll up never stalls
-                // against it.
                 if event.visible_range.start <= PAGE_PREFETCH {
                     this.load_older_messages(cx);
                 }
@@ -752,12 +594,9 @@ impl HomeScreen {
         this.load_guilds(window, cx);
         this.load_user_settings(cx);
         this.load_current_user(cx);
-        // Fetched up front, so the DM list is there the first time it's
-        // opened rather than loading then.
         this.load_dms(cx);
         this.start_gateway(window, cx);
-        // Seeds the focus path so the root element's key listeners are live
-        // from the first frame, before anything has been clicked.
+        // Seeds the focus path so key listeners work before anything is clicked.
         this.focus_handle.focus(window, cx);
         this
     }

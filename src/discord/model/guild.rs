@@ -14,12 +14,10 @@ pub struct Guild {
     pub id: Id<GuildMarker>,
     pub name: String,
     pub icon_url: Option<String>,
-    /// The user's guild-wide permissions (from `@everyone` plus their roles,
-    /// before any channel overwrites). Discord hands these to us with the
-    /// guild list, so channel visibility can be resolved without refetching
-    /// the guild's roles.
+    /// Guild-wide (`@everyone` plus roles), before channel overwrites. Sent with
+    /// the guild list, so visibility resolves without refetching roles.
     pub permissions: Permissions,
-    /// Whether the current user owns this guild (owners bypass permissions).
+    /// Owners bypass permissions.
     pub owner: bool,
 }
 
@@ -35,20 +33,16 @@ pub(in crate::discord) fn convert_guild(guild: twilight_model::user::CurrentUser
     }
 }
 
-/// A guild role, as far as a role mention or a coloured name needs it.
 #[derive(Clone)]
 pub struct Role {
     pub id: Id<RoleMarker>,
     pub name: String,
     /// Packed `0xRRGGBB`; `None` for a role without a colour.
     pub color: Option<u32>,
-    /// Higher sits higher in the guild's role list. A member's name takes the
-    /// colour of the highest of their roles that has one.
+    /// A member's name takes the colour of their highest role that has one.
     pub position: i64,
 }
 
-/// A role as the gateway sends it, read here rather than through twilight's
-/// model since only a few fields matter.
 #[derive(Deserialize)]
 pub(in crate::discord) struct RawRole {
     pub(super) id: Id<RoleMarker>,
@@ -57,16 +51,13 @@ pub(in crate::discord) struct RawRole {
     color: u32,
     #[serde(default)]
     position: i64,
-    /// Read for working out which channels count toward a guild's unread
-    /// mark; see [`super::read_state`].
+    /// Used to decide which channels count toward a guild's unread mark.
     #[serde(default)]
     pub(super) permissions: Option<Permissions>,
 }
 
-/// A guild member as the gateway sends it: inside a voice state, in a guild's
-/// `members`, or on its own in `GUILD_MEMBER_UPDATE`. Where the user's id is
-/// depends on the payload — a nested user in most, a bare `user_id` in
-/// `READY`'s `merged_members`, which carry no user object at all.
+/// The user id is nested in `user` in most payloads, but `READY`'s
+/// `merged_members` carry a bare `user_id` and no user object.
 #[derive(Deserialize)]
 pub(in crate::discord) struct RawMember {
     #[serde(default)]
@@ -97,9 +88,8 @@ impl RawMember {
         self.user.as_ref().map(|user| user.id).or(self.user_id)
     }
 
-    /// The name the guild shows them by: their nickname there, else their
-    /// global display name, else their username. Discord sends cleared names
-    /// as empty strings as well as nulls.
+    /// Nickname, else global name, else username. Cleared names arrive as
+    /// empty strings as well as nulls.
     pub(in crate::discord) fn display_name(&self) -> Option<String> {
         let user = self.user.as_ref();
         [
@@ -123,7 +113,6 @@ impl RawMember {
         self.user.as_ref().is_some_and(|user| user.bot)
     }
 
-    /// Who they are, for a member that came with its user object and a name.
     pub(in crate::discord) fn guild_member(&self) -> Option<GuildMember> {
         let user = self.user.as_ref()?;
         Some(GuildMember {
@@ -135,12 +124,10 @@ impl RawMember {
     }
 }
 
-/// A guild member as a member chunk names them, for the composer's mention
-/// suggestions.
+/// A member as a member chunk names them, for mention suggestions.
 #[derive(Clone)]
 pub struct GuildMember {
     pub user_id: Id<UserMarker>,
-    /// The name the guild shows them by.
     pub name: String,
     pub username: Option<String>,
     pub avatar_url: Option<String>,

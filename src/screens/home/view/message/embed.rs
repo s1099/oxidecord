@@ -1,13 +1,7 @@
 //! Rich embeds under a message: the bordered card and the bare-media preview.
 //!
-//! The card mirrors Discord's layout — a coloured spine down the left edge, a
-//! content column holding provider, author, title, description and fields, a
-//! square thumbnail tucked into the top-right corner, then the large image and
-//! the footer line beneath it all.
-//!
-//! Debug builds overlay a copy button on every embed that yields the raw JSON
-//! Discord sent, so a mismatch against the real client can be reported with the
-//! exact input that produced it.
+//! Debug builds overlay a copy button on each embed that yields the raw JSON Discord sent,
+//! so a mismatch against the real client can be reported with its exact input.
 
 use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
@@ -24,34 +18,27 @@ use crate::ui::depth::media_shadow;
 use super::super::markdown::MarkdownOptions;
 use super::{MEDIA_MAX_HEIGHT, MEDIA_MAX_WIDTH, fit_within};
 
-/// The card's width: Discord's 432px cap, or the message column when that is
-/// narrower. Unlike Discord, a short embed doesn't hug its text — see the width
-/// note on the card itself.
+/// Discord's 432px cap, or the message column when narrower.
 const CARD_MAX_WIDTH: f32 = 432.;
-/// Padding inside the card, past the spine. Discord's is asymmetric on every
-/// edge: less above the first row than below the last, and the left is short by
-/// the spine's width so the text still lands 16px in from the card's edge.
+/// Discord's is asymmetric: less above the first row than below the last, and the left is
+/// short by the spine's width so text lands 16px in.
 const CARD_PADDING_TOP: f32 = 8.;
 const CARD_PADDING_BOTTOM: f32 = 16.;
 const CARD_PADDING_RIGHT: f32 = 16.;
 const CARD_PADDING_LEFT: f32 = 12.;
 const SPINE_WIDTH: f32 = 4.;
-/// The square the top-right thumbnail is fitted into.
 const THUMBNAIL_BOX: f32 = 80.;
 const ROW_GAP: f32 = 8.;
-/// The large image gets twice the usual gap above it, so it reads as its own
-/// block rather than another line of the text column.
+/// Twice the usual gap, so the large image reads as its own block.
 const IMAGE_GAP: f32 = 16.;
-/// Line heights for the card's three type sizes. gpui defaults to the golden
-/// ratio, which is far looser than Discord's embed text and leaves the
-/// description looking double-spaced, so every row sets its own.
+/// gpui's default golden-ratio line height is far looser than Discord's embed text, so
+/// every row sets its own.
 const LINE_HEIGHT_TITLE: f32 = 22.;
 const LINE_HEIGHT_BODY: f32 = 18.;
 const LINE_HEIGHT_SMALL: f32 = 16.;
 
 impl HomeScreen {
-    /// Every embed on a message, stacked. `message_id` only seeds element ids,
-    /// which have to stay unique across the whole message list.
+    /// `message_id` only seeds element ids, which must be unique across the message list.
     pub(super) fn render_embeds(
         &self,
         message_id: u64,
@@ -73,8 +60,6 @@ impl HomeScreen {
             }))
     }
 
-    /// The bordered card: `rich` embeds from bots, and link and article
-    /// previews.
     fn render_embed_card(
         &self,
         id: MediaKey,
@@ -89,8 +74,7 @@ impl HomeScreen {
             piece,
         };
 
-        // Everything in the left column, in Discord's order. The thumbnail sits
-        // beside it rather than in it, so text wraps around the corner square.
+        // The thumbnail sits beside this column, not in it, so text wraps around the corner square.
         let column = v_flex()
             .flex_1()
             .min_w_0()
@@ -109,8 +93,7 @@ impl HomeScreen {
                     .map(|author| render_author(id, author, &self.image_cache, theme.link_hover)),
             )
             .children(embed.title.as_ref().map(|title| {
-                // A linked title is clickable as a whole, so nothing inside it
-                // can take the click for itself.
+                // A linked title is clickable as a whole, so nothing inside it takes the click.
                 let options = MarkdownOptions::new(scope("title"), mentions)
                     .interactive(embed.url.is_none())
                     .selectable(id.message_id, part(EmbedPiece::Title));
@@ -119,8 +102,6 @@ impl HomeScreen {
                     .line_height(px(LINE_HEIGHT_TITLE))
                     .font_weight(FontWeight::SEMIBOLD)
                     .child(self.render_inline_markdown(title, options, cx));
-                // A title with a URL is the embed's primary link, so the whole
-                // line is clickable and takes the theme's link colour.
                 match embed.url.clone() {
                     Some(url) => div()
                         .id(id.element_id("embed-title"))
@@ -165,9 +146,8 @@ impl HomeScreen {
                     .map(|thumbnail| render_thumbnail(thumbnail, &self.image_cache)),
             );
 
-        // The card's padding applies to every row including the media, so an
-        // image is inset rather than flush — only a bare `Media` embed, which
-        // has no card at all, sits edge to edge.
+        // Padding applies to the media too, so an image is inset; only a bare `Media` embed is
+        // edge to edge.
         let has_body = embed.has_text() || embed.thumbnail.is_some();
         let inner = v_flex()
             .min_w_0()
@@ -178,11 +158,10 @@ impl HomeScreen {
             .pb(px(CARD_PADDING_BOTTOM))
             .when(has_body, |this| this.child(body))
             .children(embed.image.as_ref().map(|image| {
-                // `gap` already contributes `ROW_GAP`; top up to the image's
-                // wider gap, but only when there is actually a row above it.
-                // The margin has to go on the image element itself — wrapping it
-                // in a plain (block) div hides its width from this column's
-                // intrinsic sizing, which collapses the rows below it.
+                // `gap` already adds `ROW_GAP`; top up to the wider gap only when a row is above.
+                // The margin
+                // goes on the image itself: a block div wrapper hides its width from this column's
+                // intrinsic sizing and collapses the rows below.
                 let extra = if has_body { IMAGE_GAP - ROW_GAP } else { 0. };
                 self.render_embed_image(id, embed, image, extra, cx)
             }))
@@ -201,24 +180,19 @@ impl HomeScreen {
             .id(id.element_id("embed"))
             .group(id.group())
             .relative()
-            // An absolute width, not a percentage of the message column. Every
-            // width below this point is derived from it, and a percentage that
-            // resolves to one value while the card is measured and another when
-            // it is painted makes the text wrap to a different number of lines
-            // in each pass — leaving the card too short for what it draws. The
+            // An absolute width, not a percentage: one that resolves differently when measured than
+            // painted wraps text to different line counts per pass, leaving the card too short.
             // `max-width` only matters in a window too narrow for the full card.
             .w(px(CARD_MAX_WIDTH))
             .max_w(relative(1.))
-            // The card is as tall as its content, never shorter. A flex item's
-            // automatic minimum height is what normally guarantees that, but
-            // `overflow: hidden` waives it — so a tall card would be squeezed by
-            // the column above and silently clip its last fields instead.
+            // Never shorter than its content: `overflow: hidden` waives a flex item's automatic
+            // minimum height, so a tall card would be squeezed by the column above and clip its
+            // fields.
             .flex_shrink_0()
             .rounded(px(4.))
             .shadow(media_shadow())
             .bg(theme.secondary)
-            // The spine is a thick left border rather than a child, so the
-            // card's rounded corners clip it for free.
+            // A thick left border rather than a child, so the rounded corners clip it for free.
             .border_l(px(SPINE_WIDTH))
             .border_color(embed.color.map_or(theme.border, |color| rgb(color).into()))
             .child(inner)
@@ -226,8 +200,6 @@ impl HomeScreen {
             .into_any_element()
     }
 
-    /// A bare image, GIF, or video preview: no card, no spine — just the media,
-    /// the way Discord renders a lone media link.
     fn render_embed_media(
         &self,
         id: MediaKey,
@@ -238,8 +210,7 @@ impl HomeScreen {
             return div().into_any_element();
         };
 
-        // Sized to the media rather than stretched across the message, so the
-        // debug copy button anchors to the image's own corner.
+        // Sized to the media so the debug copy button anchors to the image's own corner.
         let size = media_size(embed, image);
         div()
             .id(id.element_id("embed"))
@@ -254,8 +225,7 @@ impl HomeScreen {
             .into_any_element()
     }
 
-    /// The large image, scaled into the 400x300 box and clickable. Video embeds
-    /// get a play badge over it and open the source link instead of the frame.
+    /// Video embeds get a play badge and open the source link instead of the frame.
     fn render_embed_image(
         &self,
         id: MediaKey,
@@ -267,16 +237,13 @@ impl HomeScreen {
         let theme = cx.theme();
         let size = media_size(embed, image);
 
-        // The cache has to be named on the element itself: `list` renders its
-        // items during prepaint, so an ancestor `image_cache(..)` — which only
-        // pushes during layout and paint — would be missed entirely. See
-        // `attachment::render_image`.
+        // Named on the element, as in `attachment::render_image`: `list` renders during prepaint,
+        // which an ancestor `image_cache(..)` would miss.
         let mut media = img(image.url.clone())
             .image_cache(&self.image_cache)
             .rounded(px(4.))
-            // Only bare media is lifted off the background. Inside a card the
-            // card already casts the shadow, and a second one under the image
-            // would read as the picture floating above its own embed.
+            // Only bare media is lifted; inside a card a second shadow would make the image float
+            // above its own embed.
             .when(
                 matches!(embed.layout, discord::EmbedLayout::Media),
                 |this| this.shadow(media_shadow()),
@@ -286,12 +253,12 @@ impl HomeScreen {
             Some((width, height)) => media = media.w(px(width)).h(px(height)),
             None => media = media.max_h(px(MEDIA_MAX_HEIGHT)),
         }
-        // An id is what gives gpui somewhere to keep an animated image's frame
-        // index; without one a GIF draws as its first frame.
+        // An id gives gpui somewhere to keep an animated image's frame index; without one a GIF
+        // stays on frame 0.
         let media = media.id(id.element_id("embed-media"));
 
-        // A GIF served as video loops over its poster, which stays underneath
-        // until the clip has loaded — and for good, should it fail to.
+        // A GIF served as video loops over its poster, which stays underneath until the clip
+        // loads (and for good if it fails).
         let media = match (&embed.gif, size) {
             (Some(gif), Some((width, height))) => div()
                 .relative()
@@ -314,10 +281,8 @@ impl HomeScreen {
             _ => media.into_any_element(),
         };
 
-        // Clicking opens the source page for a video and the image viewer
-        // otherwise, so a YouTube preview lands on YouTube rather than on a
-        // still frame. A looping GIF opens nothing, as in Discord: its poster
-        // is all the viewer could show.
+        // Video opens the source page, so a YouTube preview lands on YouTube; anything else opens
+        // the image viewer. A looping GIF opens nothing, as in Discord.
         let video_url = embed.url.clone().filter(|_| embed.has_video);
         let viewed = (!embed.has_video && embed.gif.is_none()).then(|| ViewerImage::from(image));
 
@@ -343,8 +308,7 @@ impl HomeScreen {
             .child(media)
             .when(embed.has_video, |this| {
                 this.child(
-                    // Centred over the frame without knowing its size: a full
-                    // overlay that centres its own child.
+                    // Centred without knowing its size: a full overlay that centres its child.
                     div()
                         .absolute()
                         .inset_0()
@@ -370,11 +334,9 @@ impl HomeScreen {
             })
     }
 
-    /// The field grid. Discord lays fields over twelve columns: a run of `inline`
-    /// fields packs up to three to a row, and anything not inline takes a row of its
-    /// own. A row of two splits in half; rows of one or three give each field a
-    /// third of the width, so a leftover inline field stays narrow rather than
-    /// stretching across the card.
+    /// Discord lays fields over twelve columns: inline runs pack up to three per row, other
+    /// fields take a row. Two split in half; one or three get a third each, so a leftover
+    /// inline field stays narrow.
     fn render_fields(
         &self,
         id: MediaKey,
@@ -400,12 +362,11 @@ impl HomeScreen {
             .min_w_0()
             .gap(px(ROW_GAP))
             .children(rows.into_iter().map(|row| {
-                // A row holding one full-width field is emitted as a plain block
-                // rather than a flex row. `flex_1` would give it a percentage
-                // flex-basis, and a percentage that resolves differently while the
-                // row is being measured than when it is painted makes the text wrap
-                // to a different number of lines in each pass — so the card ends up
-                // shorter than the text it paints.
+                // A one-field row is a plain block, not a flex row: `flex_1`'s percentage basis
+                // resolves
+                // differently when measured than painted, wrapping to different line counts and
+                // leaving
+                // the card too short.
                 if !row[0].1.inline {
                     let (index, field) = row[0];
                     return div()
@@ -430,7 +391,6 @@ impl HomeScreen {
             }))
     }
 
-    /// One field: its bold name over its value.
     fn render_field(
         &self,
         id: MediaKey,
@@ -439,8 +399,7 @@ impl HomeScreen {
         mentions: &[discord::MentionedUser],
         cx: &Context<Self>,
     ) -> impl IntoElement {
-        // Both halves need ids unique across the message list, and the field index
-        // is the only thing distinguishing them within an embed.
+        // Ids must be unique across the message list; the field index distinguishes the halves.
         let scope =
             |part: &str| format!("embed-field-{part}-{}-{}-{index}", id.message_id, id.index);
         let part = |piece| TextPart::Embed {
@@ -477,9 +436,7 @@ impl HomeScreen {
             )
     }
 
-    /// The debug-only button that copies the embed's raw JSON, revealed while
-    /// the embed is hovered. Release builds don't carry the JSON, so there is
-    /// nothing to render.
+    /// Debug-only; release builds don't carry the raw JSON.
     #[cfg(debug_assertions)]
     fn render_embed_debug_copy(
         &self,
@@ -518,9 +475,8 @@ impl HomeScreen {
     }
 }
 
-/// The box an embed's large media is drawn in. A GIF's poster is the clip's
-/// first frame, so the clip's own dimensions stand in when the poster's are
-/// missing.
+/// A GIF's poster is the clip's first frame, so the clip's dimensions stand in when the
+/// poster's are missing.
 fn media_size(embed: &discord::Embed, image: &discord::EmbedMedia) -> Option<(f32, f32)> {
     let (width, height) = match (&embed.gif, image.width.zip(image.height)) {
         (Some(gif), None) => (gif.width, gif.height),
@@ -529,9 +485,7 @@ fn media_size(embed: &discord::Embed, image: &discord::EmbedMedia) -> Option<(f3
     fit_within(width, height, MEDIA_MAX_WIDTH, MEDIA_MAX_HEIGHT)
 }
 
-/// The author row: a small round icon and the name. Unlike the title, an author
-/// link keeps the body text colour and only underlines on hover, the way
-/// Discord draws it.
+/// Unlike the title, an author link keeps the body colour and underlines only on hover.
 fn render_author(
     id: MediaKey,
     author: &discord::EmbedAuthor,
@@ -566,8 +520,6 @@ fn render_author(
         })
 }
 
-/// The square image in the card's top-right corner, fitted into an 80x80 box
-/// with its aspect ratio preserved.
 fn render_thumbnail(
     thumbnail: &discord::EmbedMedia,
     cache: &Entity<RetainAllImageCache>,
@@ -588,8 +540,6 @@ fn render_thumbnail(
     element
 }
 
-/// The footer line: a small round icon, the footer text, and the timestamp,
-/// separated by Discord's bullet.
 fn render_footer(
     footer: Option<&discord::EmbedFooter>,
     timestamp: Option<&str>,

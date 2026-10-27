@@ -9,12 +9,10 @@ const KEYRING_SERVICE: &str = "oxidecord";
 
 const KEYRING_USER: &str = "discord-token";
 
-/// In-process cache so the hot paths don't hit the OS credential store on
-/// every request. `None` means not loaded yet.
+/// Spares the OS credential store a hit per request. Outer `None` means not loaded yet.
 static TOKEN_CACHE: RwLock<Option<Option<String>>> = RwLock::new(None);
 
-/// One client for every request, so they share its connection pool and
-/// ratelimiter. Cleared when the token changes.
+/// Shared so requests use one connection pool and ratelimiter. Cleared when the token changes.
 static CLIENT: Mutex<Option<Arc<HttpClient>>> = Mutex::new(None);
 
 fn keyring_entry() -> keyring::Result<keyring::Entry> {
@@ -52,9 +50,8 @@ pub fn save_token(token: &str) -> keyring::Result<()> {
     Ok(())
 }
 
-/// Forgets `expired` after Discord rejected it or the user logged out, so the
-/// next launch goes straight to login. Only if it's still the stored token: a request sent with
-/// an old token can come back after the user has already logged in again.
+/// Forgets `expired` so the next launch goes straight to login. Only if it's still the
+/// stored token: a request sent with an old token can fail after the user logged in again.
 pub(super) fn forget_token(expired: &str) {
     if load_token().as_deref() != Some(expired) {
         return;
@@ -71,8 +68,7 @@ pub(super) fn forget_token(expired: &str) {
     }
 }
 
-/// The shared client for the stored token. Must be called on the Tokio
-/// runtime, since building the client spawns its ratelimiter there.
+/// Must be called on the Tokio runtime: building the client spawns its ratelimiter there.
 pub(super) fn client() -> anyhow::Result<Arc<HttpClient>> {
     let mut client = CLIENT
         .lock()

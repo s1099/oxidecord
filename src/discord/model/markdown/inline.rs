@@ -1,10 +1,8 @@
-//! Inline rules: emphasis and the other delimiters, code spans, links,
-//! mentions, custom emoji and timestamps.
+//! Inline rules: delimiters, code spans, links, mentions, emoji, timestamps.
 //!
-//! Discord's parser tries its rules at each position in a fixed order, and
-//! where several delimiter rules match at once (`*` against `**`, `_` against
-//! `__`) the longest match wins. The delimiter matchers mirror its regexes by
-//! hand, since the `regex` crate has no lookaround.
+//! Discord tries rules in a fixed order at each position; where delimiter rules
+//! overlap (`*`/`**`, `_`/`__`) the longest match wins. The matchers mirror its
+//! regexes by hand since the `regex` crate has no lookaround.
 
 use std::sync::LazyLock;
 
@@ -25,8 +23,8 @@ static GUILD_NAVIGATION: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^<id:(customize|browse|guide|linked-roles)>").unwrap());
 static AUTOLINK: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^<(https?://[^\s>]+)>").unwrap());
 
-/// Parses inline markup. Without `links`, URLs stay plain text — the rule
-/// inside a masked link's label, and in embed titles and field names.
+/// Without `links`, URLs stay plain text, as in a masked link's label and in
+/// embed titles and field names.
 pub(super) fn parse(source: &str, links: bool) -> Vec<Inline> {
     let mut parser = Parser {
         source,
@@ -42,11 +40,9 @@ struct Parser<'a> {
     source: &'a str,
     links: bool,
     out: Vec<Inline>,
-    /// Plain text gathered since the last node.
     text: String,
 }
 
-/// Which delimiter rule matched.
 #[derive(Clone, Copy)]
 enum Delimited {
     Italic,
@@ -99,7 +95,6 @@ impl Parser<'_> {
         self.out.push(node);
     }
 
-    /// `\` before punctuation shows the punctuation as itself.
     fn escape(&mut self, rest: &str) -> Option<usize> {
         let next = rest[1..].chars().next()?;
         if next.is_alphanumeric() || next.is_whitespace() {
@@ -109,8 +104,7 @@ impl Parser<'_> {
         Some(1 + next.len_utf8())
     }
 
-    /// A code span: a run of backticks, then anything up to a run of the same
-    /// length. Nothing inside is parsed.
+    /// Closes on a backtick run of the same length; nothing inside is parsed.
     fn code(&mut self, rest: &str) -> Option<usize> {
         let ticks = rest.bytes().take_while(|&b| b == b'`').count();
         let mut search = ticks;
@@ -126,8 +120,7 @@ impl Parser<'_> {
             search = start + run;
         };
         let Some(close) = result else {
-            // An unmatched run is plain text, all of it, so the next backtick
-            // doesn't start a span of its own.
+            // Consume the whole run so the next backtick doesn't open a span.
             self.text.push_str(&rest[..ticks]);
             return Some(ticks);
         };
@@ -140,8 +133,6 @@ impl Parser<'_> {
         Some(close + ticks)
     }
 
-    /// The `<...>` tokens: mentions, emoji, timestamps, slash commands, guild
-    /// links and embed-suppressed URLs.
     fn angle(&mut self, rest: &str) -> Option<usize> {
         if let Some(caps) = USER_MENTION.captures(rest) {
             let id = Id::new_checked(caps[1].parse().ok()?)?;
@@ -219,10 +210,9 @@ impl Parser<'_> {
         Some(len)
     }
 
-    /// `[label](https://url)`, optionally with the URL in angle brackets and a
-    /// quoted title after it, which is ignored.
+    /// `[label](https://url)`, the URL optionally in angle brackets, followed by
+    /// an ignored quoted title.
     fn masked_link(&mut self, rest: &str) -> Option<usize> {
-        // The label runs to the matching bracket; brackets can nest in it.
         let mut depth = 0;
         let mut label_end = None;
         let mut chars = rest.char_indices();
@@ -259,8 +249,7 @@ impl Parser<'_> {
         if !url_text.starts_with("http://") && !url_text.starts_with("https://") {
             return None;
         }
-        // The URL runs to whitespace or the closing paren, keeping any
-        // parens that balance inside it (Wikipedia's, say).
+        // Parens that balance inside the URL stay (Wikipedia's, say).
         let mut parens = 0;
         let mut url_len = url_text.len();
         for (i, c) in url_text.char_indices() {
@@ -305,9 +294,8 @@ impl Parser<'_> {
         Some(label_end + 2 + pos + 1)
     }
 
-    /// A bare `http(s)://` URL. Trailing punctuation that more likely closes
-    /// the sentence is left out, and so is a closing paren with no opening
-    /// one in the URL.
+    /// Trailing punctuation that more likely ends the sentence is left out, as
+    /// is an unbalanced closing paren.
     fn url(&mut self, rest: &str) -> Option<usize> {
         if !rest.starts_with("http://") && !rest.starts_with("https://") {
             return None;
@@ -329,7 +317,6 @@ impl Parser<'_> {
             }
             url = &url[..url.len() - last.len_utf8()];
         }
-        // `http://` alone isn't a link.
         if url.len() <= "https://".len() {
             return None;
         }
@@ -340,9 +327,8 @@ impl Parser<'_> {
         Some(url.len())
     }
 
-    /// The delimiter rules. At `*` both italic and bold may match, and at `_`
-    /// both italic and underline; the longer match wins, and a tie goes to
-    /// italic, which is how `***both***` becomes italic around bold.
+    /// The longer match wins and a tie goes to italic, which is how `***both***`
+    /// becomes italic around bold.
     fn delimited(&mut self, source: &str, pos: usize) -> Option<usize> {
         let rest = &source[pos..];
         let candidates: [Option<(Delimited, usize, usize)>; 2] = match rest.as_bytes()[0] {
@@ -387,9 +373,8 @@ impl Parser<'_> {
     }
 }
 
-/// Matches `text` wrapped in `delimiter` at the start of `rest`: the shortest
-/// non-empty run to the next unescaped closing delimiter, which mustn't be
-/// followed by `forbid_after`. Returns the inner length and the whole length.
+/// The shortest non-empty run to the next unescaped closing delimiter, which
+/// mustn't be followed by `forbid_after`. Returns inner and whole lengths.
 fn wrapped(rest: &str, delimiter: &str, forbid_after: Option<char>) -> Option<(usize, usize)> {
     let open = delimiter.len();
     let body = rest.strip_prefix(delimiter)?;
@@ -430,8 +415,7 @@ fn italic_star(rest: &str) -> Option<(usize, usize)> {
         } else if c == '\\' {
             i += 1 + rest[1..].chars().next()?.len_utf8();
         } else if c.is_whitespace() {
-            // Whitespace only counts when something other than the closing
-            // `*` follows it.
+            // Whitespace only counts if something other than the closing `*` follows.
             let spaces = rest.len() - rest.trim_start().len();
             let after = &rest[spaces..];
             let next = after.chars().next()?;

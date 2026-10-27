@@ -1,12 +1,11 @@
 //! Going live: sharing the screen into the call.
 //!
 //! Like joining a call, starting a stream is a gateway command answered by
-//! dispatches — `STREAM_CREATE` names the stream's server and
-//! `STREAM_SERVER_UPDATE` says where it is, in either order — and the
-//! connection can only open once both have landed. The source is picked
-//! before any of that, because the moment the stream is created everyone in
-//! the call sees the user as live; a picker left open or cancelled shouldn't
-//! show as a stream that never starts.
+//! dispatches: `STREAM_CREATE` names the server and `STREAM_SERVER_UPDATE` says
+//! where it is, in either order, and the connection opens only once both land.
+//! The source is picked first because creating the stream shows the user as live
+//! to everyone in the call; a picker left open or cancelled shouldn't show a
+//! stream that never starts.
 
 use gpui_kit::*;
 
@@ -26,8 +25,6 @@ const STREAM_SETTINGS: CaptureSettings = CaptureSettings {
 };
 
 impl HomeScreen {
-    /// Whether the share button does anything right now: the call is up,
-    /// and the machine can capture its screen.
     pub(in crate::screens::home) fn can_share_screen(&self) -> bool {
         self.voice
             .as_ref()
@@ -35,7 +32,6 @@ impl HomeScreen {
             && capture::is_supported()
     }
 
-    /// Opens the picker, or stops the stream if one is up.
     pub(in crate::screens::home) fn toggle_screen_share(
         &mut self,
         window: &mut Window,
@@ -62,8 +58,6 @@ impl HomeScreen {
         .detach();
     }
 
-    /// Announces the stream on the gateway, holding the source until the
-    /// stream's server is known.
     fn start_screen_share(&mut self, source: CaptureSource, cx: &mut Context<Self>) {
         // The call may have ended, or a stream started, while the picker was
         // open.
@@ -94,8 +88,6 @@ impl HomeScreen {
         cx.notify();
     }
 
-    /// Ends the stream: tells the gateway, and drops the connection, which
-    /// stops the capture.
     pub(in crate::screens::home) fn stop_screen_share(&mut self, cx: &mut Context<Self>) {
         if let Some(share) = self.screen_share.take()
             && let Some(gateway) = &self.gateway
@@ -143,9 +135,8 @@ impl HomeScreen {
         self.try_start_stream(cx);
     }
 
-    /// The server ended the stream — the call ended under it, or a
-    /// moderator stopped it — or refused to let the user watch it. There's
-    /// nothing left to tell the gateway.
+    /// The server ended the stream (call ended, moderator) or refused the user's
+    /// watch; nothing is left to tell the gateway.
     pub(in crate::screens::home) fn handle_stream_delete(
         &mut self,
         stream_key: String,
@@ -190,16 +181,13 @@ impl HomeScreen {
         }
     }
 
-    /// The user's stream, if `stream_key` names it. Dispatches arrive for
-    /// everyone's streams in the call, not only the user's own.
+    /// Dispatches arrive for everyone's streams in the call, not only the user's.
     fn own_stream(&mut self, stream_key: &str) -> Option<&mut ScreenShare> {
         self.screen_share
             .as_mut()
             .filter(|share| share.stream_key == stream_key)
     }
 
-    /// Opens the stream connection once the gateway has delivered every part
-    /// of it.
     fn try_start_stream(&mut self, cx: &mut Context<Self>) {
         let session_id = self.voice.as_ref().and_then(|call| call.session_id.clone());
         let (Some(share), Some(session_id), Some(user_id), Some(events)) = (
@@ -249,7 +237,6 @@ impl HomeScreen {
         cx.notify();
     }
 
-    /// Shows why a stream couldn't start or stopped, on the call's panel.
     fn report_stream_error(&mut self, error: String, cx: &mut Context<Self>) {
         eprintln!("screen share: {error}");
         if let Some(call) = &mut self.voice {

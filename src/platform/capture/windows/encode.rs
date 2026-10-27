@@ -1,5 +1,4 @@
-//! Media Foundation's H.264 encoder: finding one that will take the stream,
-//! configuring it, and driving it a frame at a time.
+//! Media Foundation's H.264 encoder: finding, configuring and driving one.
 
 use std::mem::ManuallyDrop;
 use std::time::{Duration, Instant};
@@ -19,18 +18,14 @@ use crate::platform::capture::{CaptureSettings, EncodedFrame, nal_units};
 /// Media Foundation counts in 100ns units.
 const HNS_PER_SEC: u64 = 10_000_000;
 
-/// Hardware encoders are asynchronous: they announce when they want input and
-/// when they have output as events, and refuse input they didn't ask for.
-/// The software encoder is synchronous. Both are driven through the same
-/// [`Encoder::encode`], which feeds one frame and hands back whatever output
-/// is ready.
+/// Hardware encoders are asynchronous: they announce wanted input and ready
+/// output as events and refuse input they didn't ask for. The software encoder
+/// is synchronous. [`Encoder::encode`] drives both.
 pub(super) struct Encoder {
     transform: IMFTransform,
-    /// The event queue of an asynchronous encoder; `None` for a synchronous
-    /// one.
+    /// `None` for a synchronous encoder.
     events: Option<IMFMediaEventGenerator>,
     codec: Option<ICodecAPI>,
-    /// How many inputs the encoder has asked for and not yet been given.
     wanted: u32,
     /// Readback for the software encoder, which can't take GPU textures.
     staging: Option<ID3D11Texture2D>,
@@ -46,7 +41,6 @@ pub(super) struct Encoder {
 
 #[derive(Clone, Copy)]
 struct OutputInfo {
-    /// The encoder allocates its own output samples.
     provides_samples: bool,
     buffer_size: u32,
 }
@@ -66,10 +60,9 @@ impl Encoder {
         unsafe { manager.ResetDevice(device, reset_token) }
             .context("Couldn't share the GPU with the encoder")?;
 
-        // A machine can list several hardware encoders — one per GPU — and
-        // only the one on the GPU the device was made on will accept it.
-        // Asking for that GPU's alone spares the others a failed start, which
-        // some drivers (NVIDIA's) report loudly.
+        // Only the encoder on the device's own GPU will accept it; asking for
+        // that one alone spares the others a failed start, which some drivers
+        // (NVIDIA's) report loudly.
         let adapter = adapter_luid(device);
         for activate in encoders(
             MFT_ENUM_FLAG_HARDWARE | MFT_ENUM_FLAG_SORTANDFILTER,
@@ -106,8 +99,7 @@ impl Encoder {
         let transform: IMFTransform = unsafe { activate.ActivateObject() }?;
         let attributes = unsafe { transform.GetAttributes() }?;
         unsafe {
-            // An asynchronous encoder stays locked until the caller says it
-            // knows how to drive one.
+            // An asynchronous encoder stays locked until told the caller can drive one.
             attributes.SetUINT32(&MF_TRANSFORM_ASYNC_UNLOCK, 1)?;
             let _ = attributes.SetUINT32(&MF_LOW_LATENCY, 1);
             transform.ProcessMessage(MFT_MESSAGE_SET_D3D_MANAGER, manager.as_raw() as usize)?;
@@ -187,8 +179,7 @@ impl Encoder {
         }
     }
 
-    /// Feeds one frame and returns whatever the encoder has finished by
-    /// `deadline`, when the next frame is due.
+    /// Returns whatever the encoder has finished by `deadline`, when the next frame is due.
     pub(super) fn encode(
         &mut self,
         frame: &ID3D11Texture2D,
@@ -210,8 +201,7 @@ impl Encoder {
             return Ok(out);
         };
 
-        // Input it didn't ask for is refused, so wait until it does — which
-        // is never long, since it asks again as soon as it has room.
+        // Unrequested input is refused, so wait for the request.
         while self.wanted == 0 {
             let event = unsafe { events.GetEvent(MEDIA_EVENT_GENERATOR_GET_EVENT_FLAGS(0)) }
                 .context("Encoding failed")?;
@@ -220,10 +210,9 @@ impl Encoder {
         unsafe { self.transform.ProcessInput(0, &sample, 0) }.context("Encoding failed")?;
         self.wanted -= 1;
 
-        // Give the encoder until the next frame is due to finish this one, so
-        // it goes out now rather than a tick later with the next. An encoder
-        // that pipelines may not finish it at all until it has more input;
-        // waiting stops at the deadline either way, so pacing doesn't slip.
+        // Wait until the deadline so this frame goes out now, not a tick late. A
+        // pipelining encoder may not finish it before more input; the deadline
+        // keeps pacing from slipping.
         let before = out.len();
         loop {
             match unsafe { events.GetEvent(MF_EVENT_FLAG_NO_WAIT) } {
@@ -250,7 +239,6 @@ impl Encoder {
         Ok(())
     }
 
-    /// Wraps a converted frame in a sample the encoder will take.
     fn sample(&self, frame: &ID3D11Texture2D, taken: Duration) -> Result<IMFSample, String> {
         let buffer = match &self.staging {
             None => {
@@ -279,7 +267,6 @@ impl Encoder {
         .context("Couldn't hand a frame to the encoder")
     }
 
-    /// Copies an NV12 texture into system memory, tightly packed.
     fn read_back(
         &self,
         frame: &ID3D11Texture2D,
@@ -302,8 +289,7 @@ impl Encoder {
             unsafe { buffer.Lock(&mut data, None, None) }?;
             let pitch = mapped.RowPitch as usize;
             let source = mapped.pData as *const u8;
-            // The chroma plane starts right after the luma plane's rows,
-            // which are `pitch` apart rather than `width`.
+            // Chroma follows the luma rows, which are `pitch` apart, not `width`.
             for row in 0..height + height / 2 {
                 unsafe {
                     std::ptr::copy_nonoverlapping(
@@ -324,8 +310,7 @@ impl Encoder {
         result.context("Couldn't read a frame back for the encoder")
     }
 
-    /// Pulls one finished frame out of the encoder. Returns whether there may
-    /// be more.
+    /// Returns whether there may be more output.
     fn take_output(&mut self, out: &mut Vec<EncodedFrame>) -> Result<bool, String> {
         let provided = if self.output.provides_samples {
             None
@@ -351,7 +336,7 @@ impl Encoder {
         match result {
             Ok(()) => {}
             Err(err) if err.code() == MF_E_TRANSFORM_NEED_MORE_INPUT => return Ok(false),
-            // The encoder settled on its output format; take what it offers.
+            // The encoder settled on its output format; accept it.
             Err(err) if err.code() == MF_E_TRANSFORM_STREAM_CHANGE => {
                 (|| unsafe {
                     let offered = self.transform.GetOutputAvailableType(0, 0)?;
@@ -395,9 +380,8 @@ impl Encoder {
         Ok(true)
     }
 
-    /// Makes sure a keyframe carries its SPS and PPS. Some encoders put them
-    /// only on the first one, and a viewer who joins later needs them on
-    /// whichever keyframe they start from.
+    /// Some encoders put SPS/PPS only on the first keyframe, but a late joiner
+    /// needs them on whichever one they start from.
     fn with_parameter_sets(&mut self, frame: Vec<u8>) -> Vec<u8> {
         if nal_units(&frame)
             .iter()
@@ -429,9 +413,8 @@ impl Drop for Encoder {
     }
 }
 
-/// Sets up an encoder for the stream: low latency, constant bitrate, no
-/// B-frames, then the output and input formats, in that order — encoders
-/// insist on the output first.
+/// Low latency, CBR, no B-frames, then output and input types; encoders insist
+/// on the output type first.
 fn configure(
     transform: &IMFTransform,
     codec: Option<&ICodecAPI>,
@@ -439,8 +422,7 @@ fn configure(
     settings: &CaptureSettings,
 ) -> windows::core::Result<()> {
     if let Some(codec) = codec {
-        // Each is a preference: an encoder that doesn't support one still
-        // produces a stream viewers can watch.
+        // Each is a preference; an encoder lacking one still streams fine.
         unsafe {
             let _ = codec.SetValue(&CODECAPI_AVLowLatencyMode, &VARIANT::from(true));
             let _ = codec.SetValue(
@@ -451,11 +433,9 @@ fn configure(
                 &CODECAPI_AVEncCommonMeanBitRate,
                 &VARIANT::from(settings.bitrate),
             );
-            // B-frames are decoded out of order, which a viewer pays for in
-            // latency; a live stream has no use for them.
+            // B-frames cost viewers latency.
             let _ = codec.SetValue(&CODECAPI_AVEncMPVDefaultBPictureCount, &VARIANT::from(0u32));
-            // Keyframes are mostly sent on request, when a viewer joins or
-            // loses one. This is the backstop for a request that's lost.
+            // Keyframes mostly come on request; this backstops a lost request.
             let _ = codec.SetValue(&CODECAPI_AVEncMPVGOPSize, &VARIANT::from(settings.fps * 4));
         }
     }
@@ -470,8 +450,8 @@ fn configure(
         output.SetUINT64(&MF_MT_PIXEL_ASPECT_RATIO, pack(1, 1))?;
         output.SetUINT32(&MF_MT_INTERLACE_MODE, MFVideoInterlace_Progressive.0 as u32)?;
     }
-    // Constrained baseline is what every WebRTC decoder is guaranteed to
-    // handle; not every encoder offers it, so step up until one is accepted.
+    // Constrained baseline is what every WebRTC decoder handles; not every
+    // encoder offers it, so step up until one is accepted.
     let mut accepted = Err(windows::core::Error::from(MF_E_INVALIDMEDIATYPE));
     for profile in [
         eAVEncH264VProfile_ConstrainedBase,
@@ -504,8 +484,7 @@ fn output_info(transform: &IMFTransform, size: (u32, u32)) -> windows::core::Res
         (MFT_OUTPUT_STREAM_PROVIDES_SAMPLES.0 | MFT_OUTPUT_STREAM_CAN_PROVIDE_SAMPLES.0) as u32;
     Ok(OutputInfo {
         provides_samples: info.dwFlags & provides != 0,
-        // Some encoders don't say; an uncompressed frame is a bound no
-        // compressed one exceeds.
+        // Some encoders don't say; an uncompressed frame bounds a compressed one.
         buffer_size: if info.cbSize > 0 {
             info.cbSize
         } else {
@@ -514,7 +493,6 @@ fn output_info(transform: &IMFTransform, size: (u32, u32)) -> windows::core::Res
     })
 }
 
-/// The encoder's SPS and PPS, as Annex B.
 fn sequence_header(transform: &IMFTransform) -> Option<Vec<u8>> {
     unsafe {
         let current = transform.GetOutputCurrentType(0).ok()?;
@@ -527,7 +505,6 @@ fn sequence_header(transform: &IMFTransform) -> Option<Vec<u8>> {
     }
 }
 
-/// The GPU a device was made on, to find the encoder that lives there.
 fn adapter_luid(device: &ID3D11Device) -> Option<LUID> {
     let dxgi: IDXGIDevice = device.cast().ok()?;
     let adapter: IDXGIAdapter = unsafe { dxgi.GetAdapter() }.ok()?;
@@ -573,8 +550,8 @@ pub(super) fn encoders(flags: MFT_ENUM_FLAG, adapter: Option<LUID>) -> Vec<IMFAc
     if found.is_err() || list.is_null() {
         return Vec::new();
     }
-    // The array is ours to free, and each entry ours to release; taking them
-    // out leaves the array empty for the free.
+    // The array and each entry are ours to free; taking the entries leaves the array empty for the
+    // free.
     let activates = unsafe { std::slice::from_raw_parts_mut(list, count as usize) }
         .iter_mut()
         .filter_map(Option::take)

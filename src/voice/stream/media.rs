@@ -1,12 +1,10 @@
-//! The stream's UDP side. For the streamer: H.264 frames out as encrypted
-//! RTP, viewer feedback in as RTCP. For a viewer: the reverse.
+//! The stream's UDP side: H.264 out as encrypted RTP and RTCP feedback in for
+//! the streamer, the reverse for a viewer.
 //!
-//! Packets are laid out the way Discord's `_rtpsize` modes want them: the
-//! RTP header stays in the clear as associated data, and the payload is
-//! encrypted, with the tag and a four-byte nonce counter appended. A header
-//! extension's four-byte preamble is part of the clear header, but its
-//! elements are encrypted with the payload. RTCP is the same with its first
-//! eight bytes in the clear.
+//! Discord's `_rtpsize` modes: the RTP header is clear associated data, the
+//! payload is encrypted, then the tag and a 4-byte nonce counter are appended.
+//! A header extension's 4-byte preamble is clear but its elements are
+//! encrypted. RTCP is the same with its first 8 bytes clear.
 
 use std::net::{IpAddr, SocketAddr};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -21,23 +19,20 @@ use crate::platform::capture::nal_units;
 pub(super) const AES_MODE: &str = "aead_aes256_gcm_rtpsize";
 pub(super) const XCHACHA_MODE: &str = "aead_xchacha20_poly1305_rtpsize";
 
-/// Payload types, as offered in `SELECT_PROTOCOL`.
+/// As offered in `SELECT_PROTOCOL`.
 pub(super) const OPUS_PAYLOAD: u8 = 120;
 pub(super) const H264_PAYLOAD: u8 = 101;
 pub(super) const RTX_PAYLOAD: u8 = 102;
 
-/// The largest piece of a frame put in one packet. Small enough that the
-/// packet, headers and all, clears any path's MTU without fragmenting.
+/// Keeps the whole packet under any path's MTU.
 const MAX_PAYLOAD: usize = 1200;
 
-/// Sent packets kept for retransmission. A second of a busy stream, which is
-/// longer than any viewer's loss report takes to arrive.
+/// About a second of a busy stream, longer than a loss report takes to arrive.
 const HISTORY: usize = 1024;
 
 /// Seconds between the NTP epoch (1900) and the Unix one.
 const NTP_OFFSET: u64 = 2_208_988_800;
 
-/// The SSRCs the voice server assigned in `READY`.
 #[derive(Clone, Copy)]
 pub(super) struct Ssrcs {
     pub audio: u32,
@@ -45,12 +40,9 @@ pub(super) struct Ssrcs {
     pub rtx: u32,
 }
 
-/// What viewers asked of the sender.
 #[derive(Default)]
 pub(super) struct Feedback {
-    /// Someone can't decode the stream until the next keyframe.
     pub keyframe: bool,
-    /// Packets someone lost, by sequence number.
     pub lost: Vec<u16>,
 }
 
@@ -72,9 +64,8 @@ impl Cipher {
         }
     }
 
-    /// Encrypts `body` in place, appending the tag. The counter goes in the
-    /// nonce's first four bytes and the rest stay zero, which is the scheme
-    /// the four bytes on the end of each packet describe.
+    /// The counter fills the nonce's first 4 bytes, the rest stay zero; that is
+    /// what the 4 trailing bytes of each packet carry.
     fn seal(&self, counter: u32, aad: &[u8], body: &mut Vec<u8>) -> Result<(), ()> {
         match self {
             Self::Aes(cipher) => {
@@ -90,7 +81,6 @@ impl Cipher {
         }
     }
 
-    /// Decrypts `body` (ciphertext and tag) in place.
     fn open(&self, counter: [u8; 4], aad: &[u8], body: &mut Vec<u8>) -> Result<(), ()> {
         match self {
             Self::Aes(cipher) => {
@@ -107,8 +97,6 @@ impl Cipher {
     }
 }
 
-/// A received RTP packet, decrypted, with its header extension and padding
-/// taken off.
 pub(super) struct RtpPacket {
     pub payload_type: u8,
     pub marker: bool,
@@ -118,7 +106,7 @@ pub(super) struct RtpPacket {
     pub payload: Vec<u8>,
 }
 
-/// A packet as it went out, before encryption, for resending on request.
+/// Pre-encryption, for resending.
 struct Sent {
     sequence: u16,
     timestamp: u32,
@@ -134,12 +122,10 @@ pub(super) struct Media {
 
     sequence: u16,
     rtx_sequence: u16,
-    /// Where the stream's RTP clock starts. Random, as RTP asks, so a stream
-    /// can't be lined up against another by its timestamps.
+    /// Random, as RTP asks.
     timestamp_base: u32,
     last_timestamp: u32,
-    /// When the last frame went out, which a sender report pins the RTP
-    /// clock to.
+    /// What a sender report pins the RTP clock to.
     last_sent: Option<SystemTime>,
     packets: u32,
     octets: u32,
@@ -148,8 +134,7 @@ pub(super) struct Media {
 }
 
 impl Media {
-    /// Opens the socket and learns the address the voice server sees it at,
-    /// which is what `SELECT_PROTOCOL` tells it to send to.
+    /// Also learns the address the server sees us at, for `SELECT_PROTOCOL`.
     pub(super) async fn connect(
         ip: IpAddr,
         port: u16,
@@ -189,7 +174,6 @@ impl Media {
         Ok(())
     }
 
-    /// Sends one encoded frame, split across as many packets as it takes.
     pub(super) async fn send_frame(&mut self, frame: &[u8], timestamp: Duration) {
         let timestamp = self
             .timestamp_base
@@ -228,8 +212,7 @@ impl Media {
         });
     }
 
-    /// Resends lost packets on the retransmission stream (RFC 4588): the same
-    /// payload, prefixed with the sequence number it originally had.
+    /// RFC 4588: same payload prefixed with its original sequence number.
     pub(super) async fn retransmit(&mut self, lost: &[u16]) {
         for &sequence in lost {
             let Some(sent) = &self.history[usize::from(sequence) % HISTORY] else {
@@ -260,9 +243,8 @@ impl Media {
         }
     }
 
-    /// Builds and encrypts one RTP packet. There's no header extension:
-    /// Discord's server silently drops video carrying one (tried: WebRTC's
-    /// playout delay), presumably since none was negotiated.
+    /// No header extension: Discord's server silently drops video carrying one
+    /// (tried WebRTC's playout delay), presumably since none was negotiated.
     fn rtp(
         &mut self,
         payload_type: u8,
@@ -282,7 +264,6 @@ impl Media {
         self.seal(&header, payload.to_vec())
     }
 
-    /// Encrypts `body` behind the clear `header` and appends the nonce.
     fn seal(&mut self, header: &[u8], mut body: Vec<u8>) -> Option<Vec<u8>> {
         let cipher = self.cipher.as_ref()?;
         let counter = self.nonce;
@@ -296,8 +277,7 @@ impl Media {
         Some(packet)
     }
 
-    /// Sends an RTCP sender report for the video stream, which is what lets a
-    /// viewer map its RTP timestamps onto wall-clock time.
+    /// Lets a viewer map RTP timestamps to wall-clock time.
     pub(super) async fn send_report(&mut self) {
         let Some(sent_at) = self.last_sent else {
             return;
@@ -325,8 +305,7 @@ impl Media {
         }
     }
 
-    /// Asks the sender of `media_ssrc` for a keyframe (a picture loss
-    /// indication), for a viewer with nothing it can decode from.
+    /// Picture loss indication, for a viewer with nothing decodable.
     pub(super) async fn send_picture_loss(&mut self, media_ssrc: u32) {
         let mut header = [0u8; 8];
         // Version 2, format 1 (PLI); type 206; two words after this one.
@@ -339,8 +318,7 @@ impl Media {
         }
     }
 
-    /// Asks the sender of `media_ssrc` to resend `lost` (a generic NACK),
-    /// which it does on its retransmission stream.
+    /// Generic NACK; the sender answers on its retransmission stream.
     pub(super) async fn send_nack(&mut self, media_ssrc: u32, lost: &[u16]) {
         let entries = nack_entries(lost);
         if entries.is_empty() {
@@ -364,8 +342,7 @@ impl Media {
         }
     }
 
-    /// An empty receiver report. A viewer otherwise sends almost nothing, and
-    /// this keeps the path to it open through NATs that forget a quiet one.
+    /// Empty; keeps the NAT mapping open since a viewer otherwise sends almost nothing.
     pub(super) async fn send_receiver_report(&mut self) {
         let mut header = [0u8; 8];
         // Version 2, no report blocks; type 201; one word after this one.
@@ -378,8 +355,7 @@ impl Media {
         }
     }
 
-    /// Decrypts a received RTP packet. `None` for RTCP, for anything that
-    /// fails to decrypt, and for anything too malformed to be RTP.
+    /// `None` for RTCP, failed decryption, or malformed packets.
     pub(super) fn open_rtp(&self, packet: &[u8]) -> Option<RtpPacket> {
         let cipher = self.cipher.as_ref()?;
         if packet.len() < 12 || packet[0] >> 6 != 2 || (200..=206).contains(&packet[1]) {
@@ -394,7 +370,6 @@ impl Media {
             extension = usize::from(u16::from_be_bytes([preamble[2], preamble[3]])) * 4;
             clear += 4;
         }
-        // The tag, at least, has to follow the header, and the counter it.
         if packet.len() < clear + 16 + 4 {
             return None;
         }
@@ -424,15 +399,13 @@ impl Media {
         self.socket.recv(buffer).await
     }
 
-    /// Reads what a received packet asks of the sender. Anything that isn't
-    /// RTCP feedback for the video stream is ignored — nobody sends media to
-    /// the streamer.
+    /// Anything but RTCP feedback for the video stream is ignored; nobody sends
+    /// media to the streamer.
     pub(super) fn feedback(&self, packet: &[u8]) -> Feedback {
         let Some(cipher) = &self.cipher else {
             return Feedback::default();
         };
-        // RTCP packet types are 200 to 206; an RTP payload type can't collide
-        // with them, marker bit or not, at the ones this connection uses.
+        // RTCP types 200-206 can't collide with this connection's RTP payload types.
         if packet.len() < 8 + 16 + 4 || !(200..=206).contains(&packet[1]) {
             return Feedback::default();
         }
@@ -451,13 +424,8 @@ impl Media {
     }
 }
 
-/// Splits one encoded frame into RTP payloads, each with whether it carries
-/// the marker bit.
-///
-/// Each NAL unit goes in a packet of its own when it fits, and is split into
-/// FU-A fragments when it doesn't (RFC 6184, packetization mode 1). The
-/// marker goes on the frame's last packet, which is how a viewer knows the
-/// frame is complete.
+/// One packet per NAL unit, or FU-A fragments if too big (RFC 6184, mode 1).
+/// The marker bit goes on the frame's last packet so viewers know it's complete.
 fn packetize(frame: &[u8]) -> Vec<(Vec<u8>, bool)> {
     let units = nal_units(frame);
     let count = units.len();
@@ -470,7 +438,7 @@ fn packetize(frame: &[u8]) -> Vec<(Vec<u8>, bool)> {
         }
 
         let header = unit[0];
-        // FU indicator: the unit's F and NRI bits, type 28.
+        // FU indicator: the unit's F and NRI bits, type 28 (FU-A).
         let indicator = (header & 0xE0) | 28;
         let kind = header & 0x1F;
         let chunks: Vec<&[u8]> = unit[1..].chunks(MAX_PAYLOAD - 2).collect();
@@ -489,11 +457,10 @@ fn packetize(frame: &[u8]) -> Vec<(Vec<u8>, bool)> {
     packets
 }
 
-/// Packs lost sequence numbers into NACK entries: a packet id, and a bitmask
-/// of which of the sixteen after it were lost too.
+/// Entries are a packet id plus a bitmask of the 16 after it.
 fn nack_entries(lost: &[u16]) -> Vec<(u16, u16)> {
     let mut lost = lost.to_vec();
-    // Sorted from the oldest, allowing for the count wrapping past zero.
+    // Oldest first, allowing for wraparound.
     if let Some(&first) = lost.first() {
         lost.sort_by_key(|&id| id.wrapping_sub(first) as i16);
     }
@@ -513,7 +480,6 @@ fn nack_entries(lost: &[u16]) -> Vec<(u16, u16)> {
     entries
 }
 
-/// Reads feedback out of a decrypted compound RTCP packet.
 fn parse_feedback(compound: &[u8], video_ssrc: u32) -> Feedback {
     let mut feedback = Feedback::default();
     let mut offset = 0;
@@ -523,8 +489,7 @@ fn parse_feedback(compound: &[u8], video_ssrc: u32) -> Feedback {
         let words = u16::from_be_bytes([compound[offset + 2], compound[offset + 3]]);
         let length = (usize::from(words) + 1) * 4;
         let end = (offset + length).min(compound.len());
-        // Too short to be feedback (a receiver report with nothing in it,
-        // say); every packet is at least a word, so skipping always moves on.
+        // Too short to be feedback; every packet is at least a word so this advances.
         if end < offset + 12 {
             offset += length;
             continue;
@@ -537,12 +502,10 @@ fn parse_feedback(compound: &[u8], video_ssrc: u32) -> Feedback {
         ]);
 
         match (kind, format) {
-            // Picture loss names the stream it's about; a full intra request
-            // keeps its SSRC further in and leaves this zero.
+            // Full intra request keeps its SSRC further in, leaving this zero.
             (206, 1) if media_ssrc == video_ssrc => feedback.keyframe = true,
             (206, 4) => feedback.keyframe = true,
-            // Generic NACK: a lost packet id, and a bitmask of the sixteen
-            // after it that were lost too.
+            // Generic NACK.
             (205, 1) if media_ssrc == video_ssrc => {
                 for entry in compound[offset + 12..end].chunks_exact(4) {
                     let id = u16::from_be_bytes([entry[0], entry[1]]);
@@ -562,8 +525,7 @@ fn parse_feedback(compound: &[u8], video_ssrc: u32) -> Feedback {
     feedback
 }
 
-/// Discord's IP discovery: send our SSRC, get back the address and port the
-/// server saw the packet come from.
+/// Discord's IP discovery: the reply is the address the server saw us at.
 async fn discover(socket: &UdpSocket, ssrc: u32) -> Result<SocketAddr, String> {
     let mut request = [0u8; 74];
     request[0..2].copy_from_slice(&1u16.to_be_bytes());
@@ -596,8 +558,7 @@ async fn discover(socket: &UdpSocket, ssrc: u32) -> Result<SocketAddr, String> {
     Ok(SocketAddr::new(ip, port))
 }
 
-/// Enough randomness for RTP's starting points, which only need to be
-/// unpredictable, not secret.
+/// RTP starting points only need to be unpredictable, not secret.
 fn rand_u32() -> u32 {
     use std::hash::{BuildHasher as _, RandomState};
     RandomState::new().hash_one(SystemTime::now()) as u32

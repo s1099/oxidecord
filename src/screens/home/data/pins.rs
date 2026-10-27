@@ -6,10 +6,8 @@ use crate::discord;
 use crate::screens::home::{HomeScreen, PinsPopup};
 
 impl HomeScreen {
-    /// Opens the open conversation's pins below `position`, or closes them.
-    ///
-    /// Fetched fresh on every opening rather than cached: nothing tells the
-    /// client when someone else pins or unpins.
+    /// Fetched fresh on every opening: nothing tells the client when someone else
+    /// pins or unpins.
     pub(in crate::screens::home) fn toggle_pins(
         &mut self,
         position: Point<Pixels>,

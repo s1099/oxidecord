@@ -1,8 +1,7 @@
-//! Deleting a message, taking deletions made anywhere else, and copying a link
-//! to one.
+//! Deleting a message, taking deletions made elsewhere, and copying a link to one.
 //!
-//! A deletion made here drops the row as soon as the request is sent and puts
-//! it back if it fails; the gateway's echo then finds nothing left to remove.
+//! A local deletion drops the row when the request is sent and restores it on
+//! failure; the gateway's echo then finds nothing to remove.
 
 use gpui_kit::*;
 use twilight_model::id::{
@@ -14,8 +13,7 @@ use crate::discord;
 use crate::screens::home::{HomeScreen, View};
 
 impl HomeScreen {
-    /// Whether the current user is allowed to delete `message`: their own
-    /// message anywhere, or anyone's in a channel they manage.
+    /// Own messages anywhere, anyone's in a channel they manage.
     pub(in crate::screens::home) fn can_delete_message(&self, message: &discord::Message) -> bool {
         self.is_own_message(message)
             || self
@@ -39,8 +37,8 @@ impl HomeScreen {
             return;
         };
 
-        // Drop the row now; the request usually succeeds, and waiting on it
-        // would leave the message sitting there after the click.
+        // Dropped now: waiting on the request would leave the message sitting there
+        // after the click.
         let removed = self.messages.remove(ix);
         if self
             .editing
@@ -72,8 +70,6 @@ impl HomeScreen {
         .detach();
     }
 
-    /// Takes messages deleted from the open conversation, here or anywhere
-    /// else.
     pub(in crate::screens::home) fn handle_message_delete(
         &mut self,
         channel_id: Id<ChannelMarker>,
@@ -119,8 +115,7 @@ impl HomeScreen {
         cx.notify();
     }
 
-    /// Puts a `discord.com` link to the message on the clipboard, the same URL
-    /// the official client's "Copy Message Link" produces.
+    /// The same URL as the official client's "Copy Message Link".
     pub(in crate::screens::home) fn copy_message_link(
         &self,
         message_id: Id<MessageMarker>,

@@ -9,7 +9,7 @@ use super::runtime;
 
 const USER_AGENT: &str = "oxidecord/0.1";
 
-/// The one reqwest client, so every download shares its connection pool.
+/// Shared so every download reuses one connection pool.
 pub fn client() -> &'static reqwest::Client {
     static CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
     CLIENT.get_or_init(|| {
@@ -56,8 +56,7 @@ impl HttpClient for ReqwestClient {
             let url = parts.uri.to_string();
             let method = reqwest::Method::from_bytes(parts.method.as_str().as_bytes())?;
 
-            // Convert headers via bytes so this stays correct even if gpui and
-            // reqwest happen to resolve to different `http` crate versions.
+            // Via bytes, since gpui and reqwest may resolve different `http` versions.
             let mut headers = reqwest::header::HeaderMap::new();
             for (name, value) in parts.headers.iter() {
                 if let (Ok(n), Ok(v)) = (
@@ -68,8 +67,7 @@ impl HttpClient for ReqwestClient {
                 }
             }
 
-            // reqwest must run inside the Tokio runtime; gpui's executor is not
-            // one.
+            // reqwest needs a Tokio context; gpui's executor isn't one.
             let (status, headers, bytes) = runtime::run(async move {
                 let mut response = client
                     .request(method, url)

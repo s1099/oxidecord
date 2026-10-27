@@ -6,14 +6,12 @@ use gpui_kit::*;
 
 use crate::ui::depth::{Finish, Level, Lit as _, radius};
 
-/// Roughly how tall a one-line tooltip is, for its lighting.
 const HEIGHT: f32 = 26.;
 
 pub struct Tooltip {
     text: SharedString,
 }
 
-/// A tooltip builder for `.tooltip(…)` that shows `text`.
 pub fn text(text: impl Into<SharedString>) -> impl Fn(&mut Window, &mut App) -> AnyView + 'static {
     let text = text.into();
     move |_, cx| {
@@ -26,8 +24,7 @@ impl Render for Tooltip {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = cx.theme();
 
-        // Wrapped, so the margin that keeps it clear of the cursor isn't part
-        // of the lit box.
+        // Wrapped so the cursor-clearing margin isn't part of the lit box.
         div().child(
             div()
                 .m_3()

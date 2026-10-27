@@ -16,7 +16,7 @@ use crate::ui::theme;
 use super::super::markdown::MarkdownOptions;
 use super::{header, header_actions, header_content, message_list, pane};
 
-/// About the share of the pane Discord gives a voice channel's chat.
+/// Share of the pane Discord gives a voice channel's chat.
 const VOICE_CHAT_WIDTH: f32 = 400.;
 const VOICE_CHAT_HEADER_HEIGHT: f32 = 48.;
 
@@ -32,8 +32,6 @@ impl HomeScreen {
             .min_w_0()
             .child(self.render_channel_header(&channel, cx));
 
-        // A voice channel's pane is the call itself, with its text chat
-        // beside it when that's open.
         if channel.kind.is_voice() {
             return pane
                 .child(
@@ -52,8 +50,6 @@ impl HomeScreen {
                 .into_any_element();
         }
 
-        // The member list runs from under the header to the bottom of the
-        // pane, beside the messages and the composer both.
         let conversation = v_flex()
             .flex_1()
             .h_full()
@@ -72,8 +68,6 @@ impl HomeScreen {
         .into_any_element()
     }
 
-    /// A voice channel's text chat, docked to the right of its stage: its own
-    /// small header, the messages, and the composer.
     fn render_voice_chat(&self, channel: &Channel, cx: &Context<Self>) -> impl IntoElement {
         let theme = cx.theme();
 
@@ -155,8 +149,6 @@ impl HomeScreen {
                             )),
                     )
                 })
-                // Pushes the controls to the right when there's no topic to
-                // fill the space.
                 .when(channel.topic.is_none(), |this| this.child(div().flex_1()))
                 .when(channel.kind.is_voice(), |this| {
                     let open = self.voice_chat_open;

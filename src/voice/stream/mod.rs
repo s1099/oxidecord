@@ -1,19 +1,14 @@
 //! Go Live: streaming the screen into a call.
 //!
-//! A stream is a second voice connection, separate from the call's. The main
-//! gateway is asked to create the stream, answers with a server and token of
-//! its own, and the screen goes to that server as H.264 over RTP, end-to-end
-//! encrypted with DAVE like the call's audio. Everyone watching connects to
-//! the same server; the streamer never hears from them directly, only
-//! through the RTCP feedback the server relays.
+//! A stream is a second voice connection with its own server and token from the
+//! main gateway. The screen goes out as H.264 over RTP, DAVE-encrypted like the
+//! call's audio. Viewers connect to the same server; the streamer only sees
+//! the RTCP feedback it relays.
 //!
-//! Watching someone else's stream is the same connection the other way
-//! round, in [`watch`]: [`WatchStream`] receives the streamer's RTP and hands
-//! the frames to the platform's decoder.
+//! Watching is the same connection reversed, in [`watch`].
 //!
-//! The whole connection — websocket, UDP socket, DAVE session — lives in one
-//! task on the shared runtime, so none of it needs a lock. [`GoLive`] is the
-//! only handle the app holds, and dropping it ends the stream.
+//! Websocket, UDP and DAVE session live in one task, so none needs a lock.
+//! [`GoLive`] is the only handle; dropping it ends the stream.
 
 mod media;
 mod receive;
@@ -38,21 +33,17 @@ use crate::platform::runtime;
 use media::Media;
 use signalling::{Signal, Signalling};
 
-/// How often a sender report goes out, so viewers can keep the stream's
-/// clock in step with theirs.
+/// Sender reports let viewers sync the stream's clock with theirs.
 const REPORT_INTERVAL: Duration = Duration::from_secs(1);
 
-/// Everything needed to open a stream connection, gathered from the main
-/// gateway's `STREAM_CREATE` and `STREAM_SERVER_UPDATE`.
+/// Gathered from the main gateway's `STREAM_CREATE` and `STREAM_SERVER_UPDATE`.
 pub struct StreamConnection {
     pub stream_key: String,
-    /// The stream server's id, which the connection identifies to.
     pub server_id: String,
-    /// The DAVE group's channel id, derived from [`Self::server_id`].
+    /// Derived from [`Self::server_id`].
     pub dave_channel_id: u64,
     pub user_id: Id<UserMarker>,
-    /// The call's voice session: a stream belongs to the session that
-    /// created it, and is watched from the session that's in the call.
+    /// The call's voice session; a stream belongs to the session that is in the call.
     pub session_id: String,
     pub token: String,
     pub endpoint: String,
@@ -66,18 +57,17 @@ impl StreamConnection {
 }
 
 pub enum StreamEvent {
-    /// The screen is going out.
-    Live { stream_key: String },
-    /// The stream is over. `None` when it ended normally — the shared window
-    /// closed, or the server ended it — and the reason when it failed.
+    Live {
+        stream_key: String,
+    },
+    /// `error` is `None` for a normal end (window closed, server ended it).
     Ended {
         stream_key: String,
         error: Option<String>,
     },
 }
 
-/// One running stream. Dropping it stops the capture and closes the
-/// connection.
+/// Dropping it stops the capture and closes the connection.
 pub struct GoLive {
     _stop: oneshot::Sender<()>,
 }
@@ -128,8 +118,8 @@ async fn run(
     let mut heartbeat = tokio::time::interval(signalling.heartbeat);
     let mut reports = tokio::time::interval(REPORT_INTERVAL);
     let mut buffer = vec![0u8; 1500];
-    // Frames can't go out until DAVE's group has formed; the first one that
-    // does has to be a keyframe, or there's nothing for viewers to start on.
+    // Nothing sends until DAVE's group forms; the first frame after must be a
+    // keyframe so viewers have something to start on.
     let mut was_ready = false;
 
     let outcome = loop {

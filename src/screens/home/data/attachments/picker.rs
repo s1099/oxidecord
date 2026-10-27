@@ -14,16 +14,12 @@ pub(super) struct PickedFile {
     pub data: AttachmentData,
 }
 
-/// How much more can be staged: the largest file the open conversation takes,
-/// and what's left of the total one message can carry.
 pub(super) struct UploadBudget {
     pub per_file: u64,
     pub remaining: u64,
 }
 
 impl UploadBudget {
-    /// Counts a file of `size` against the budget, or returns the error-dialog
-    /// line saying why it doesn't fit.
     pub fn take(&mut self, subject: &str, size: u64) -> Result<(), String> {
         if size > self.per_file {
             return Err(format!(
@@ -43,9 +39,8 @@ impl UploadBudget {
     }
 }
 
-/// Reads one picked file into an attachment, or returns the error-dialog line
-/// explaining why it can't be attached. The size is checked before the contents
-/// so an oversized file is never read into memory just to be turned down.
+/// The size is checked before reading so an oversized file is never loaded
+/// into memory just to be turned down.
 pub(super) fn read_picked_file(
     path: PathBuf,
     budget: &mut UploadBudget,
@@ -71,8 +66,7 @@ pub(super) fn read_picked_file(
     Ok(PickedFile { filename, data })
 }
 
-/// The image format for a path's extension. Anything else is staged as a plain
-/// file rather than a thumbnail.
+/// `None` stages the file plain, without a thumbnail.
 fn image_format_from_path(path: &Path) -> Option<ImageFormat> {
     let extension = path.extension()?.to_str()?.to_ascii_lowercase();
     match extension.as_str() {

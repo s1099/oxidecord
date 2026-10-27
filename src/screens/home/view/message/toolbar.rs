@@ -17,7 +17,6 @@ use crate::screens::home::{EmojiTarget, HomeScreen, ReplyTarget};
 use crate::ui::button::Button;
 use crate::ui::depth::{self, Finish, Level, Lit as _, radius};
 
-/// Which part of a message the pointer is over, for [`HomeScreen::set_hovered`].
 #[derive(Clone, Copy)]
 pub(super) enum Hovered {
     Message,
@@ -25,12 +24,9 @@ pub(super) enum Hovered {
 }
 
 impl HomeScreen {
-    /// Sits at the top-right of the message, built only while
-    /// [`toolbar_shown`](Self::toolbar_shown) holds for it.
+    /// Built only while [`toolbar_shown`](Self::toolbar_shown) holds for it.
     ///
-    /// Holding shift flattens the overflow menu into the bar, in Discord's
-    /// order — copy link, reply, delete — and drops the "More" button, so the
-    /// actions behind it are one click away.
+    /// Shift flattens the overflow menu into the bar (copy link, reply, delete) and drops "More".
     pub(super) fn render_message_toolbar(
         &self,
         message: &discord::Message,
@@ -49,8 +45,8 @@ impl HomeScreen {
             .absolute()
             .top(px(-16.))
             .right(px(12.))
-            // It belongs to its own message: the row it overhangs mustn't
-            // light up or take the pointer underneath it.
+            // Belongs to its own message: the row it overhangs mustn't light up or take the
+            // pointer.
             .occlude()
             .on_hover(cx.listener(move |this, hovered: &bool, _, cx| {
                 this.set_hovered(Hovered::Toolbar, message_id, *hovered, cx);
@@ -128,9 +124,8 @@ impl HomeScreen {
             )
     }
 
-    /// Whether the message's toolbar is up and its row lit: the pointer is on
-    /// the row or the toolbar, or a picker or menu opened from the toolbar is,
-    /// which the pointer leaves the message to reach.
+    /// The pointer is on the row or toolbar, or a picker or menu opened from the toolbar is
+    /// (the pointer leaves the message to reach those).
     pub(super) fn toolbar_shown(&self, message_id: Id<MessageMarker>) -> bool {
         self.hovered_message == Some(message_id)
             || self.hovered_toolbar == Some(message_id)
@@ -138,9 +133,8 @@ impl HomeScreen {
             || self.reacting_to(message_id)
     }
 
-    /// Records the pointer entering or leaving a message's row or toolbar.
-    /// Only a toolbar going up or down needs a redraw, which saves redrawing
-    /// the whole screen for every hover event as the pointer sweeps the list.
+    /// Only a toolbar going up or down needs a redraw, which avoids redrawing the whole screen
+    /// on every hover event.
     pub(super) fn set_hovered(
         &mut self,
         part: Hovered,
@@ -194,7 +188,6 @@ impl HomeScreen {
             }))
     }
 
-    /// The overflow menu, holding the actions shift exposes inline.
     fn more_menu(&self, menu: MessageMenu, cx: &Context<Self>) -> impl IntoElement {
         let message_id = menu.message_id;
         let screen = cx.entity().downgrade();
@@ -202,9 +195,8 @@ impl HomeScreen {
         let build =
             Rc::new(move |popup: PopupMenu, cx: &App| menu.build(popup, false, screen.clone(), cx));
 
-        // A popover around a popup menu, as gpui-component's `DropdownMenu`
-        // builds it, but one that reports opening and closing: the toolbar
-        // has to stay up while the menu is.
+        // Like gpui-component's `DropdownMenu` popover, but it reports opening and closing: the
+        // toolbar has to stay up while the menu is.
         Popover::new(("message-more-menu", message_id.get()))
             .appearance(false)
             .overlay_closable(false)

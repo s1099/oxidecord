@@ -1,10 +1,8 @@
-//! GIFs that Discord serves as video: loading one into an animation gpui
-//! plays by itself, and releasing it again.
+//! GIFs that Discord serves as video, loaded into an animation gpui plays by itself.
 //!
-//! A `gifv` embed's clip is decoded whole, every frame into one multi-frame
-//! [`RenderImage`] — the same shape gpui decodes a real GIF into — so `img()`
-//! loops it with no player, no controls and no decoder left running, and the
-//! asset cache shares one decode between every place the GIF is drawn.
+//! A `gifv` clip is decoded whole into one multi-frame [`RenderImage`], the shape
+//! gpui decodes a real GIF into, so `img()` loops it with no player or decoder
+//! left running and the asset cache shares one decode between every place it's drawn.
 
 use std::cell::RefCell;
 use std::collections::HashSet;
@@ -18,12 +16,10 @@ use image::{Delay, Frame, ImageBuffer};
 use crate::platform::video::{self, LoopingClip};
 use crate::screens::home::HomeScreen;
 
-/// The shortest a frame is held. A clip that reports frames closer together
-/// than the screen refreshes would only have them skipped anyway.
+/// Frames closer together than the screen refreshes would be skipped anyway.
 const MIN_FRAME_DELAY: Duration = Duration::from_millis(10);
 
-/// One clip at one size: the same GIF drawn on a display at another scale is
-/// another decode.
+/// One clip at one size; the same GIF at another display scale is another decode.
 #[derive(Clone, Hash, PartialEq, Eq)]
 pub(in crate::screens::home) struct GifSource {
     url: String,
@@ -31,9 +27,8 @@ pub(in crate::screens::home) struct GifSource {
     target: (u32, u32),
 }
 
-/// The GIF clips loaded since the conversation was opened, so they can be
-/// released when it's left. Shared with the loaders handed to `img()`, which
-/// run during layout, where the screen itself can't be reached.
+/// Tracked so they can be released on leaving the conversation. Shared with the
+/// `img()` loaders, which run during layout where the screen can't be reached.
 pub(in crate::screens::home) type LoadedGifs = Rc<RefCell<HashSet<GifSource>>>;
 
 enum GifLoader {}
@@ -59,9 +54,8 @@ impl Asset for GifLoader {
     }
 }
 
-/// An image source that loops the clip at `url`, fitted to `size` (logical
-/// pixels). Nothing is drawn until it has loaded, so the caller keeps the
-/// poster underneath.
+/// `size` is in logical pixels. Nothing is drawn until loaded, so the caller
+/// keeps the poster underneath.
 pub(in crate::screens::home) fn gif_source(
     url: String,
     size: (f32, f32),
@@ -89,9 +83,8 @@ pub(in crate::screens::home) fn gif_source(
 }
 
 impl HomeScreen {
-    /// Lets go of every GIF clip loaded for the conversation being left: its
-    /// frames in the sprite atlas, and its entry in the asset cache, which
-    /// would otherwise hold the decoded frames for the rest of the session.
+    /// Releases every clip loaded for the conversation being left, from the sprite
+    /// atlas and the asset cache, which would otherwise hold the frames all session.
     pub(in crate::screens::home) fn release_gifs(&mut self, window: &mut Window, cx: &mut App) {
         for source in self.gifs.borrow_mut().drain() {
             if let Some(Ok(image)) = window.get_asset::<GifLoader>(&source, cx) {
@@ -102,8 +95,6 @@ impl HomeScreen {
     }
 }
 
-/// Lays the decoded frames out as one animation, each held until the next
-/// one's timestamp and the last until the clip ends.
 fn to_animation(clip: LoopingClip) -> Option<Arc<RenderImage>> {
     let positions: Vec<Duration> = clip.frames.iter().map(|frame| frame.position).collect();
     // What the last frame is held for when the clip's run time doesn't reach

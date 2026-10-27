@@ -1,45 +1,32 @@
-//! What playback is paced against, and the buffer between the decoder and the
-//! output device.
+//! The playback clock and the buffer between the decoder and the output device.
 //!
-//! A video has to be shown at the speed its audio is being heard at, so the
-//! clock everything reads is the output device's: [`AudioRing`] counts the
-//! frames the callback has actually handed the speakers. Counting what was
-//! *played* rather than what was decoded is what makes pausing and starving
-//! free — when nothing is coming out the clock stops on its own, and the
-//! decoder stops releasing frames without being told to.
-//!
-//! A file with no audio track has no such clock, so [`Clock::Wall`] stands in
-//! with elapsed time and has to be paused explicitly.
+//! Video is paced against the output device: [`AudioRing`] counts frames the
+//! callback actually handed the speakers. Counting what was played, not
+//! decoded, makes pausing and starving free, since the clock stops by itself.
+//! A file with no audio uses [`Clock::Wall`], which must be paused explicitly.
 
 use std::collections::VecDeque;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-/// Interleaved stereo, which is what the decoder is asked to produce; the
-/// output callback lays it out for however many channels the device has.
+/// Interleaved stereo; the output callback adapts it to the device's channels.
 pub(super) const CHANNELS: usize = 2;
 
-/// Deliberately shallow. It is the decoder's only backpressure, so it doubles
-/// as the bound on how far ahead of the speakers decoding may run — and a deep
-/// buffer here is both latency on every seek and memory held for no gain.
+/// Deliberately shallow: it's the decoder's only backpressure, and a deep
+/// buffer adds latency on every seek.
 const MAX_BUFFERED_MS: u32 = 200;
 
-/// Samples between the decoder and the output device, plus the play position
-/// derived from what the device has consumed.
 pub(super) struct AudioRing {
     samples: Mutex<VecDeque<f32>>,
     capacity: usize,
     sample_rate: u32,
-    /// Where the ring was last seeked to. The play position is this plus
-    /// whatever has been played since.
+    /// Where the ring was last seeked to.
     base_micros: AtomicU64,
-    /// Frames played since `base_micros`, counting only frames actually filled
-    /// from the ring — silence emitted into an underrun must not advance the
-    /// clock, or a stall would be made up for by skipping video.
+    /// Only frames filled from the ring count; underrun silence must not
+    /// advance the clock, or a stall would be made up by skipping video.
     frames_since_base: AtomicU64,
-    /// While set the callback emits silence without draining, so muting does
-    /// not also stop the clock and with it the picture.
+    /// Emits silence without draining, so muting doesn't stop the clock and the picture.
     muted: AtomicBool,
 }
 
@@ -57,9 +44,8 @@ impl AudioRing {
         }
     }
 
-    /// Takes as much of `input` as there is room for and reports how much that
-    /// was. Never blocks: the decoder retries the remainder on its next pass,
-    /// so it can keep releasing video frames that came due meanwhile.
+    /// Never blocks: the decoder retries the remainder next pass so it can keep
+    /// releasing video frames that came due.
     pub(super) fn try_push(&self, input: &[f32]) -> usize {
         let Ok(mut samples) = self.samples.lock() else {
             return input.len();
@@ -76,16 +62,12 @@ impl AudioRing {
             .is_ok_and(|samples| samples.len() < self.capacity)
     }
 
-    /// Whether everything pushed has been played. The decoder waits for this
-    /// before declaring the end of a clip, so the last packet is heard rather
-    /// than cut off by the teardown that follows.
+    /// The decoder waits for this before ending a clip so the last packet isn't cut off.
     pub(super) fn is_drained(&self) -> bool {
         self.samples.lock().is_ok_and(|samples| samples.is_empty())
     }
 
-    /// Fills one output callback with stereo frames, padding with silence when
-    /// the decoder has not kept up. Runs on the audio thread, so it takes the
-    /// one lock and never allocates.
+    /// Runs on the audio thread: takes the one lock and never allocates.
     pub(super) fn fill(&self, out: &mut [f32]) {
         out.fill(0.);
         if self.muted.load(Ordering::Relaxed) {
@@ -110,9 +92,7 @@ impl AudioRing {
         Duration::from_micros(base + frames * 1_000_000 / u64::from(self.sample_rate))
     }
 
-    /// Drops everything buffered and restarts the clock at `position`. Called
-    /// after a seek, where the buffered audio belongs to the old position and
-    /// playing it would be heard as a stutter before the jump.
+    /// For a seek: buffered audio belongs to the old position and would stutter before the jump.
     pub(super) fn reset_to(&self, position: Duration) {
         if let Ok(mut samples) = self.samples.lock() {
             samples.clear();
@@ -127,16 +107,12 @@ impl AudioRing {
     }
 }
 
-/// What the decoder reads to decide when a frame is due.
 pub(super) enum Clock {
-    /// The output device's, for anything with sound.
     Audio(Arc<AudioRing>),
-    /// Elapsed time, for a video with no audio track — or one whose audio
-    /// could not be opened, which is still better than refusing to play it.
+    /// For a video with no audio track, or whose audio couldn't be opened.
     Wall {
-        /// Position reached before the current run started.
         base: Duration,
-        /// When the current run started; `None` while paused.
+        /// `None` while paused.
         running_since: Option<Instant>,
     },
 }
@@ -159,8 +135,7 @@ impl Clock {
         }
     }
 
-    /// An audio clock pauses by itself — the ring stops being drained, so it
-    /// stops advancing — but a wall clock has to be told.
+    /// An audio clock pauses by itself (the ring stops draining); a wall clock must be told.
     pub(super) fn set_paused(&mut self, paused: bool) {
         let Self::Wall {
             base,

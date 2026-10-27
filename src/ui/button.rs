@@ -1,14 +1,11 @@
-//! The app's button, lit from above like everything else (see [`depth`]).
+//! The app's button, lit from above (see [`depth`]).
 //!
-//! gpui-component's `Button` sets its own hover and active styles last, so a
-//! pressed shadow or a sheen can't be layered onto it from outside — hence a
-//! button of our own. Its builder mirrors that one, so it reads the same at the
-//! call site.
+//! gpui-component's `Button` sets its hover and active styles last, so a pressed
+//! shadow or sheen can't be layered onto it from outside. This builder mirrors
+//! its API.
 //!
-//! Clicked things go up: every filled variant is faintly raised, and is pushed
-//! in — shadow gone, a light inner shadow on — while held. Ghost and link
-//! buttons stay flat. A selected button stays pushed in, which is how a
-//! toggle that's on reads.
+//! Filled variants are faintly raised and pushed in while held; ghost and link
+//! stay flat. A selected button stays pushed in, which is how an on toggle reads.
 
 use std::rc::Rc;
 
@@ -22,7 +19,6 @@ use gpui_kit::*;
 use crate::ui::depth::{self, Finish, Level, Lit as _, radius};
 use crate::ui::tooltip;
 
-/// Secondary unless a builder method picks another.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Variant {
     Primary,
@@ -160,7 +156,6 @@ impl InteractiveElement for Button {
 
 impl DropdownMenu for Button {}
 
-/// Height, padding, and type for one size, after the toolkit's scale.
 struct Metrics {
     height: Pixels,
     padding: Pixels,
@@ -217,7 +212,6 @@ impl Metrics {
     }
 }
 
-/// How one variant is coloured and lit.
 struct Look {
     bg: Hsla,
     hover: Hsla,
@@ -266,8 +260,7 @@ impl Variant {
                 level: Some(Level::Raised),
                 finish: Finish::Subtle,
             },
-            // Solid, like Discord's: a translucent tint read as washed out in
-            // every theme, and these buttons (log out, hang up) should be loud.
+            // Solid: a translucent tint read as washed out in every theme.
             Variant::Danger => Look {
                 bg: theme.danger,
                 hover: theme.danger.opacity(0.9),
@@ -307,8 +300,7 @@ impl RenderOnce for Button {
         let icon_only = self.label.is_none();
         let interactive = !self.disabled && !self.loading;
         let is_link = self.variant == Variant::Link;
-        // Everything but a link can be pushed in; a flat button has nothing to
-        // lift, but still shades in when pressed so the click registers.
+        // A flat button still shades in when pressed so the click registers.
         let pressable = interactive && !is_link;
         let inner_radius = if look.border.is_some() {
             metrics.radius - px(1.)
@@ -394,8 +386,7 @@ impl RenderOnce for Button {
                     }
                 })
             })
-            // A disabled button still swallows the click, so it can't fall
-            // through to whatever the button sits on — or open its menu.
+            // Swallow the click so it can't fall through to what the button sits on.
             .when(!interactive, |this| {
                 this.on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
             })

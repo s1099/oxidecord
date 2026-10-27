@@ -11,9 +11,7 @@ use crate::ui::depth::{Finish, Level, Lit as _, radius};
 const CHIP_HEIGHT: f32 = 24.;
 
 impl HomeScreen {
-    /// Clicking a pill adds or removes the current user's reaction; the ones
-    /// they already reacted with are highlighted, like Discord. Hovering one
-    /// names who reacted with it.
+    /// Own reactions are highlighted, like Discord; hovering a pill names who reacted.
     pub(super) fn render_reactions(
         &self,
         message: &discord::Message,
@@ -48,15 +46,13 @@ impl HomeScreen {
                     } else {
                         theme.secondary
                     })
-                    // Discord's chips stand out from the page: a solid tint for
-                    // your own reaction, a lifted gray for everyone else's.
+                    // Discord's chips: a solid tint for your own reaction, a lifted gray for
+                    // others'.
                     .bg(if reaction.me {
                         theme.primary.opacity(0.3)
                     } else {
                         theme.secondary
                     })
-                    // Chips are clickable, so they sit up on the page like any
-                    // other control.
                     .lit(
                         Level::Raised,
                         Finish::Subtle,

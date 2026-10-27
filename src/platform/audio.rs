@@ -1,22 +1,17 @@
-//! Device plumbing shared by the call's audio ([`crate::voice`]) and a video's
-//! ([`crate::platform::video`]). The two keep their own streams and buffering;
-//! only the conversions to whatever the device wants live here.
+//! Device helpers shared by the call's audio and video playback, which keep
+//! their own streams and buffering.
 
 use cpal::DeviceId;
 use cpal::traits::HostTrait as _;
 
-/// The chosen output device, or the system default when none is chosen or the
-/// chosen one has been unplugged since. `id` is as [`crate::voice`] lists it.
+/// Falls back to the system default when `id` is unset or the device was unplugged.
 pub fn chosen_output(host: &cpal::Host, id: Option<&str>) -> Option<cpal::Device> {
     id.and_then(|id| id.parse::<DeviceId>().ok())
         .and_then(|id| host.device_by_id(&id))
         .or_else(|| host.default_output_device())
 }
 
-/// Keeps a sample inside the range the device conversions assume.
-///
-/// A NaN compares false against every bound, so it has to be caught before the
-/// clamp rather than by it.
+/// NaN compares false against every bound, so it must be caught before the clamp.
 pub fn sanitize(sample: f32) -> f32 {
     if sample.is_finite() {
         sample.clamp(-1., 1.)
@@ -25,11 +20,8 @@ pub fn sanitize(sample: f32) -> f32 {
     }
 }
 
-/// Opens a stream in whichever sample format the device reports.
-///
-/// `build` names a function generic over the sample type, and the arguments
-/// after it are handed to it unchanged. The formats left out are the ones no
-/// host offers as a device default.
+/// Calls `$build::<T>` for the device's sample format. Formats left out are ones
+/// no host offers as a default.
 macro_rules! in_device_format {
     ($format:expr, $build:ident $(, $arg:expr)* $(,)?) => {
         match $format {
