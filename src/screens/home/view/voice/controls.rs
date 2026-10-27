@@ -1,9 +1,9 @@
-//! The control bar under the stage, and the microphone picker behind the
-//! mute buttons.
+//! The control bar under the stage, and the device pickers behind the mute
+//! and deafen buttons.
 
 use gpui_kit::component::{
     Disableable as _, Icon, IconName, Selectable as _, Sizable as _, h_flex,
-    menu::{ContextMenuExt as _, PopupMenuItem},
+    menu::{ContextMenuExt as _, PopupMenu, PopupMenuItem},
 };
 use gpui_kit::*;
 
@@ -40,21 +40,26 @@ impl HomeScreen {
                 ),
             )
             .child(
-                control(
-                    "call-deafen",
-                    if self.voice_deafened {
-                        "icons/headphone-off.svg"
-                    } else {
-                        "icons/headphones.svg"
-                    },
-                    if self.voice_deafened {
-                        "Undeafen"
-                    } else {
-                        "Deafen"
-                    },
-                    self.voice_deafened,
-                )
-                .on_click(cx.listener(|this, _, _, cx| this.toggle_voice_deafen(cx))),
+                div()
+                    .id("call-output-menu")
+                    .child(
+                        control(
+                            "call-deafen",
+                            if self.voice_deafened {
+                                "icons/headphone-off.svg"
+                            } else {
+                                "icons/headphones.svg"
+                            },
+                            if self.voice_deafened {
+                                "Undeafen"
+                            } else {
+                                "Deafen"
+                            },
+                            self.voice_deafened,
+                        )
+                        .on_click(cx.listener(|this, _, _, cx| this.toggle_voice_deafen(cx))),
+                    )
+                    .context_menu(output_menu),
             )
             .child(
                 control(
@@ -96,9 +101,17 @@ impl HomeScreen {
         button: impl IntoElement,
         cx: &Context<Self>,
     ) -> impl IntoElement {
-        let screen = cx.entity().downgrade();
+        div().id(id).child(button).context_menu(self.mic_menu(cx))
+    }
 
-        div().id(id).child(button).context_menu(move |menu, _, cx| {
+    /// Builds the microphone picker, for a right-click or a dropdown to open.
+    pub(in crate::screens::home) fn mic_menu(
+        &self,
+        cx: &Context<Self>,
+    ) -> impl Fn(PopupMenu, &mut Window, &mut Context<PopupMenu>) -> PopupMenu + Clone + 'static
+    {
+        let screen = cx.entity().downgrade();
+        move |menu, _, cx| {
             let Some(screen) = screen.upgrade() else {
                 return menu;
             };
@@ -118,8 +131,19 @@ impl HomeScreen {
                 let selected = chosen.as_deref() == Some(device.id.as_str());
                 menu.item(device_item(device.name, Some(device.id), selected, &screen))
             })
-        })
+        }
     }
+}
+
+/// The speaker picker behind the deafen buttons. Audio always plays through
+/// the system default for now, so that's all it offers.
+pub(in crate::screens::home) fn output_menu(
+    menu: PopupMenu,
+    _: &mut Window,
+    _: &mut Context<PopupMenu>,
+) -> PopupMenu {
+    menu.label("Output Device")
+        .item(PopupMenuItem::new("System Default").icon(Icon::new(IconName::Check)))
 }
 
 /// One microphone in the picker, ticked when it's the one in use.

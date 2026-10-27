@@ -3,7 +3,7 @@
 
 use gpui_kit::component::{
     ActiveTheme as _, Icon, IconName, Selectable, Sizable as _, Theme, h_flex,
-    menu::{DropdownMenu, PopupMenuItem},
+    menu::{ContextMenuExt as _, DropdownMenu, PopupMenu, PopupMenuItem},
     v_flex,
 };
 use gpui_kit::prelude::FluentBuilder as _;
@@ -12,7 +12,9 @@ use gpui_kit::*;
 use crate::discord::PresenceStatus;
 use crate::screens::home::HomeScreen;
 use crate::screens::home::view::avatar;
+use crate::screens::home::view::voice::output_menu;
 use crate::ui::button::Button;
+use crate::ui::depth::radius;
 use crate::ui::settings;
 
 impl HomeScreen {
@@ -50,7 +52,7 @@ impl HomeScreen {
         let screen = cx.entity().downgrade();
         let account = AccountButton::new("account-status")
             .group("account-status")
-            .flex_1()
+            .w_full()
             .min_w_0()
             .child(avatar)
             .child(
@@ -120,6 +122,43 @@ impl HomeScreen {
                 })
             });
 
+        let muted = self.voice_muted;
+        let deafened = self.voice_deafened;
+        let mic = split_control(
+            "panel-mic",
+            muted,
+            Button::new("self-mute")
+                .icon(Icon::default().path(if muted {
+                    "icons/mic-off.svg"
+                } else {
+                    "icons/mic.svg"
+                }))
+                .ghost()
+                .small()
+                .tooltip(if muted { "Unmute" } else { "Mute" })
+                .on_click(cx.listener(|this, _, _, cx| this.toggle_voice_mute(cx))),
+            "Input Options",
+            self.mic_menu(cx),
+            cx,
+        );
+        let headphones = split_control(
+            "panel-output",
+            deafened,
+            Button::new("self-deafen")
+                .icon(Icon::default().path(if deafened {
+                    "icons/headphone-off.svg"
+                } else {
+                    "icons/headphones.svg"
+                }))
+                .ghost()
+                .small()
+                .tooltip(if deafened { "Undeafen" } else { "Deafen" })
+                .on_click(cx.listener(|this, _, _, cx| this.toggle_voice_deafen(cx))),
+            "Output Options",
+            output_menu,
+            cx,
+        );
+
         h_flex()
             .flex_shrink_0()
             .w_full()
@@ -127,41 +166,11 @@ impl HomeScreen {
             .px_1()
             .gap_1()
             .items_center()
-            .child(account)
-            .child(
-                self.with_mic_menu(
-                    "panel-mic-menu",
-                    Button::new("self-mute")
-                        .icon(Icon::default().path(if self.voice_muted {
-                            "icons/mic-off.svg"
-                        } else {
-                            "icons/mic.svg"
-                        }))
-                        .ghost()
-                        .small()
-                        .selected(self.voice_muted)
-                        .tooltip(if self.voice_muted { "Unmute" } else { "Mute" })
-                        .on_click(cx.listener(|this, _, _, cx| this.toggle_voice_mute(cx))),
-                    cx,
-                ),
-            )
-            .child(
-                Button::new("self-deafen")
-                    .icon(Icon::default().path(if self.voice_deafened {
-                        "icons/headphone-off.svg"
-                    } else {
-                        "icons/headphones.svg"
-                    }))
-                    .ghost()
-                    .small()
-                    .selected(self.voice_deafened)
-                    .tooltip(if self.voice_deafened {
-                        "Undeafen"
-                    } else {
-                        "Deafen"
-                    })
-                    .on_click(cx.listener(|this, _, _, cx| this.toggle_voice_deafen(cx))),
-            )
+            // The dropdown wraps the account button in a container that only
+            // hugs it, so the stretching happens out here instead.
+            .child(div().flex_1().min_w_0().child(account))
+            .child(mic)
+            .child(headphones)
             .child(
                 Button::new("user-settings")
                     .icon(IconName::Settings)
@@ -181,6 +190,40 @@ impl HomeScreen {
                     }),
             )
     }
+}
+
+/// A toggle with a chevron beside it that opens its device menu, the same
+/// one a right-click on either half opens, as Discord pairs its mute and
+/// deafen buttons. Both halves turn red while the toggle is on.
+fn split_control<M>(
+    id: &'static str,
+    active: bool,
+    toggle: Button,
+    menu_tooltip: &'static str,
+    menu: M,
+    cx: &Context<HomeScreen>,
+) -> impl IntoElement
+where
+    M: Fn(PopupMenu, &mut Window, &mut Context<PopupMenu>) -> PopupMenu + Clone + 'static,
+{
+    let danger = cx.theme().danger;
+    let chevron = Button::new(SharedString::from(format!("{id}-menu")))
+        .icon(IconName::ChevronDown)
+        .ghost()
+        .xsmall()
+        .w(px(16.))
+        .tooltip(menu_tooltip)
+        .when(active, |this| this.text_color(danger))
+        .dropdown_menu_with_anchor(Anchor::BottomLeft, menu.clone());
+
+    h_flex()
+        .id(id)
+        .items_center()
+        .rounded(radius::ITEM)
+        .when(active, |this| this.bg(danger.opacity(0.15)))
+        .child(toggle.when(active, |this| this.text_color(danger)))
+        .child(chevron)
+        .context_menu(menu)
 }
 
 fn status_label(status: PresenceStatus) -> &'static str {

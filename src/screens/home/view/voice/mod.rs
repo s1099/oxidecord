@@ -7,6 +7,8 @@ mod panel;
 mod stage;
 mod tiles;
 
+pub(super) use controls::output_menu;
+
 /// What the camera button says. It's drawn because the call has a place for
 /// it, and disabled because nothing behind it sends camera video yet.
 const CAMERA_UNAVAILABLE: &str = "Camera isn't supported yet";
