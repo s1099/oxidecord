@@ -8,16 +8,21 @@
 | Local time zone for timestamps | Partial | Message times are local; `<t:…>` markup, embed footers and snowflake dates (member since) are still UTC |
 | Global display names in mentions | Partial | twilight's `Mention` model drops `global_name`, so a mention shows the nickname or username |
 | Super reactions (burst) | Missing | |
+| Skin tones, favorite and frequently used emoji in the picker | Missing | |
 | Autocomplete for `@mentions`, `#channels`, `:emoji:` in the composer | Partial | Members, channels, emoji, `@everyone` and `@here` are suggested; roles aren't |
 | Slash commands and app commands | Missing | |
 | Message components (buttons, select menus, modals) | Missing | Bot messages only show their embeds |
 | Stickers (sending and rendering) | Missing | |
 | GIF picker (Tenor) | Missing | |
+| Forwarding messages | Missing | Forwards from others are shown; there is no way to send one |
+| Turning off the ping on a reply | Missing | Replies always mention the author |
+| Message length limit and counter | Missing | Messages over 2,000 characters (4,000 with Nitro) are only refused by Discord when sent |
 | Polls (creating, voting, results) | Missing | |
 | Non-media file attachments shown in the chat (audio player, file cards for PDFs, zips, and so on) | Partial | Shown as file cards that open in the browser to download; audio has no inline player, and spoilered files aren't covered |
 | Voice messages (recording and playback) | Missing | |
 | Cloud uploads (`POST /channels/{id}/attachments`, as Discord's client sends files) | Missing | Files go in the message request itself, read whole into memory; Nitro and boost limits apply, but Cloudflare caps that request just under 500 MiB, so Nitro's 1 GB files are capped at 500 MB |
 | Drag and drop of files onto the chat | Missing | Picker and paste only |
+| Upload progress and cancelling an upload | Missing | |
 | Attachment alt text and descriptions | Missing | |
 | System messages (joins, pins, boosts, calls, thread created, and so on) | Missing | |
 | Pinning and unpinning messages, and the pinned-messages panel | Partial | The header's pin button opens the pinned-messages popout; pinning, unpinning, and jumping to a pin aren't done yet |
@@ -25,6 +30,8 @@
 | Jump to a message (from a reply, a link, or search) | Partial | Reply quotes, the composer's "Replying to" strip, and discord.com message links jump there; search and a forward's source don't yet |
 | "Jump to present" and the new-messages bar | Missing | |
 | Copy text, copy message ID, and other developer-mode context-menu items | Missing | Only "Copy Message Link" is there |
+| Saving and copying images | Missing | The image viewer can only open the image in the browser |
+| Invite links shown as server cards | Missing | |
 | Right-click context menus (message, user, channel, server) | Missing | Actions are on the hover toolbar and "More" menu only |
 | Report message | Missing | |
 | Suppress embeds on your own message | Missing | |
@@ -32,6 +39,7 @@
 | Send failure retry | Partial | Sends show a pending message at once; a failed one stays marked, but there is no retry or dismiss yet |
 | Slowmode indicator and cooldown | Missing | |
 | Message requests and filtering DMs from strangers | Missing | |
+| Captcha challenges | Missing | Requests Discord answers with a captcha (a first DM, joining a server) just fail |
 
 ## Channels and servers
 
@@ -44,6 +52,7 @@
 | Announcement channel follow and publish | Missing | Listed and readable only |
 | Server and channel notification settings (all, mentions, nothing, suppress `@everyone`) | Partial | Read from Discord and honoured by unread marks and pings; can't be changed in the app |
 | Muting servers, channels and DMs | Missing | |
+| Marking a server or channel as read from the sidebar | Missing | Only Esc in the open conversation marks it read |
 | Member list sidebar with roles, presence and grouping | Partial | Guild text and announcement channels only; group DMs and threads show none, and right-clicking a member does nothing |
 | Role icons, server tags and badges next to names | Missing | |
 | Server banner and header dropdown menu | Missing | |
@@ -58,7 +67,7 @@
 | Scheduled events | Missing | |
 | Server folders: creating, editing, renaming, recoloring | Partial | Folders from settings are shown; they can't be edited |
 | Dragging to reorder servers and channels | Missing | |
-| Live guild and channel updates (`GUILD_CREATE/DELETE`, `CHANNEL_CREATE/UPDATE/DELETE`, role changes) | Missing | Only voice states are read from `GUILD_CREATE` |
+| Live guild and channel updates (`GUILD_CREATE/UPDATE/DELETE`, `CHANNEL_*`, role changes) | Partial | Channel, role and emoji changes are applied; a server joined or left elsewhere doesn't appear or disappear in the rail until restart, and renames or new icons aren't picked up. `USER_UPDATE` isn't read either, so your own profile changes made elsewhere don't show |
 | NSFW / age-gated channel gate | Missing | |
 
 ## Direct messages and social
