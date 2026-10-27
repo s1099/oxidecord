@@ -171,8 +171,13 @@ impl HomeScreen {
                     .on_click({
                         let home = cx.weak_entity();
                         move |_, window, cx| {
+                            let Ok(cue_settings) =
+                                home.update(cx, |home, _| home.voice_cues.settings())
+                            else {
+                                return;
+                            };
                             let home = home.clone();
-                            settings::open(window, cx, move |_, cx| {
+                            settings::open(window, cx, cue_settings, move |_, cx| {
                                 // Gone already if the session ended while the
                                 // popup was open.
                                 let _ = home.update(cx, |home, cx| home.log_out(cx));
