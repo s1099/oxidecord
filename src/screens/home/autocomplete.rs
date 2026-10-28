@@ -6,7 +6,7 @@ use std::ops::Range;
 
 use twilight_model::id::{
     Id,
-    marker::{ChannelMarker, UserMarker},
+    marker::{ChannelMarker, RoleMarker, UserMarker},
 };
 
 use super::emoji::PickerEmoji;
@@ -39,6 +39,11 @@ pub(in crate::screens::home) enum Suggestion {
         username: Option<String>,
         avatar_url: Option<String>,
     },
+    Role {
+        id: Id<RoleMarker>,
+        name: String,
+        color: Option<u32>,
+    },
     Channel {
         id: Id<ChannelMarker>,
         name: String,
@@ -57,6 +62,7 @@ impl Suggestion {
     pub fn key(&self) -> String {
         match self {
             Self::User { id, .. } => format!("user-{id}"),
+            Self::Role { id, .. } => format!("role-{id}"),
             Self::Channel { id, .. } => format!("channel-{id}"),
             Self::Broadcast(broadcast) => broadcast.text().to_string(),
             Self::Emoji { emoji, .. } => format!("emoji-{:?}", emoji.recent_key()),

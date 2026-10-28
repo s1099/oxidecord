@@ -99,6 +99,18 @@ impl HomeScreen {
                 name.clone(),
                 username.clone(),
             ),
+            Suggestion::Role { name, color, .. } => (
+                Some(
+                    div()
+                        .text_base()
+                        .font_semibold()
+                        .text_color(color.map_or(theme.muted_foreground, |color| rgb(color).into()))
+                        .child("@")
+                        .into_any_element(),
+                ),
+                name.clone(),
+                Some("Role".to_string()),
+            ),
             Suggestion::Channel {
                 name,
                 kind,

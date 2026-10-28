@@ -174,6 +174,9 @@ impl HomeScreen {
             Suggestion::User { id, name, .. } => {
                 self.remember_mention(format!("@{name}"), format!("<@{id}>"))
             }
+            Suggestion::Role { id, name, .. } => {
+                self.remember_mention(format!("@{name}"), format!("<@&{id}>"))
+            }
             Suggestion::Channel { id, name, .. } => {
                 self.remember_mention(format!("#{name}"), format!("<#{id}>"))
             }
@@ -252,7 +255,7 @@ impl HomeScreen {
     }
 
     /// Recent speakers first, then the member list, then whoever else the gateway
-    /// has named.
+    /// has named, then roles.
     fn user_suggestions(&self, query: &str) -> Vec<Suggestion> {
         let guild_id = self.selected_guild.filter(|_| self.view == View::Guild);
         let known = guild_id.and_then(|guild_id| self.guild_members.get(&guild_id));
@@ -324,18 +327,55 @@ impl HomeScreen {
         if let Some(user) = &self.current_user {
             offer(user.id, &user.name, user.avatar_url.as_ref());
         }
+        if let Some(guild_id) = guild_id {
+            ranked.extend(self.role_suggestions(guild_id, query));
+        }
         let mut suggestions = best(ranked);
         suggestions.extend(self.broadcast_suggestions(query));
         suggestions
     }
 
-    /// Below the members, as in Discord; only where `MENTION_EVERYONE` is granted.
-    fn broadcast_suggestions(&self, query: &str) -> Vec<Suggestion> {
-        let allowed = self.view == View::Guild
+    /// Highest first. Only mentionable roles, unless `MENTION_EVERYONE` allows any.
+    fn role_suggestions(
+        &self,
+        guild_id: Id<GuildMarker>,
+        query: &str,
+    ) -> Vec<((u8, usize), Suggestion)> {
+        let Some(roles) = self.guild_roles.get(&guild_id) else {
+            return Vec::new();
+        };
+        let any = self.can_mention_everyone();
+        let mut roles: Vec<_> = roles
+            .values()
+            // `@everyone` shares the guild's id and is offered as a broadcast.
+            .filter(|role| role.id.get() != guild_id.get() && (any || role.mentionable))
+            .collect();
+        roles.sort_by_key(|role| std::cmp::Reverse(role.position));
+        roles
+            .into_iter()
+            .filter_map(|role| {
+                Some((
+                    match_rank(&role.name, query)?,
+                    Suggestion::Role {
+                        id: role.id,
+                        name: role.name.clone(),
+                        color: role.color,
+                    },
+                ))
+            })
+            .collect()
+    }
+
+    fn can_mention_everyone(&self) -> bool {
+        self.view == View::Guild
             && self
                 .selected_channel_info()
-                .is_some_and(|channel| channel.can_mention_everyone);
-        if !allowed {
+                .is_some_and(|channel| channel.can_mention_everyone)
+    }
+
+    /// Below the members, as in Discord; only where `MENTION_EVERYONE` is granted.
+    fn broadcast_suggestions(&self, query: &str) -> Vec<Suggestion> {
+        if !self.can_mention_everyone() {
             return Vec::new();
         }
         Broadcast::ALL

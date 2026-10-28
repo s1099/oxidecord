@@ -41,6 +41,8 @@ pub struct Role {
     pub color: Option<u32>,
     /// A member's name takes the colour of their highest role that has one.
     pub position: i64,
+    /// Anyone may ping it; otherwise only members with `MENTION_EVERYONE`.
+    pub mentionable: bool,
 }
 
 #[derive(Deserialize)]
@@ -51,6 +53,8 @@ pub(in crate::discord) struct RawRole {
     color: u32,
     #[serde(default)]
     position: i64,
+    #[serde(default)]
+    mentionable: bool,
     /// Used to decide which channels count toward a guild's unread mark.
     #[serde(default)]
     pub(super) permissions: Option<Permissions>,
@@ -139,5 +143,6 @@ pub(in crate::discord) fn convert_role(role: RawRole) -> Role {
         name: role.name,
         color: (role.color != 0).then_some(role.color),
         position: role.position,
+        mentionable: role.mentionable,
     }
 }

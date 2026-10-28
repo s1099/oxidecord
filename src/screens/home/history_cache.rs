@@ -182,7 +182,7 @@ mod tests {
             upload_limit: 0,
         };
         let mut message =
-            Message::pending(Id::new(id), &author, String::new(), 0, None, Vec::new());
+            Message::pending(Id::new(id), &author, String::new(), 0, None, None);
         message.delivery = Delivery::Sent;
         message
     }

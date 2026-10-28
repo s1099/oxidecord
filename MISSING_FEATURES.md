@@ -9,13 +9,11 @@
 | Global display names in mentions | Partial | twilight's `Mention` model drops `global_name`, so a mention shows the nickname or username |
 | Super reactions (burst) | Missing | |
 | Skin tones, favorite and frequently used emoji in the picker | Missing | |
-| Autocomplete for `@mentions`, `#channels`, `:emoji:` in the composer | Partial | Members, channels, emoji, `@everyone` and `@here` are suggested; roles aren't |
 | Slash commands and app commands | Missing | |
 | Message components (buttons, select menus, modals) | Missing | Bot messages only show their embeds |
 | Stickers (sending and rendering) | Missing | |
 | GIF picker (Tenor) | Missing | |
 | Forwarding messages | Missing | Forwards from others are shown; there is no way to send one |
-| Turning off the ping on a reply | Missing | Replies always mention the author |
 | Message length limit and counter | Missing | Messages over 2,000 characters (4,000 with Nitro) are only refused by Discord when sent |
 | Polls (creating, voting, results) | Missing | |
 | Non-media file attachments shown in the chat (audio player, file cards for PDFs, zips, and so on) | Partial | Shown as file cards that open in the browser to download; audio has no inline player, and spoilered files aren't covered |
