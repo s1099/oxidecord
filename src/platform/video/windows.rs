@@ -302,9 +302,11 @@ struct VideoFormat {
     frame_height: u32,
     /// Negative means the image is stored bottom-up.
     stride: i32,
-    /// Never larger than the source.
+    /// Never larger than the source. As stored, before `rotation`.
     width: u32,
     height: u32,
+    /// Clockwise quarter turns the stored picture needs to stand upright.
+    quarter_turns: u32,
     frame_rate: Option<f64>,
     /// Kept to re-read the format when the decoder changes it mid-stream.
     target: (u32, u32),
@@ -371,7 +373,15 @@ fn current_format(reader: &IMFSourceReader, target: (u32, u32)) -> Result<VideoF
         });
     let display_width = source_width as f64 * par_num as f64 / par_den as f64;
 
-    let (width, height) = fit(display_width, f64::from(source_height), target);
+    // Phones store portrait footage sideways with a rotation tag, which the
+    // reader reports but doesn't apply, so the fit is judged on the upright shape.
+    let quarter_turns = rotation(reader, &actual) / 90;
+    let (width, height) = if quarter_turns % 2 == 1 {
+        let (width, height) = fit(f64::from(source_height), display_width, target);
+        (height, width)
+    } else {
+        fit(display_width, f64::from(source_height), target)
+    };
 
     let frame_rate = unsafe { actual.GetUINT64(&MF_MT_FRAME_RATE) }
         .ok()
@@ -389,9 +399,23 @@ fn current_format(reader: &IMFSourceReader, target: (u32, u32)) -> Result<VideoF
         stride,
         width,
         height,
+        quarter_turns,
         frame_rate,
         target,
     })
+}
+
+/// Degrees clockwise, one of 0, 90, 180 or 270. The decoder's output type may
+/// drop the container's tag, so the native type is asked too.
+fn rotation(reader: &IMFSourceReader, current: &IMFMediaType) -> u32 {
+    let video = MF_SOURCE_READER_FIRST_VIDEO_STREAM.0 as u32;
+    unsafe { current.GetUINT32(&MF_MT_VIDEO_ROTATION) }
+        .or_else(|_| unsafe {
+            reader
+                .GetNativeMediaType(video, 0)?
+                .GetUINT32(&MF_MT_VIDEO_ROTATION)
+        })
+        .map_or(0, |degrees| degrees % 360 / 90 * 90)
 }
 
 /// `(x, y, width, height)` of the visible part, when the format names one inside the frame.
@@ -581,9 +605,11 @@ fn read_video(
         }
     }
 
+    let (width, height, bgra) = rotate(bgra, format.width, format.height, format.quarter_turns);
+
     Ok(Read::Ready(VideoFrame {
-        width: format.width,
-        height: format.height,
+        width,
+        height,
         bgra,
         position: hns_to_duration(timestamp),
     }))
@@ -709,6 +735,29 @@ fn downscale(source: &Source, out: &mut [u8]) {
     }
 }
 
+/// Turns a packed BGRA picture clockwise, returning its new size.
+fn rotate(bgra: Vec<u8>, width: u32, height: u32, quarter_turns: u32) -> (u32, u32, Vec<u8>) {
+    if quarter_turns.is_multiple_of(4) {
+        return (width, height, bgra);
+    }
+    let (w, h) = (width as usize, height as usize);
+    let mut out = vec![0u8; bgra.len()];
+    for (index, pixel) in bgra.chunks_exact(4).enumerate() {
+        let (x, y) = (index % w, index / w);
+        let target = match quarter_turns % 4 {
+            1 => x * h + (h - 1 - y),
+            2 => (h - 1 - y) * w + (w - 1 - x),
+            _ => (w - 1 - x) * h + y,
+        };
+        out[target * 4..][..4].copy_from_slice(pixel);
+    }
+    if quarter_turns % 2 == 1 {
+        (height, width, out)
+    } else {
+        (width, height, out)
+    }
+}
+
 fn read_audio(reader: &IMFSourceReader) -> Result<Read<Vec<f32>>, String> {
     let sample = match read_sample(reader, MF_SOURCE_READER_FIRST_AUDIO_STREAM.0 as u32, None)? {
         Read::Ready((sample, _)) => sample,
@@ -799,4 +848,39 @@ fn read_sample(
 
 fn hns_to_duration(hns: i64) -> Duration {
     Duration::from_nanos(hns.max(0) as u64 * 100)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::rotate;
+
+    /// A 2x1 picture of pixels `1, 2`.
+    fn strip() -> Vec<u8> {
+        [1u8, 2].iter().flat_map(|&p| [p; 4]).collect()
+    }
+
+    fn pixels(bgra: &[u8]) -> Vec<u8> {
+        bgra.chunks_exact(4).map(|pixel| pixel[0]).collect()
+    }
+
+    #[test]
+    fn quarter_turn_puts_left_on_top() {
+        let (width, height, out) = rotate(strip(), 2, 1, 1);
+        assert_eq!((width, height), (1, 2));
+        assert_eq!(pixels(&out), [1, 2]);
+    }
+
+    #[test]
+    fn half_turn_mirrors_both_ways() {
+        let (width, height, out) = rotate(strip(), 2, 1, 2);
+        assert_eq!((width, height), (2, 1));
+        assert_eq!(pixels(&out), [2, 1]);
+    }
+
+    #[test]
+    fn three_quarter_turn_puts_right_on_top() {
+        let (width, height, out) = rotate(strip(), 2, 1, 3);
+        assert_eq!((width, height), (1, 2));
+        assert_eq!(pixels(&out), [2, 1]);
+    }
 }
