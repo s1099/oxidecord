@@ -8,9 +8,17 @@ use twilight_model::id::{
 };
 
 use crate::discord;
-use crate::screens::home::HomeScreen;
+use crate::screens::home::{HomeScreen, View};
 
 impl HomeScreen {
+    /// Adding a new emoji to a message; DMs always allow it.
+    pub(in crate::screens::home) fn can_add_reactions(&self) -> bool {
+        self.view == View::DirectMessages
+            || self
+                .selected_channel_info()
+                .is_some_and(|channel| channel.can_add_reactions)
+    }
+
     pub(in crate::screens::home) fn toggle_reaction(
         &mut self,
         message_id: Id<MessageMarker>,

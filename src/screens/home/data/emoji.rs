@@ -21,6 +21,9 @@ use crate::screens::home::emoji::{
 use crate::screens::home::{EmojiPicker, EmojiTarget, HomeScreen, View};
 use crate::ui::smooth_scroll::SmoothScroll;
 
+const QUICK_REACTIONS: usize = 3;
+const DEFAULT_QUICK_REACTIONS: [&str; QUICK_REACTIONS] = ["👍", "😂", "❤️"];
+
 enum Access {
     Usable,
     Locked(&'static str),
@@ -121,18 +124,8 @@ impl HomeScreen {
         match target {
             EmojiTarget::Composer => self.insert_emoji(emoji, window, cx),
             EmojiTarget::Reaction(message_id) => {
-                let reaction = match emoji {
-                    PickerEmoji::Unicode(emoji) => {
-                        discord::ReactionEmoji::Unicode(emoji.as_str().to_string())
-                    }
-                    PickerEmoji::Custom {
-                        locked: Some(_), ..
-                    } => return,
-                    PickerEmoji::Custom { emoji, .. } => discord::ReactionEmoji::Custom {
-                        id: emoji.id,
-                        name: emoji.name.clone(),
-                        animated: emoji.animated,
-                    },
+                let Some(reaction) = emoji.reaction() else {
+                    return;
                 };
                 self.add_reaction(message_id, reaction, cx);
             }
@@ -242,6 +235,37 @@ impl HomeScreen {
             })
             .take(RECENT_LIMIT)
             .collect()
+    }
+
+    /// The toolbar's one-click reactions: the most recent usable ones, topped up with
+    /// Discord's defaults for someone with too few.
+    pub(in crate::screens::home) fn quick_reactions(&self) -> Vec<discord::ReactionEmoji> {
+        let recent = prefs::load().recent_emojis;
+        let mut quick: Vec<_> = recent
+            .iter()
+            .filter_map(|recent| match recent {
+                RecentEmoji::Unicode(text) => Some(discord::ReactionEmoji::Unicode(text.clone())),
+                RecentEmoji::Custom(id) => self
+                    .usable_custom_emoji()
+                    .find(|emoji| emoji.id.get() == *id)
+                    .map(|emoji| discord::ReactionEmoji::Custom {
+                        id: emoji.id,
+                        name: emoji.name.clone(),
+                        animated: emoji.animated,
+                    }),
+            })
+            .take(QUICK_REACTIONS)
+            .collect();
+        for default in DEFAULT_QUICK_REACTIONS {
+            if quick.len() == QUICK_REACTIONS {
+                break;
+            }
+            let default = discord::ReactionEmoji::Unicode(default.to_string());
+            if !quick.contains(&default) {
+                quick.push(default);
+            }
+        }
+        quick
     }
 
     fn custom_emoji_sections(&self) -> Vec<PickerSection> {

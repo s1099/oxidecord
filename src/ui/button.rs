@@ -38,6 +38,8 @@ pub struct Button {
     variant: Variant,
     size: Size,
     icon: Option<Icon>,
+    /// Stands in for the icon where one won't do, like an emoji.
+    glyph: Option<AnyElement>,
     label: Option<SharedString>,
     tooltip: Option<SharedString>,
     selected: bool,
@@ -54,6 +56,7 @@ impl Button {
             variant: Variant::Secondary,
             size: Size::Medium,
             icon: None,
+            glyph: None,
             label: None,
             tooltip: None,
             selected: false,
@@ -90,6 +93,11 @@ impl Button {
 
     pub fn icon(mut self, icon: impl Into<Icon>) -> Self {
         self.icon = Some(icon.into());
+        self
+    }
+
+    pub fn glyph(mut self, glyph: impl IntoElement) -> Self {
+        self.glyph = Some(glyph.into_any_element());
         self
     }
 
@@ -370,6 +378,9 @@ impl RenderOnce for Button {
             .when(self.disabled, |this| this.opacity(0.5))
             .when_some(self.icon.filter(|_| !self.loading), |this, icon| {
                 this.child(icon.with_size(Size::Size(metrics.icon)))
+            })
+            .when_some(self.glyph.filter(|_| !self.loading), |this, glyph| {
+                this.child(glyph)
             })
             .when(self.loading, |this| {
                 this.child(Spinner::new().with_size(Size::Size(metrics.icon)))

@@ -4,7 +4,7 @@ use std::rc::Rc;
 
 use gpui_kit::component::{
     ActiveTheme as _, Icon, IconName, Selectable as _, Sizable as _, h_flex, menu::PopupMenu,
-    popover::Popover,
+    popover::Popover, separator::Separator,
 };
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
@@ -39,6 +39,7 @@ impl HomeScreen {
         let can_edit = menu.can_edit;
         let expanded = self.shift_held;
         let reacting = self.reacting_to(message_id);
+        let can_react = self.can_add_reactions();
 
         div()
             .id(("message-toolbar", message_id.get()))
@@ -66,22 +67,30 @@ impl HomeScreen {
                         cx,
                     )
                     .rounded(radius::CONTROL)
-                    .child(
-                        Button::new(("message-react", message_id.get()))
-                            .icon(Icon::default().path("icons/smile-plus.svg"))
-                            .ghost()
-                            .small()
-                            .selected(reacting)
-                            .tooltip("Add Reaction")
-                            .on_click(cx.listener(move |this, event: &ClickEvent, window, cx| {
-                                this.toggle_emoji_picker(
-                                    event.position(),
-                                    EmojiTarget::Reaction(message_id),
-                                    window,
-                                    cx,
-                                );
-                            })),
-                    )
+                    .when(can_react, |this| {
+                        this.children(self.quick_reaction_buttons(message_id, cx))
+                            .child(Separator::vertical().h(px(20.)).mx(px(2.)))
+                    })
+                    .when(can_react, |this| {
+                        this.child(
+                            Button::new(("message-react", message_id.get()))
+                                .icon(Icon::default().path("icons/smile-plus.svg"))
+                                .ghost()
+                                .small()
+                                .selected(reacting)
+                                .tooltip("Add Reaction")
+                                .on_click(cx.listener(
+                                    move |this, event: &ClickEvent, window, cx| {
+                                        this.toggle_emoji_picker(
+                                            event.position(),
+                                            EmojiTarget::Reaction(message_id),
+                                            window,
+                                            cx,
+                                        );
+                                    },
+                                )),
+                        )
+                    })
                     .when(expanded, |this| {
                         this.child(
                             Button::new(("message-copy-link", message_id.get()))
@@ -169,6 +178,43 @@ impl HomeScreen {
         self.emoji_picker
             .as_ref()
             .is_some_and(|picker| picker.target == EmojiTarget::Reaction(message_id))
+    }
+
+    fn quick_reaction_buttons(
+        &self,
+        message_id: Id<MessageMarker>,
+        cx: &Context<Self>,
+    ) -> impl Iterator<Item = Button> {
+        self.quick_reactions()
+            .into_iter()
+            .enumerate()
+            .map(move |(index, emoji)| {
+                let glyph = match emoji.image_url() {
+                    Some(url) => img(url)
+                        .image_cache(&self.image_cache)
+                        .size(px(18.))
+                        .into_any_element(),
+                    None => div()
+                        .text_size(px(17.))
+                        .line_height(relative(1.))
+                        .child(match &emoji {
+                            discord::ReactionEmoji::Unicode(text) => text.clone(),
+                            discord::ReactionEmoji::Custom { .. } => String::new(),
+                        })
+                        .into_any_element(),
+                };
+                Button::new(SharedString::from(format!(
+                    "message-quick-react-{}-{index}",
+                    message_id.get()
+                )))
+                .glyph(glyph)
+                .ghost()
+                .small()
+                .tooltip(emoji.label())
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    this.add_reaction(message_id, emoji.clone(), cx);
+                }))
+            })
     }
 
     fn reply_button(&self, message: &discord::Message, cx: &Context<Self>) -> impl IntoElement {

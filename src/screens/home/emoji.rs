@@ -7,7 +7,7 @@ use std::sync::LazyLock;
 
 use twilight_model::id::{Id, marker::GuildMarker};
 
-use crate::discord::GuildEmoji;
+use crate::discord::{self, GuildEmoji};
 use crate::platform::prefs::RecentEmoji;
 
 pub(in crate::screens::home) const COLUMNS: usize = 9;
@@ -33,6 +33,21 @@ impl PickerEmoji {
             Self::Unicode(emoji) => format!(":{}:", emoji.shortcode().unwrap_or(emoji.name())),
             Self::Custom { emoji, .. } => format!(":{}:", emoji.name),
         }
+    }
+
+    /// `None` for a locked emoji, which can't be sent here.
+    pub fn reaction(&self) -> Option<discord::ReactionEmoji> {
+        Some(match self {
+            Self::Unicode(emoji) => discord::ReactionEmoji::Unicode(emoji.as_str().to_string()),
+            Self::Custom {
+                locked: Some(_), ..
+            } => return None,
+            Self::Custom { emoji, .. } => discord::ReactionEmoji::Custom {
+                id: emoji.id,
+                name: emoji.name.clone(),
+                animated: emoji.animated,
+            },
+        })
     }
 
     pub fn recent_key(&self) -> RecentEmoji {

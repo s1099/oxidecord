@@ -43,6 +43,8 @@ pub struct Channel {
     pub can_manage_messages: bool,
     /// `USE_EXTERNAL_EMOJIS`; sending another guild's emoji also needs Nitro.
     pub can_use_external_emoji: bool,
+    /// `ADD_REACTIONS`; reacting with an emoji already on a message doesn't need it.
+    pub can_add_reactions: bool,
     /// `MENTION_EVERYONE`; without it `@everyone`/`@here` notify no one.
     pub can_mention_everyone: bool,
     pub last_message_id: Option<Id<MessageMarker>>,
@@ -123,6 +125,7 @@ pub(super) fn guild_channel(fields: GuildChannelFields) -> Option<Channel> {
         can_send: permissions.contains(Permissions::SEND_MESSAGES),
         can_manage_messages: permissions.contains(Permissions::MANAGE_MESSAGES),
         can_use_external_emoji: permissions.contains(Permissions::USE_EXTERNAL_EMOJIS),
+        can_add_reactions: permissions.contains(Permissions::ADD_REACTIONS),
         can_mention_everyone: permissions.contains(Permissions::MENTION_EVERYONE),
         last_message_id: fields.last_message_id,
     })
