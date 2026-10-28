@@ -20,24 +20,30 @@ use gpui_kit::*;
 
 use super::{HOME_CONTEXT, HomeScreen, MarkConversationRead, View};
 use crate::ui::depth;
+use crate::ui::smooth_scroll::SmoothScroll;
 
 const MESSAGE_PADDING_X: f32 = 16.;
 
 /// Gap in px between author groups, outside each message's hover highlight.
 const GROUP_GAP: f32 = 14.;
 
-impl Render for HomeScreen {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        for scroll in [
+impl HomeScreen {
+    fn smooth_scrolls(&mut self) -> impl Iterator<Item = &mut SmoothScroll> {
+        [
             &mut self.rail_scroll,
             &mut self.sidebar_scroll,
             &mut self.dm_scroll,
             &mut self.messages_scroll,
-        ] {
+        ]
+        .into_iter()
+        .chain(self.emoji_picker.as_mut().map(|picker| &mut picker.scroll))
+    }
+}
+
+impl Render for HomeScreen {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        for scroll in self.smooth_scrolls() {
             scroll.step(window);
-        }
-        if let Some(picker) = &mut self.emoji_picker {
-            picker.scroll.step(window);
         }
         // After the glide's step, so it reads where this frame draws the list.
         self.sync_at_bottom(cx);
@@ -113,6 +119,25 @@ impl Render for HomeScreen {
             // a focusable element prevents default on every mouse down, which Windows reads as the
             // click handled, killing the window controls and drag region.
             .child(div().track_focus(&self.focus_handle))
+            // Before any container's own wheel handler moves it; see `SmoothScroll::sync`.
+            .child({
+                let screen = cx.entity().downgrade();
+                canvas(
+                    |_, _, _| {},
+                    move |_, _, window, _| {
+                        window.on_mouse_event(move |_: &ScrollWheelEvent, phase, _, cx| {
+                            if phase == DispatchPhase::Capture {
+                                screen
+                                    .update(cx, |this, _| {
+                                        this.smooth_scrolls().for_each(|scroll| scroll.sync())
+                                    })
+                                    .ok();
+                            }
+                        })
+                    },
+                )
+                .absolute()
+            })
             // The account card spans the rail too, so both share a column with it at the bottom.
             .child(
                 v_flex()

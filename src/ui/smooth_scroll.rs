@@ -136,27 +136,34 @@ impl SmoothScroll {
 
     /// Advances the glide one frame. Call once per render, before building the element.
     pub fn step(&mut self, window: &Window) {
+        self.sync();
         if self.current == self.target {
-            // Idle: adopt wherever the container sits, e.g. after a new message
-            // pinned a bottom-aligned list.
-            self.current = self.surface.offset();
-            self.target = self.current;
             return;
-        }
-
-        // The container moved on its own mid-glide (older messages spliced in
-        // above, items re-measured), shifting what an offset points at. Carry the
-        // target with the shift; steering to the raw number would slam the list
-        // to the top when history lands.
-        let shift = self.surface.offset() - self.current;
-        if shift != px(0.) {
-            self.current += shift;
-            self.target = (self.target + shift).clamp(self.surface.min_offset(), px(0.));
         }
 
         self.current = advance(self.current, self.target);
         self.surface.set_offset(self.current);
         request_step(window.current_view(), Instant::now() + MIN_STEP, window);
+    }
+
+    /// Catches up on moves the container made on its own: older messages spliced
+    /// in above, items re-measured in layout. Call from a capture-phase wheel
+    /// listener too, since those land between renders and [`absorb`](Self::absorb)
+    /// would otherwise add its delta to a stale offset, jumping by the drift.
+    pub fn sync(&mut self) {
+        let offset = self.surface.offset();
+        let shift = offset - self.current;
+        if shift == px(0.) {
+            return;
+        }
+        // Mid-glide, carry the target with the shift; steering to the raw number
+        // would slam the list to the top when history lands.
+        if self.current != self.target {
+            self.target = (self.target + shift).clamp(self.surface.min_offset(), px(0.));
+        } else {
+            self.target = offset;
+        }
+        self.current = offset;
     }
 
     /// Overwrites the jump the container's own handler just applied and folds the
