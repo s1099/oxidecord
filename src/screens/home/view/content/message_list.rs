@@ -195,7 +195,7 @@ impl HomeScreen {
         let messages_list = AnyView::from(self.message_list_view.clone())
             .cached(StyleRefinement::default().flex_1());
 
-        // Vertical padding is on the container, not the list: `list` counts its own padding when
+        // Bottom padding is on the container, not the list: `list` counts its own padding when
         // clamping a scroll offset but not when reporting one, and smooth scrolling needs them to
         // agree to reach the bottom and repin. See `ui::smooth_scroll`.
         let mut container = v_flex()
@@ -203,7 +203,7 @@ impl HomeScreen {
             .flex_1()
             .min_h_0()
             .w_full()
-            .py_2()
+            .pb_2()
             .on_scroll_wheel(
                 cx.listener(|this, event, window, _| this.messages_scroll.absorb(event, window)),
             );
