@@ -62,6 +62,10 @@ impl HomeScreen {
         }
 
         let reply_to = self.replying_to.as_ref().map(|target| target.message_id);
+        let mention_author = self
+            .replying_to
+            .as_ref()
+            .is_none_or(|target| target.mention);
         let attachments: Vec<(String, Vec<u8>)> = self
             .pending_attachments
             .drain(..)
@@ -140,6 +144,7 @@ impl HomeScreen {
                 nonce,
                 content,
                 reply_to,
+                mention_author,
                 attachments,
                 progress.clone(),
             )

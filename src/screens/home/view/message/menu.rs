@@ -28,9 +28,11 @@ impl MessageMenu {
             message_id: message.id,
             reply: ReplyTarget {
                 message_id: message.id,
+                author_id: message.author_id,
                 author_name: screen
                     .author_name(message.author_id, &message.author_name)
                     .to_owned(),
+                mention: true,
             },
             // Already open for editing, the action would do nothing.
             can_edit: screen.can_edit_message(message)

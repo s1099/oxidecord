@@ -54,7 +54,10 @@ pub(super) type MemberRoles = HashMap<Id<UserMarker>, Vec<Id<RoleMarker>>>;
 #[derive(Clone)]
 pub(super) struct ReplyTarget {
     pub message_id: Id<MessageMarker>,
+    pub author_id: Id<UserMarker>,
     pub author_name: String,
+    /// Whether the reply pings its author, as Discord's "@ ON" toggle.
+    pub mention: bool,
 }
 
 /// Shown until `until` passes or their message arrives.

@@ -11,6 +11,7 @@ use twilight_http::request::channel::reaction::RequestReactionType;
 use twilight_http::request::{Method, RequestBuilder};
 use twilight_http::response::marker::EmptyBody;
 use twilight_model::channel::Message as RawMessage;
+use twilight_model::channel::message::{AllowedMentions, MentionType};
 use twilight_model::id::{
     Id,
     marker::{ChannelMarker, MessageMarker, UserMarker},
@@ -204,9 +205,20 @@ pub async fn send_message(
     nonce: u64,
     content: String,
     reply_to: Option<Id<MessageMarker>>,
+    mention_author: bool,
     attachments: Vec<(String, Vec<u8>)>,
     progress: Arc<UploadProgress>,
 ) -> Result<Message, String> {
+    // Left out, Discord pings the replied-to author; otherwise everything else
+    // still mentions, as Discord's client sends it.
+    let allowed_mentions = (!mention_author).then(|| AllowedMentions {
+        parse: vec![
+            MentionType::Users,
+            MentionType::Roles,
+            MentionType::Everyone,
+        ],
+        ..Default::default()
+    });
     request(move |client| async move {
         if attachments.is_empty() {
             let mut request = client
@@ -215,6 +227,9 @@ pub async fn send_message(
                 .content(&content);
             if let Some(message_id) = reply_to {
                 request = request.reply(message_id);
+            }
+            if let Some(allowed_mentions) = &allowed_mentions {
+                request = request.allowed_mentions(Some(allowed_mentions));
             }
             return Ok(convert_message(request.await?.model().await?));
         }
@@ -243,6 +258,9 @@ pub async fn send_message(
             if let Some(message_id) = reply_to {
                 body["message_reference"] =
                     serde_json::json!({ "message_id": message_id, "channel_id": channel_id });
+            }
+            if let Some(allowed_mentions) = &allowed_mentions {
+                body["allowed_mentions"] = serde_json::to_value(allowed_mentions)?;
             }
             let request =
                 RequestBuilder::raw(Method::Post, format!("channels/{channel_id}/messages"))
