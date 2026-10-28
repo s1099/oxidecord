@@ -215,35 +215,63 @@ impl HomeScreen {
                 PlaybackState::Ended | PlaybackState::Failed(_)
             )
         });
+        // The whole card is the hit target, as in Discord: it starts an idle clip and pauses or
+        // resumes a playing one. The control bar swallows its own presses.
         let surface = match playback.filter(|_| !finished) {
-            Some(playback) => surface
-                .when(playback.state == PlaybackState::Loading, |this| {
-                    this.child(centered(Spinner::new().large().color(white())))
-                })
-                .child(self.video_controls(playback, key, cx)),
-            None => surface
-                .when_some(
-                    playback.and_then(|playback| match &playback.state {
-                        PlaybackState::Failed(error) => Some(error.clone()),
-                        _ => None,
-                    }),
-                    |this, error| {
-                        this.child(
-                            div()
-                                .absolute()
-                                .top_0()
-                                .left_0()
-                                .right_0()
-                                .p_2()
-                                .bg(black().opacity(0.55))
-                                .text_xs()
-                                .text_center()
-                                .text_color(white())
-                                .child(error),
+            Some(playback) => {
+                let loading = playback.state == PlaybackState::Loading;
+                surface
+                    .when(!loading, |this| {
+                        this.cursor_pointer().on_click(
+                            cx.listener(|this, _, _window, cx| this.toggle_video_paused(cx)),
                         )
-                    },
-                )
-                .child(self.video_play_button(video, key, finished, cx)),
+                    })
+                    .when(loading, |this| {
+                        this.child(centered(Spinner::new().large().color(white())))
+                    })
+                    .when(!loading && playback.player.is_paused(), |this| {
+                        this.child(centered(play_badge()))
+                    })
+                    .child(self.video_controls(playback, key, cx))
+            }
+            None => {
+                let url = video.url.clone();
+                surface
+                    .cursor_pointer()
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        // The whole preview box, not the card's guessed size: the decoder fits the
+                        // true shape inside it. Physical pixels, since decoding at logical size is
+                        // soft above 1x.
+                        let scale = window.scale_factor();
+                        let target = (
+                            (MEDIA_MAX_WIDTH * scale).round().max(1.) as u32,
+                            (MEDIA_MAX_HEIGHT * scale).round().max(1.) as u32,
+                        );
+                        this.play_video(key, url.clone(), target, window, cx);
+                    }))
+                    .when_some(
+                        playback.and_then(|playback| match &playback.state {
+                            PlaybackState::Failed(error) => Some(error.clone()),
+                            _ => None,
+                        }),
+                        |this, error| {
+                            this.child(
+                                div()
+                                    .absolute()
+                                    .top_0()
+                                    .left_0()
+                                    .right_0()
+                                    .p_2()
+                                    .bg(black().opacity(0.55))
+                                    .text_xs()
+                                    .text_center()
+                                    .text_color(white())
+                                    .child(error),
+                            )
+                        },
+                    )
+                    .child(centered(play_badge()))
+            }
         };
 
         v_flex()
@@ -384,36 +412,6 @@ impl HomeScreen {
             .into_any_element()
     }
 
-    /// `again` only changes the label; replaying reopens from scratch since the decoder is gone.
-    fn video_play_button(
-        &self,
-        video: &discord::VideoAttachment,
-        key: MediaKey,
-        again: bool,
-        cx: &Context<Self>,
-    ) -> impl IntoElement {
-        let url = video.url.clone();
-
-        centered(
-            Button::new(key.element_id("play-video"))
-                .icon(Icon::default().path("icons/play.svg"))
-                .primary()
-                .large()
-                .tooltip(if again { "Play again" } else { "Play" })
-                .on_click(cx.listener(move |this, _, window, cx| {
-                    // The whole preview box, not the card's guessed size: the decoder fits the true
-                    // shape
-                    // inside it. Physical pixels, since decoding at logical size is soft above 1x.
-                    let scale = window.scale_factor();
-                    let target = (
-                        (MEDIA_MAX_WIDTH * scale).round().max(1.) as u32,
-                        (MEDIA_MAX_HEIGHT * scale).round().max(1.) as u32,
-                    );
-                    this.play_video(key, url.clone(), target, window, cx);
-                })),
-        )
-    }
-
     fn video_controls(
         &self,
         playback: &VideoPlayback,
@@ -447,14 +445,6 @@ impl HomeScreen {
             .tooltip(if muted { "Unmute" } else { "Mute" })
             .on_click(cx.listener(|this, _, _window, cx| this.toggle_video_muted(cx)));
 
-        let close = Button::new(key.element_id("video-close"))
-            .icon(Icon::default().path("icons/close.svg"))
-            .ghost()
-            .xsmall()
-            .text_color(white())
-            .tooltip("Stop")
-            .on_click(cx.listener(|this, _, window, cx| this.stop_video(window, cx)));
-
         h_flex()
             .absolute()
             .bottom_0()
@@ -464,6 +454,8 @@ impl HomeScreen {
             .py_1()
             .gap_2()
             .items_center()
+            // Presses here are for the controls, not the pause toggle on the card beneath.
+            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
             // A scrim: the bar sits over arbitrary video, so contrast must come from itself.
             .bg(black().opacity(0.55))
             .child(toggle)
@@ -485,8 +477,24 @@ impl HomeScreen {
                     .child(Slider::new(&playback.scrubber).horizontal()),
             )
             .child(sound)
-            .child(close)
     }
+}
+
+/// Decoration only: the card under it takes the click.
+fn play_badge() -> impl IntoElement {
+    div()
+        .size_12()
+        .flex()
+        .items_center()
+        .justify_center()
+        .rounded_full()
+        .bg(black().opacity(0.6))
+        .child(
+            Icon::default()
+                .path("icons/play.svg")
+                .size_6()
+                .text_color(white()),
+        )
 }
 
 fn centered(child: impl IntoElement) -> impl IntoElement {
