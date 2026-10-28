@@ -41,7 +41,7 @@ pub use read_state::{
 };
 pub use settings::{GuildFolders, PresenceStatus, UserSettings};
 pub use system::{SystemEvent, WELCOMES, call_duration};
-pub use upload::{DEFAULT_UPLOAD_LIMIT, MAX_UPLOAD_TOTAL};
+pub use upload::{DEFAULT_UPLOAD_LIMIT, MAX_UPLOAD_TOTAL, Upload, UploadProgress};
 pub use user::{CurrentUser, Reactor, UserProfile};
 pub use voice::{StreamServerInfo, VoiceServerInfo, VoiceUserState, stream_key};
 

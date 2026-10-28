@@ -156,7 +156,7 @@ impl HomeScreen {
             .map(|attachment| attachment.data.bytes().len() as u64)
             .sum();
         UploadBudget {
-            // Nitro allows a file larger than one message request can carry.
+            // Nitro allows a file larger than one cloud upload takes.
             per_file: user_limit.max(guild_limit).min(discord::MAX_UPLOAD_TOTAL),
             remaining: discord::MAX_UPLOAD_TOTAL.saturating_sub(staged),
         }

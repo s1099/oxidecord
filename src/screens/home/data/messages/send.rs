@@ -1,15 +1,20 @@
 //! Sending what's in the composer to the open conversation: shown at once as
 //! a pending message, then swapped for the server's copy once it's confirmed.
 
+use std::pin::pin;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use futures::FutureExt as _;
 use gpui_kit::*;
 use twilight_model::id::{Id, marker::MessageMarker};
 
 use crate::discord;
 use crate::screens::home::autocomplete::resolve_mentions;
 use crate::screens::home::{HomeScreen, View};
+
+/// How often an uploading message's progress bar is redrawn.
+const PROGRESS_REDRAW: Duration = Duration::from_millis(200);
 
 /// Discord's epoch, 2015-01-01, in Unix milliseconds.
 const DISCORD_EPOCH_MS: u64 = 1_420_070_400_000;
@@ -57,11 +62,6 @@ impl HomeScreen {
         }
 
         let reply_to = self.replying_to.as_ref().map(|target| target.message_id);
-        let uploads = self
-            .pending_attachments
-            .iter()
-            .map(|attachment| attachment.upload_filename())
-            .collect();
         let attachments: Vec<(String, Vec<u8>)> = self
             .pending_attachments
             .drain(..)
@@ -73,6 +73,17 @@ impl HomeScreen {
                 )
             })
             .collect();
+
+        let progress = discord::UploadProgress::new(
+            attachments.iter().map(|(_, file)| file.len() as u64).sum(),
+        );
+        let upload = (!attachments.is_empty()).then(|| discord::Upload {
+            filenames: attachments
+                .iter()
+                .map(|(filename, _)| filename.clone())
+                .collect(),
+            progress: progress.clone(),
+        });
 
         self.message_input.update(cx, |input, cx| {
             input.set_value("", window, cx);
@@ -109,7 +120,7 @@ impl HomeScreen {
                 content.clone(),
                 timestamp,
                 replied,
-                uploads,
+                upload.clone(),
             );
             let ix = self.messages.len();
             self.messages.push(pending);
@@ -124,11 +135,33 @@ impl HomeScreen {
         cx.notify();
 
         cx.spawn(async move |this, cx| {
-            let result =
-                discord::send_message(channel_id, nonce, content, reply_to, attachments).await;
+            let send = discord::send_message(
+                channel_id,
+                nonce,
+                content,
+                reply_to,
+                attachments,
+                progress.clone(),
+            )
+            .fuse();
+            let mut send = pin!(send);
+            let result = loop {
+                // Progress lives in atomics the upload moves, so the bar is
+                // redrawn on a timer rather than on each chunk.
+                let mut tick = cx.background_executor().timer(PROGRESS_REDRAW).fuse();
+                futures::select_biased! {
+                    result = send => break result,
+                    _ = tick => {
+                        if upload.is_some() && this.update(cx, |_, cx| cx.notify()).is_err() {
+                            return;
+                        }
+                    }
+                }
+            };
             let _ = this.update(cx, |this, cx| {
-                // Drop the response if the user switched channels meanwhile.
-                if this.selected_channel != Some(channel_id) {
+                // Drop the response if the user switched channels meanwhile, or
+                // cancelled: the pending copy is gone already.
+                if this.selected_channel != Some(channel_id) || progress.is_cancelled() {
                     return;
                 }
                 match result {
@@ -146,6 +179,31 @@ impl HomeScreen {
             });
         })
         .detach();
+    }
+
+    /// Stops a pending message's upload and drops the message, as Discord does.
+    pub(in crate::screens::home) fn cancel_upload(
+        &mut self,
+        pending_id: Id<MessageMarker>,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(ix) = self.messages.iter().position(|message| {
+            message.id == pending_id
+                && matches!(
+                    message.delivery,
+                    discord::Delivery::Sending { upload: Some(_) }
+                )
+        }) else {
+            return;
+        };
+        if let discord::Delivery::Sending {
+            upload: Some(upload),
+        } = &self.messages.remove(ix).delivery
+        {
+            upload.progress.cancel();
+        }
+        self.splice_messages(ix..ix + 1, 0);
+        cx.notify();
     }
 
     /// Whichever of the send's response and the gateway's echo lands first does it;

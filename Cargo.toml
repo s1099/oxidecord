@@ -17,8 +17,10 @@ serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["raw_value"] }
 regex = "1"
 futures = "0.3"
+bytes = "1.12.1"
+percent-encoding = "2.3.2"
 anyhow = "1.0.103"
-reqwest = { package = "zed-reqwest", version = "0.12.15-zed", default-features = false, features = ["rustls-tls-native-roots"] }
+reqwest = { package = "zed-reqwest", version = "0.12.15-zed", default-features = false, features = ["rustls-tls-native-roots", "stream"] }
 keyring = "4.1.5"
 songbird = { version = "0.6.0", default-features = false, features = ["driver", "gateway", "receive", "rustls", "tws"] }
 cpal = "0.18.2"

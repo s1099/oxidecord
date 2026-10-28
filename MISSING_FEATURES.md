@@ -20,9 +20,8 @@
 | Polls (creating, voting, results) | Missing | |
 | Non-media file attachments shown in the chat (audio player, file cards for PDFs, zips, and so on) | Partial | Shown as file cards that open in the browser to download; audio has no inline player, and spoilered files aren't covered |
 | Voice messages (recording and playback) | Missing | |
-| Cloud uploads (`POST /channels/{id}/attachments`, as Discord's client sends files) | Missing | Files go in the message request itself, read whole into memory; Nitro and boost limits apply, but Cloudflare caps that request just under 500 MiB, so Nitro's 1 GB files are capped at 500 MB |
+| Cloud uploads (`POST /channels/{id}/attachments`, as Discord's client sends files) | Partial | Files go to cloud storage before the message is sent, but are read whole into memory first, and one upload takes at most 500 MiB, so Nitro's 1 GB files are capped at 500 MB |
 | Drag and drop of files onto the chat | Missing | Picker and paste only |
-| Upload progress and cancelling an upload | Missing | |
 | Attachment alt text and descriptions | Missing | |
 | Pinning and unpinning messages, and the pinned-messages panel | Partial | The header's pin button opens the pinned-messages popout; pinning, unpinning, and jumping to a pin aren't done yet |
 | Message search (with filters: from, in, has, before, after) | Missing | The header has a search box, but typing in it does nothing yet |

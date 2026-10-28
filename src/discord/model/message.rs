@@ -18,6 +18,7 @@ use super::system::{SystemEvent, convert_system};
 use super::time::{
     format_local_day, format_local_full, format_message_clock, format_message_time, local_day,
 };
+use super::upload::Upload;
 use super::user::{CurrentUser, small_avatar_url};
 
 #[derive(Clone)]
@@ -56,9 +57,9 @@ pub struct Message {
 pub enum Delivery {
     Sent,
     /// Shown optimistically; its id is the request's nonce so the confirmed
-    /// copy can replace it. `uploads` are file names, which have no URL yet.
+    /// copy can replace it. The files have no URL until then.
     Sending {
-        uploads: Vec<String>,
+        upload: Option<Upload>,
     },
     /// Stays in the list so the text isn't lost.
     Failed,
@@ -78,7 +79,7 @@ impl Message {
         content: String,
         timestamp: i64,
         reply_to: Option<&Message>,
-        uploads: Vec<String>,
+        upload: Option<Upload>,
     ) -> Self {
         Self {
             id,
@@ -101,7 +102,7 @@ impl Message {
             forward: None,
             reactions: Vec::new(),
             system: None,
-            delivery: Delivery::Sending { uploads },
+            delivery: Delivery::Sending { upload },
         }
     }
 

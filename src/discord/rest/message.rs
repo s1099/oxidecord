@@ -1,9 +1,16 @@
 //! Reading a channel's history, sending to it, and reacting to what's in it.
 
+use std::sync::Arc;
+
+use bytes::Bytes;
+use futures::StreamExt as _;
+use percent_encoding::{AsciiSet, CONTROLS, utf8_percent_encode};
+use serde::Deserialize;
+use twilight_http::Client as HttpClient;
 use twilight_http::request::channel::reaction::RequestReactionType;
 use twilight_http::request::{Method, RequestBuilder};
 use twilight_http::response::marker::EmptyBody;
-use twilight_model::http::attachment::Attachment;
+use twilight_model::channel::Message as RawMessage;
 use twilight_model::id::{
     Id,
     marker::{ChannelMarker, MessageMarker, UserMarker},
@@ -11,8 +18,9 @@ use twilight_model::id::{
 
 use super::request;
 use crate::discord::model::{
-    Message, RawPins, ReactionEmoji, Reactor, convert_message, convert_reactor,
+    Message, RawPins, ReactionEmoji, Reactor, UploadProgress, convert_message, convert_reactor,
 };
+use crate::platform::http;
 
 /// How many messages one [`fetch_messages`] call requests; a response with
 /// fewer means the start of the channel's history was reached.
@@ -186,39 +194,200 @@ pub async fn ack_message(
 
 /// Sends a message. `nonce` comes back on the gateway's `MESSAGE_CREATE` for
 /// it, which is how the optimistic copy shown meanwhile is matched up.
+///
+/// Files go to cloud storage first, as Discord's client sends them: twilight
+/// gives up on a request after ten seconds, too soon to carry a large file
+/// inside the message itself, and a separate upload can report progress and be
+/// cancelled through `progress`.
 pub async fn send_message(
     channel_id: Id<ChannelMarker>,
     nonce: u64,
     content: String,
     reply_to: Option<Id<MessageMarker>>,
     attachments: Vec<(String, Vec<u8>)>,
+    progress: Arc<UploadProgress>,
 ) -> Result<Message, String> {
     request(move |client| async move {
-        // Attachment ids only need to be unique within this message, so the
-        // slice index works.
-        let attachments: Vec<Attachment> = attachments
-            .into_iter()
-            .enumerate()
-            .map(|(index, (filename, file))| Attachment::from_bytes(filename, file, index as u64))
-            .collect();
+        if attachments.is_empty() {
+            let mut request = client
+                .create_message(channel_id)
+                .nonce(nonce)
+                .content(&content);
+            if let Some(message_id) = reply_to {
+                request = request.reply(message_id);
+            }
+            return Ok(convert_message(request.await?.model().await?));
+        }
 
-        // Discord requires content or attachments; both borrows must outlive the awaited request.
-        let mut request = client.create_message(channel_id).nonce(nonce);
-        if !content.is_empty() {
-            request = request.content(&content);
+        let uploaded = upload_attachments(&client, channel_id, attachments, &progress).await?;
+        let sent = async {
+            anyhow::ensure!(!progress.is_cancelled(), "upload cancelled");
+            // Attachment ids only need to be unique within this message, so the
+            // index works.
+            let attachments: Vec<_> = uploaded
+                .iter()
+                .enumerate()
+                .map(|(index, file)| {
+                    serde_json::json!({
+                        "id": index.to_string(),
+                        "filename": file.filename,
+                        "uploaded_filename": file.upload_filename,
+                    })
+                })
+                .collect();
+            let mut body = serde_json::json!({
+                "content": content,
+                "nonce": nonce.to_string(),
+                "attachments": attachments,
+            });
+            if let Some(message_id) = reply_to {
+                body["message_reference"] =
+                    serde_json::json!({ "message_id": message_id, "channel_id": channel_id });
+            }
+            let request =
+                RequestBuilder::raw(Method::Post, format!("channels/{channel_id}/messages"))
+                    .json(&body)
+                    .build()?;
+            Ok(client.request::<RawMessage>(request).await?.model().await?)
         }
-        if !attachments.is_empty() {
-            request = request.attachments(&attachments);
+        .await;
+        if sent.is_err() {
+            delete_uploads(&client, &uploaded).await;
         }
-        if let Some(message_id) = reply_to {
-            request = request.reply(message_id);
-        }
-        let message = request.await?.model().await?;
-
-        Ok(convert_message(message))
+        Ok(convert_message(sent?))
     })
     .await
 }
+
+/// How much of a file is handed to the connection at a time, and so how finely
+/// progress moves.
+const UPLOAD_CHUNK: usize = 64 * 1024;
+
+/// Storage slots from `POST /channels/{id}/attachments`, in request order.
+#[derive(Deserialize)]
+struct CloudAttachments {
+    attachments: Vec<CloudAttachment>,
+}
+
+#[derive(Deserialize)]
+struct CloudAttachment {
+    upload_url: String,
+    upload_filename: String,
+}
+
+struct UploadedFile {
+    filename: String,
+    upload_filename: String,
+}
+
+/// Puts every file in cloud storage at once. On failure or cancelling,
+/// whatever made it up is deleted again.
+async fn upload_attachments(
+    client: &HttpClient,
+    channel_id: Id<ChannelMarker>,
+    attachments: Vec<(String, Vec<u8>)>,
+    progress: &Arc<UploadProgress>,
+) -> anyhow::Result<Vec<UploadedFile>> {
+    let files: Vec<_> = attachments
+        .iter()
+        .enumerate()
+        .map(|(index, (filename, file))| {
+            serde_json::json!({
+                "id": index.to_string(),
+                "filename": filename,
+                "file_size": file.len(),
+            })
+        })
+        .collect();
+    let request = RequestBuilder::raw(Method::Post, format!("channels/{channel_id}/attachments"))
+        .json(&serde_json::json!({ "files": files }))
+        .build()?;
+    let slots = client
+        .request::<CloudAttachments>(request)
+        .await?
+        .model()
+        .await?
+        .attachments;
+    anyhow::ensure!(
+        slots.len() == attachments.len(),
+        "Discord returned {} upload slots for {} files",
+        slots.len(),
+        attachments.len()
+    );
+
+    let uploaded: Vec<_> = attachments
+        .iter()
+        .zip(&slots)
+        .map(|((filename, _), slot)| UploadedFile {
+            filename: filename.clone(),
+            upload_filename: slot.upload_filename.clone(),
+        })
+        .collect();
+    let puts = futures::future::try_join_all(
+        attachments
+            .into_iter()
+            .zip(slots)
+            .map(|((_, file), slot)| put_file(slot.upload_url, file, progress.clone())),
+    );
+    // Dropping the requests closes their connections, so a cancel takes effect
+    // at once rather than when the next chunk is due.
+    let result = tokio::select! {
+        result = puts => result.map(drop),
+        () = progress.cancelled() => Err(anyhow::anyhow!("upload cancelled")),
+    };
+    if let Err(err) = result {
+        delete_uploads(client, &uploaded).await;
+        return Err(err);
+    }
+    Ok(uploaded)
+}
+
+/// Streamed in chunks so `progress` follows what the connection has taken.
+async fn put_file(url: String, file: Vec<u8>, progress: Arc<UploadProgress>) -> anyhow::Result<()> {
+    let file = Bytes::from(file);
+    let len = file.len();
+    let chunks = futures::stream::iter((0..len).step_by(UPLOAD_CHUNK)).map(move |start| {
+        let chunk = file.slice(start..(start + UPLOAD_CHUNK).min(len));
+        progress.advance(chunk.len() as u64);
+        Ok::<_, std::io::Error>(chunk)
+    });
+    http::client()
+        .put(url)
+        // A streamed body is otherwise sent chunked, with no length up front.
+        .header(reqwest::header::CONTENT_LENGTH, len)
+        .body(reqwest::Body::wrap_stream(chunks))
+        .send()
+        .await?
+        .error_for_status()?;
+    Ok(())
+}
+
+/// Best effort: storage that's never attached to a message expires anyway.
+async fn delete_uploads(client: &HttpClient, uploaded: &[UploadedFile]) {
+    for file in uploaded {
+        let path = format!(
+            "attachments/{}",
+            utf8_percent_encode(&file.upload_filename, PATH_SEGMENT)
+        );
+        if let Ok(request) = RequestBuilder::raw(Method::Delete, path).build() {
+            let _ = client.request::<EmptyBody>(request).await;
+        }
+    }
+}
+
+/// What a filename can't carry into a URL path unescaped. `/` stays, as an
+/// upload filename is a path itself.
+const PATH_SEGMENT: &AsciiSet = &CONTROLS
+    .add(b' ')
+    .add(b'"')
+    .add(b'#')
+    .add(b'%')
+    .add(b'?')
+    .add(b'<')
+    .add(b'>')
+    .add(b'`')
+    .add(b'{')
+    .add(b'}');
 
 /// Replaces a message's text. Only ever permitted on the current user's own
 /// messages; attachments and embeds are left as they are.

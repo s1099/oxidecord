@@ -212,9 +212,9 @@ impl HomeScreen {
     ) -> AnyElement {
         let theme = cx.theme();
         let media = Media::of(message);
-        let uploads = match &message.delivery {
-            discord::Delivery::Sending { uploads } => uploads.as_slice(),
-            _ => &[],
+        let upload = match &message.delivery {
+            discord::Delivery::Sending { upload } => upload.as_ref(),
+            _ => None,
         };
         let failed = message.delivery == discord::Delivery::Failed;
         let content: AnyElement = v_flex()
@@ -242,7 +242,7 @@ impl HomeScreen {
             .when(
                 editing.is_none()
                     && message.content.is_empty()
-                    && uploads.is_empty()
+                    && upload.is_none()
                     && message.forward.is_none()
                     && media.is_empty(),
                 |this| {
@@ -257,12 +257,6 @@ impl HomeScreen {
             .when(!media.is_empty(), |this| {
                 this.child(self.render_media(message.id.get(), media, cx))
             })
-            .children(uploads.iter().map(|filename| {
-                div()
-                    .text_sm()
-                    .text_color(theme.muted_foreground)
-                    .child(format!("Uploading {filename}…"))
-            }))
             .when(!message.reactions.is_empty(), |this| {
                 this.child(self.render_reactions(message, cx))
             })
@@ -279,7 +273,17 @@ impl HomeScreen {
                 |this| this.opacity(0.5),
             )
             .into_any_element();
-        content
+        match upload {
+            // Outside the faded content: the progress and the cancel button are live.
+            Some(upload) => v_flex()
+                .w_full()
+                .min_w_0()
+                .gap_1()
+                .child(content)
+                .child(self.render_upload(message.id, upload, cx))
+                .into_any_element(),
+            None => content,
+        }
     }
 
     /// A message's images, videos, files, and embeds, stacked under its text.

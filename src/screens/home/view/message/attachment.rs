@@ -4,10 +4,12 @@
 use std::time::Duration;
 
 use gpui_kit::component::{
-    ActiveTheme as _, Icon, Sizable as _, h_flex, slider::Slider, spinner::Spinner, v_flex,
+    ActiveTheme as _, Icon, IconName, Sizable as _, h_flex, progress::Progress, slider::Slider,
+    spinner::Spinner, v_flex,
 };
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
+use twilight_model::id::{Id, marker::MessageMarker};
 
 use crate::discord;
 use crate::screens::home::HomeScreen;
@@ -252,6 +254,74 @@ impl HomeScreen {
     }
 
     /// Name and download button both open the URL in the browser, which downloads it.
+    /// A pending message's files on their way up, with how far along they are.
+    pub(super) fn render_upload(
+        &self,
+        message_id: Id<MessageMarker>,
+        upload: &discord::Upload,
+        cx: &Context<Self>,
+    ) -> AnyElement {
+        let theme = cx.theme();
+        let name = match upload.filenames.as_slice() {
+            [filename] => filename.clone(),
+            filenames => format!("{} files", filenames.len()),
+        };
+        let (sent, total) = (upload.progress.sent(), upload.progress.total());
+        let percent = if total == 0 {
+            100.
+        } else {
+            sent as f32 / total as f32 * 100.
+        };
+
+        h_flex()
+            .w_full()
+            .max_w(px(MEDIA_MAX_WIDTH))
+            .p_3()
+            .gap_3()
+            .items_center()
+            .rounded(px(8.))
+            .bg(theme.muted.opacity(0.5))
+            .border_1()
+            .border_color(theme.border)
+            .child(
+                Icon::default()
+                    .path("icons/file.svg")
+                    .size_8()
+                    .flex_shrink_0()
+                    .text_color(theme.muted_foreground),
+            )
+            .child(
+                v_flex()
+                    .flex_1()
+                    .min_w_0()
+                    .gap_1()
+                    .child(div().truncate().text_sm().child(name))
+                    .child(
+                        Progress::new(("upload-progress", message_id.get()))
+                            .small()
+                            .value(percent)
+                            .accessibility_label("Upload progress"),
+                    )
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(theme.muted_foreground)
+                            .child(format!("{} of {}", format_size(sent), format_size(total))),
+                    ),
+            )
+            .child(
+                Button::new(("upload-cancel", message_id.get()))
+                    .icon(IconName::Close)
+                    .ghost()
+                    .small()
+                    .tooltip("Cancel upload")
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        this.cancel_upload(message_id, cx);
+                    })),
+            )
+            .into_any_element()
+    }
+
     pub(super) fn render_file(
         &self,
         file: &discord::FileAttachment,
