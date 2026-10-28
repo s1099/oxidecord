@@ -27,7 +27,7 @@
 | Message search (with filters: from, in, has, before, after) | Missing | The header has a search box, but typing in it does nothing yet |
 | Jump to a message (from a reply, a link, or search) | Partial | Reply quotes, the composer's "Replying to" strip, and discord.com message links jump there; search and a forward's source don't yet |
 | "Jump to present" and the new-messages bar | Missing | |
-| Copy text, copy message ID, and other developer-mode context-menu items | Missing | Only "Copy Message Link" is there |
+| Copy message ID and other developer-mode context-menu items | Missing | "Copy Text" and "Copy Message Link" are there |
 | Saving and copying images | Missing | The image viewer can only open the image in the browser |
 | Invite links shown as server cards | Missing | |
 | Right-click context menus (message, user, channel, server) | Missing | Actions are on the hover toolbar and "More" menu only |

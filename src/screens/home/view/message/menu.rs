@@ -20,6 +20,8 @@ pub(super) struct MessageMenu {
     pub can_reply: bool,
     pub can_delete: bool,
     pub has_reactions: bool,
+    /// The raw content, so a link hidden behind its GIF still copies.
+    pub text: Option<SharedString>,
 }
 
 impl MessageMenu {
@@ -43,6 +45,8 @@ impl MessageMenu {
             can_reply: message.system.is_none(),
             can_delete: screen.can_delete_message(message),
             has_reactions: !message.reactions.is_empty(),
+            text: (message.system.is_none() && !message.content.trim().is_empty())
+                .then(|| message.content.clone().into()),
         }
     }
 
@@ -113,6 +117,15 @@ impl MessageMenu {
                         }
                     },
                 ))
+            })
+            .when_some(self.text.clone(), |menu, text| {
+                menu.item(
+                    PopupMenuItem::new("Copy Text")
+                        .icon(IconName::Copy)
+                        .on_click(move |_, _, cx| {
+                            cx.write_to_clipboard(ClipboardItem::new_string(text.to_string()))
+                        }),
+                )
             })
             .item(
                 PopupMenuItem::new("Mark Unread")
