@@ -18,8 +18,9 @@ use crate::ui::depth::media_shadow;
 use super::super::markdown::MarkdownOptions;
 use super::{MEDIA_MAX_HEIGHT, MEDIA_MAX_WIDTH, fit_within};
 
-/// Discord's 432px cap, or the message column when narrower.
-const CARD_MAX_WIDTH: f32 = 432.;
+/// Discord's 516px cap, spine included, or the message column when narrower. Any line that
+/// wraps reports the full wrap width, so a card with one is always at the cap, as in Discord.
+const CARD_MAX_WIDTH: f32 = 516.;
 /// Discord's is asymmetric: less above the first row than below the last, and the left is
 /// short by the spine's width so text lands 16px in.
 const CARD_PADDING_TOP: f32 = 8.;
@@ -33,9 +34,14 @@ const ROW_GAP: f32 = 8.;
 const IMAGE_GAP: f32 = 16.;
 /// gpui's default golden-ratio line height is far looser than Discord's embed text, so
 /// every row sets its own.
-const LINE_HEIGHT_TITLE: f32 = 22.;
-const LINE_HEIGHT_BODY: f32 = 18.;
-const LINE_HEIGHT_SMALL: f32 = 16.;
+const LINE_HEIGHT_TITLE: f32 = 19.;
+const LINE_HEIGHT_BODY: f32 = 17.;
+const LINE_HEIGHT_SMALL: f32 = 14.;
+/// Discord's embed sizes scaled to this app's 14px message text, as Discord's are to its 16px:
+/// the title matches the message, the rest sit a step and two below it.
+const TEXT_TITLE: Rems = Rems(0.875);
+const TEXT_BODY: Rems = Rems(0.8125);
+const TEXT_SMALL: Rems = Rems(0.6875);
 
 impl HomeScreen {
     /// `message_id` only seeds element ids, which must be unique across the message list.
@@ -50,6 +56,8 @@ impl HomeScreen {
             .w_full()
             .min_w_0()
             .flex_shrink_0()
+            // Not stretched, so each card is as wide as its content, as in Discord.
+            .items_start()
             .gap_2()
             .children(embeds.iter().enumerate().map(|(index, embed)| {
                 let id = MediaKey { message_id, index };
@@ -81,7 +89,7 @@ impl HomeScreen {
             .gap(px(ROW_GAP))
             .children(embed.provider.clone().map(|provider| {
                 div()
-                    .text_xs()
+                    .text_size(TEXT_SMALL)
                     .line_height(px(LINE_HEIGHT_SMALL))
                     .text_color(theme.foreground)
                     .child(provider)
@@ -98,7 +106,7 @@ impl HomeScreen {
                     .interactive(embed.url.is_none())
                     .selectable(id.message_id, part(EmbedPiece::Title));
                 let styled = div()
-                    .text_size(px(16.))
+                    .text_size(TEXT_TITLE)
                     .line_height(px(LINE_HEIGHT_TITLE))
                     .font_weight(FontWeight::SEMIBOLD)
                     .child(self.render_inline_markdown(title, options, cx));
@@ -120,14 +128,17 @@ impl HomeScreen {
                 }
             }))
             .children(embed.description.as_ref().map(|description| {
-                div().text_sm().line_height(px(LINE_HEIGHT_BODY)).child(
-                    self.render_markdown(
-                        description,
-                        MarkdownOptions::new(scope("description"), mentions)
-                            .selectable(id.message_id, part(EmbedPiece::Description)),
-                        cx,
-                    ),
-                )
+                div()
+                    .text_size(TEXT_BODY)
+                    .line_height(px(LINE_HEIGHT_BODY))
+                    .child(
+                        self.render_markdown(
+                            description,
+                            MarkdownOptions::new(scope("description"), mentions)
+                                .selectable(id.message_id, part(EmbedPiece::Description)),
+                            cx,
+                        ),
+                    )
             }))
             .when(!embed.fields.is_empty(), |this| {
                 this.child(self.render_fields(id, &embed.fields, mentions, cx))
@@ -180,11 +191,8 @@ impl HomeScreen {
             .id(id.element_id("embed"))
             .group(id.group())
             .relative()
-            // An absolute width, not a percentage: one that resolves differently when measured than
-            // painted wraps text to different line counts per pass, leaving the card too short.
-            // `max-width` only matters in a window too narrow for the full card.
-            .w(px(CARD_MAX_WIDTH))
-            .max_w(relative(1.))
+            // Fits its content up to the cap; the parent's width bounds it in a narrow window.
+            .max_w(px(CARD_MAX_WIDTH))
             // Never shorter than its content: `overflow: hidden` waives a flex item's automatic
             // minimum height, so a tall card would be squeezed by the column above and clip its
             // fields.
@@ -412,7 +420,7 @@ impl HomeScreen {
             .gap(px(2.))
             .child(
                 div()
-                    .text_sm()
+                    .text_size(TEXT_BODY)
                     .line_height(px(LINE_HEIGHT_BODY))
                     .font_weight(FontWeight::SEMIBOLD)
                     .child(
@@ -425,14 +433,17 @@ impl HomeScreen {
                     ),
             )
             .child(
-                div().text_sm().line_height(px(LINE_HEIGHT_BODY)).child(
-                    self.render_markdown(
-                        &field.value,
-                        MarkdownOptions::new(scope("value"), mentions)
-                            .selectable(id.message_id, part(EmbedPiece::FieldValue(index))),
-                        cx,
+                div()
+                    .text_size(TEXT_BODY)
+                    .line_height(px(LINE_HEIGHT_BODY))
+                    .child(
+                        self.render_markdown(
+                            &field.value,
+                            MarkdownOptions::new(scope("value"), mentions)
+                                .selectable(id.message_id, part(EmbedPiece::FieldValue(index))),
+                            cx,
+                        ),
                     ),
-                ),
             )
     }
 
@@ -493,7 +504,7 @@ fn render_author(
     hover_color: Hsla,
 ) -> impl IntoElement {
     let name = div()
-        .text_sm()
+        .text_size(TEXT_BODY)
         .line_height(px(LINE_HEIGHT_BODY))
         .font_weight(FontWeight::SEMIBOLD)
         .child(author.name.clone());
@@ -556,7 +567,7 @@ fn render_footer(
         .w_full()
         .gap(px(8.))
         .items_center()
-        .text_xs()
+        .text_size(TEXT_SMALL)
         .line_height(px(LINE_HEIGHT_SMALL))
         .text_color(muted)
         .children(
