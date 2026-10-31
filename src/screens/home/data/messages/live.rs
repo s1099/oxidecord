@@ -244,6 +244,13 @@ impl HomeScreen {
                 self.unreads.set_default_unreads(guild_id, unreads);
                 cx.notify();
             }
+            discord::GatewayEvent::GuildAppearance {
+                guild_id,
+                appearance,
+            } => {
+                self.guild_data.appearances.insert(guild_id, appearance);
+                cx.notify();
+            }
             discord::GatewayEvent::GuildEmojis { guild_id, emojis } => {
                 self.guild_data.emojis.insert(guild_id, emojis);
             }

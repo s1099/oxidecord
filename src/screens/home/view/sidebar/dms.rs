@@ -11,7 +11,7 @@ use crate::screens::home::view::{avatar, mention_badge, unread_pill};
 use crate::ui::depth::{Finish, Level, Lit as _, radius};
 use crate::ui::theme;
 
-use super::shell;
+use super::{shell, title_row};
 
 /// Skeleton row widths, fixed so it doesn't reshuffle between frames.
 const SKELETON_WIDTHS: [f32; 12] = [
@@ -142,6 +142,10 @@ impl HomeScreen {
             list = list.children(self.dms.list.iter().map(|dm| self.render_dm_row(dm, cx)));
         }
 
-        shell("Direct Messages", list, cx)
+        shell(
+            Some(title_row("Direct Messages", None).into_any_element()),
+            list,
+            cx,
+        )
     }
 }

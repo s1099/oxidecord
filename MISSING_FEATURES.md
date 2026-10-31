@@ -51,7 +51,7 @@
 | Marking a server or channel as read from the sidebar | Missing | Only Esc in the open conversation marks it read |
 | Member list sidebar with roles, presence and grouping | Partial | Guild text and announcement channels only; group DMs and threads show none, and right-clicking a member does nothing |
 | Role icons, server tags and badges next to names | Missing | |
-| Server banner and header dropdown menu | Missing | |
+| Server header dropdown menu | Missing | The banner and verified badge are drawn; the name opens nothing yet |
 | Server boosting and boost level perks | Missing | |
 | Joining servers via invite link, and creating invites | Missing | |
 | Creating, leaving and deleting servers | Missing | |

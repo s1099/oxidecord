@@ -22,9 +22,9 @@ use twilight_model::id::{
 use crate::platform::runtime;
 
 use super::model::{
-    Channel, ChannelLatest, GuildEmoji, GuildMember, GuildUnreads, MemberListUpdate, Message,
-    MuteSettings, PresenceStatus, ReactionEmoji, ReadState, Role, StreamServerInfo, UnreadSetting,
-    VoiceServerInfo, VoiceUserState,
+    Channel, ChannelLatest, GuildAppearance, GuildEmoji, GuildMember, GuildUnreads,
+    MemberListUpdate, Message, MuteSettings, PresenceStatus, ReactionEmoji, ReadState, Role,
+    StreamServerInfo, UnreadSetting, VoiceServerInfo, VoiceUserState,
 };
 
 pub use sender::GatewaySender;
@@ -113,6 +113,10 @@ pub enum GatewayEvent {
     GuildDefaultUnreads {
         guild_id: Id<GuildMarker>,
         unreads: UnreadSetting,
+    },
+    GuildAppearance {
+        guild_id: Id<GuildMarker>,
+        appearance: GuildAppearance,
     },
     GuildEmojis {
         guild_id: Id<GuildMarker>,

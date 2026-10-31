@@ -133,9 +133,10 @@ fn render_handle(handle: &ResizeHandleContext, window: &mut Window, cx: &mut App
         .into_any_element()
 }
 
-/// The chrome both sidebars share: a titled header over the scrolling list.
+/// The chrome both sidebars share: a header over the scrolling list.
 /// The account panel is drawn by the home screen under both, since it spans the rail too.
-fn shell(title: impl Into<SharedString>, list: impl IntoElement, cx: &App) -> impl IntoElement {
+/// `None` for a sidebar that draws its own header over the list.
+fn shell(header: Option<AnyElement>, list: impl IntoElement, cx: &App) -> impl IntoElement {
     let theme = cx.theme();
 
     // No borders: the sidebar is the window itself, and the conversation panel
@@ -144,21 +145,28 @@ fn shell(title: impl Into<SharedString>, list: impl IntoElement, cx: &App) -> im
         .size_full()
         .bg(theme.sidebar)
         .text_color(theme.sidebar_foreground)
-        .child(
-            h_flex()
-                // Level with the conversation header, which sits inside the
-                // inset panel.
-                .h(px(56.))
-                .pt_2()
-                .flex_shrink_0()
-                .px_4()
-                .items_center()
-                .child(
-                    div()
-                        .truncate()
-                        .font_weight(FontWeight::SEMIBOLD)
-                        .child(title.into()),
-                ),
-        )
+        .children(header)
         .child(list)
+}
+
+/// Level with the conversation header, which sits inside the inset panel.
+const TITLE_HEIGHT: f32 = 56.;
+
+/// The header's title line, after an optional badge.
+fn title_row(title: impl Into<SharedString>, badge: Option<AnyElement>) -> Div {
+    h_flex()
+        .h(px(TITLE_HEIGHT))
+        .pt_2()
+        .flex_shrink_0()
+        .px_4()
+        .gap_1p5()
+        .items_center()
+        .children(badge)
+        .child(
+            div()
+                .min_w_0()
+                .truncate()
+                .font_weight(FontWeight::SEMIBOLD)
+                .child(title.into()),
+        )
 }

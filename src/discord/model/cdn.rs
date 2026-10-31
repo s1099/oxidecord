@@ -38,6 +38,11 @@ pub(super) fn guild_icon_url(guild_id: Id<GuildMarker>, hash: &str) -> String {
     format!("https://cdn.discordapp.com/icons/{guild_id}/{hash}.webp?size=100&quality=lossless")
 }
 
+/// Always static: Discord only animates a banner while it's hovered.
+pub(super) fn guild_banner_url(guild_id: Id<GuildMarker>, hash: &str) -> String {
+    format!("https://cdn.discordapp.com/banners/{guild_id}/{hash}.webp?size=480")
+}
+
 pub(super) fn group_dm_icon_url(channel_id: Id<ChannelMarker>, hash: &str) -> String {
     format!("https://cdn.discordapp.com/channel-icons/{channel_id}/{hash}.webp?size=80")
 }

@@ -25,7 +25,7 @@ pub use cdn::{animated_webp, scaled_url};
 pub use channel::{Channel, ChannelKind, DirectMessage};
 pub use embed::{Embed, EmbedAuthor, EmbedField, EmbedFooter, EmbedLayout, EmbedMedia, EmbedVideo};
 pub use emoji::GuildEmoji;
-pub use guild::{Guild, GuildMember, Role};
+pub use guild::{Guild, GuildAppearance, GuildMember, Role};
 pub use link::MessageLink;
 pub use markdown::{Block, Inline, List, Markdown, Mention};
 pub use member_list::{
@@ -47,7 +47,7 @@ pub use voice::{StreamServerInfo, VoiceServerInfo, VoiceUserState, stream_key};
 
 pub(super) use channel::{convert_channel, convert_dms};
 pub(super) use emoji::{RawEmoji, convert_guild_emoji};
-pub(super) use guild::{RawMember, RawRole, convert_guild, convert_role};
+pub(super) use guild::{RawMember, RawRole, convert_guild, convert_guild_appearance, convert_role};
 pub(super) use member_list::{RawMemberListUpdate, convert_member_list_update};
 pub(super) use message::{RawPins, author_member, convert_message, convert_reaction_emoji};
 pub(super) use read_state::{

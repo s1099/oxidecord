@@ -164,6 +164,10 @@ pub(super) struct GatewayGuild {
     premium_tier: Option<u8>,
     #[serde(default)]
     default_message_notifications: Option<u8>,
+    #[serde(default)]
+    banner: Option<String>,
+    #[serde(default)]
+    features: Option<Vec<String>>,
     /// Where the guild's own fields sit when the session asked for them
     /// apart from its lists.
     #[serde(default)]
@@ -178,6 +182,10 @@ struct GuildProperties {
     premium_tier: Option<u8>,
     #[serde(default)]
     default_message_notifications: Option<u8>,
+    #[serde(default)]
+    banner: Option<String>,
+    #[serde(default)]
+    features: Option<Vec<String>>,
 }
 
 impl GatewayGuild {
@@ -189,6 +197,20 @@ impl GatewayGuild {
     pub(super) fn premium_tier(&self) -> Option<u8> {
         self.premium_tier
             .or_else(|| self.properties.as_ref()?.premium_tier)
+    }
+
+    /// `None` for an unavailable guild, which says nothing about its banner or
+    /// features. The features list is always sent otherwise, so it marks which
+    /// object holds the banner.
+    pub(super) fn banner_and_features(&self) -> Option<(Option<&str>, &[String])> {
+        if let Some(features) = &self.features {
+            return Some((self.banner.as_deref(), features));
+        }
+        let properties = self.properties.as_ref()?;
+        Some((
+            properties.banner.as_deref(),
+            properties.features.as_deref()?,
+        ))
     }
 
     /// `None` for an unavailable guild, which says nothing about it.
@@ -346,4 +368,28 @@ where
     T: DeserializeOwned,
 {
     skip_invalid(deserializer).map(Some)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn banner_and_features_read_from_either_shape() {
+        let merged: GatewayGuild =
+            serde_json::from_str(r#"{"id": "1", "banner": "abc", "features": ["VERIFIED"]}"#)
+                .unwrap();
+        let nested: GatewayGuild = serde_json::from_str(
+            r#"{"id": "1", "properties": {"banner": "abc", "features": ["VERIFIED"]}}"#,
+        )
+        .unwrap();
+        for guild in [&merged, &nested] {
+            let (banner, features) = guild.banner_and_features().unwrap();
+            assert_eq!(banner, Some("abc"));
+            assert_eq!(features, ["VERIFIED"]);
+        }
+        let unavailable: GatewayGuild =
+            serde_json::from_str(r#"{"id": "1", "unavailable": true}"#).unwrap();
+        assert!(unavailable.banner_and_features().is_none());
+    }
 }

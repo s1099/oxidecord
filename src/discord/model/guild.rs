@@ -33,6 +33,24 @@ pub(in crate::discord) fn convert_guild(guild: twilight_model::user::CurrentUser
     }
 }
 
+/// What the guild header draws beyond the name. Only the gateway carries the banner.
+#[derive(Clone, Default)]
+pub struct GuildAppearance {
+    pub banner_url: Option<String>,
+    pub verified: bool,
+}
+
+pub(in crate::discord) fn convert_guild_appearance(
+    guild_id: Id<GuildMarker>,
+    banner: Option<&str>,
+    features: &[String],
+) -> GuildAppearance {
+    GuildAppearance {
+        banner_url: banner.map(|hash| cdn::guild_banner_url(guild_id, hash)),
+        verified: features.iter().any(|feature| feature == "VERIFIED"),
+    }
+}
+
 #[derive(Clone)]
 pub struct Role {
     pub id: Id<RoleMarker>,

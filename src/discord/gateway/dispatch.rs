@@ -11,10 +11,11 @@ use crate::discord::UnreadSetting;
 use crate::discord::model::{
     RawEmoji, RawGuildChannel, RawGuildSettings, RawMember, RawMemberListUpdate, RawRole,
     RawVoiceServer, RawVoiceState, StreamServerInfo, author_member, boost_upload_limit,
-    convert_call_voice_states, convert_channel_unreads, convert_guild_channels,
-    convert_guild_emoji, convert_guild_voice_states, convert_member_list_update, convert_message,
-    convert_mute_settings, convert_reaction_emoji, convert_read_states, convert_role,
-    convert_stream_server, convert_voice_server, convert_voice_state, parse_user_settings,
+    convert_call_voice_states, convert_channel_unreads, convert_guild_appearance,
+    convert_guild_channels, convert_guild_emoji, convert_guild_voice_states,
+    convert_member_list_update, convert_message, convert_mute_settings, convert_reaction_emoji,
+    convert_read_states, convert_role, convert_stream_server, convert_voice_server,
+    convert_voice_state, parse_user_settings,
 };
 
 use super::payloads::*;
@@ -59,6 +60,7 @@ pub(super) fn dispatch(
                     let owner_id = guild.owner_id();
                     unreads.extend(guild_upload_limit(&guild));
                     unreads.extend(guild_default_unreads(&guild));
+                    unreads.extend(guild_appearance(&guild));
                     unreads.extend(guild_channels(
                         guild.id,
                         ready.user.id,
@@ -228,6 +230,7 @@ pub(super) fn dispatch(
                 let owner_id = guild.owner_id();
                 let upload_limit = guild_upload_limit(&guild);
                 let default_unreads = guild_default_unreads(&guild);
+                let appearance = guild_appearance(&guild);
                 let channels = match *self_id {
                     Some(self_id) => guild_channels(
                         guild.id,
@@ -253,6 +256,7 @@ pub(super) fn dispatch(
                     .chain(std::iter::once(presences))
                     .chain(upload_limit)
                     .chain(default_unreads)
+                    .chain(appearance)
                     .chain(channels)
                     .chain(guild_emojis(guild.id, guild.emojis))
                     .chain(guild_roles(guild.id, guild.roles, guild.members))
@@ -274,6 +278,7 @@ pub(super) fn dispatch(
                 guild_upload_limit(&guild)
                     .into_iter()
                     .chain(guild_default_unreads(&guild))
+                    .chain(guild_appearance(&guild))
                     .collect()
             })
             .unwrap_or_default(),
@@ -435,6 +440,14 @@ fn guild_default_unreads(guild: &GatewayGuild) -> Option<GatewayEvent> {
     Some(GatewayEvent::GuildDefaultUnreads {
         guild_id: guild.id,
         unreads: UnreadSetting::guild_default(guild.default_message_notifications()?),
+    })
+}
+
+fn guild_appearance(guild: &GatewayGuild) -> Option<GatewayEvent> {
+    let (banner, features) = guild.banner_and_features()?;
+    Some(GatewayEvent::GuildAppearance {
+        guild_id: guild.id,
+        appearance: convert_guild_appearance(guild.id, banner, features),
     })
 }
 
