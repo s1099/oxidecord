@@ -5,13 +5,10 @@
 
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
-use std::ops::Range;
-use std::rc::Rc;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use gpui_kit::component::input::{InputEvent, InputState, TextareaState};
-use gpui_kit::component::slider::SliderState;
 use gpui_kit::*;
 use twilight_model::id::{
     Id,
@@ -20,20 +17,20 @@ use twilight_model::id::{
 
 use crate::discord::{self, DirectMessage, Guild};
 use crate::platform::prefs;
-use crate::platform::video::VideoPlayer;
 use crate::ui::smooth_scroll::SmoothScroll;
 
-use super::autocomplete::{Suggestion, Trigger};
 use super::channels::ChannelGroup;
+use super::composer::{Autocomplete, EditingMessage, ReplyTarget, Typist};
 use super::data::attachments::PendingAttachment;
 use super::data::gif::LoadedGifs;
-use super::emoji::{PickerLayout, SectionKind};
 use super::folders::RailEntry;
 use super::history_cache::HistoryCache;
+use super::media::VideoPlayback;
 use super::member_list_cache::MemberListCache;
+use super::popups::{EmojiPicker, ImageViewer, PinsPopup, ProfilePopup, Reactors};
 use super::selection::{Selection, TextCopies, TextRegions};
 use super::unread::Unreads;
-use super::voice::{PendingVoice, ScreenShare, StreamWatch, VoiceCall};
+use super::voice::{PendingVoice, ScreenShare, StreamWatch, VoiceCall, VoiceSettings};
 use crate::voice::VoiceEngine;
 use crate::voice::stream::StreamEvent;
 
@@ -51,118 +48,6 @@ pub(super) enum View {
 
 pub(super) type MemberRoles = HashMap<Id<UserMarker>, Vec<Id<RoleMarker>>>;
 
-#[derive(Clone)]
-pub(super) struct ReplyTarget {
-    pub message_id: Id<MessageMarker>,
-    pub author_id: Id<UserMarker>,
-    pub author_name: String,
-    /// Whether the reply pings its author, as Discord's "@ ON" toggle.
-    pub mention: bool,
-}
-
-/// Shown until `until` passes or their message arrives.
-pub(super) struct Typist {
-    pub user_id: Id<UserMarker>,
-    /// From the dispatch; a DM's typists are named from its messages instead.
-    pub name: Option<String>,
-    pub until: Instant,
-}
-
-/// The input is made per edit so it starts with no undo history from the last.
-pub(super) struct EditingMessage {
-    pub message_id: Id<MessageMarker>,
-    pub input: Entity<TextareaState>,
-}
-
-pub(super) struct ProfilePopup {
-    pub user_id: Id<UserMarker>,
-    /// Window coordinates of the avatar click.
-    pub position: Point<Pixels>,
-    pub name: String,
-    pub avatar_url: Option<String>,
-    /// `None` until the fetch resolves; the card shows a skeleton.
-    pub profile: Option<discord::UserProfile>,
-    pub error: Option<String>,
-}
-
-pub(super) struct PinsPopup {
-    pub channel_id: Id<ChannelMarker>,
-    /// Window coordinates of the pin button click; the popout hangs below.
-    pub position: Point<Pixels>,
-    /// Most recently pinned first. Empty while loading.
-    pub messages: Vec<discord::Message>,
-    /// A list rather than nested flex: inside the popout's flex layout, pin text
-    /// is measured as if it had no width and keeps the height of every wrapped
-    /// line as empty space.
-    pub list: ListState,
-    pub loading: bool,
-    pub error: Option<String>,
-}
-
-pub(super) struct ImageViewer {
-    /// Already on screen; drawn stretched while the larger copy loads.
-    pub preview_url: SharedString,
-    /// Window-sized; dropped from the image cache on close, being far bigger than list images.
-    pub full_url: SharedString,
-    pub source_url: String,
-    /// Original resolution, fetched on the first zoom past `full_url`. Dropped on close too.
-    pub zoomed_url: Option<SharedString>,
-    pub width: Option<u32>,
-    pub height: Option<u32>,
-    /// Larger copies must be requested as animated WebP to keep moving; see
-    /// [`discord::animated_webp`].
-    pub animated_webp: bool,
-    /// 1 fits the window.
-    pub zoom: f32,
-    pub offset: Point<Pixels>,
-    /// Pointer position and `offset` at the press.
-    pub drag: Option<(Point<Pixels>, Point<Pixels>)>,
-}
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub(super) enum EmojiTarget {
-    Composer,
-    Reaction(Id<MessageMarker>),
-}
-
-#[derive(Default)]
-pub(super) struct Reactors {
-    pub users: Vec<discord::Reactor>,
-    pub loading: bool,
-    /// The last page came back short, so `users` is everyone.
-    pub complete: bool,
-    pub error: Option<String>,
-    /// Held so forgetting the entry cancels the fetch and a stale page can't
-    /// land in its replacement.
-    pub _task: Option<Task<()>>,
-}
-
-pub(super) struct EmojiPicker {
-    /// Window coordinates of the opening click.
-    pub position: Point<Pixels>,
-    pub target: EmojiTarget,
-    pub search: Entity<InputState>,
-    /// Snapshot from opening, so choosing one doesn't reshuffle under the pointer.
-    pub recent: Vec<super::emoji::PickerEmoji>,
-    /// Rebuilt on search change, not per frame: the screen repaints for every
-    /// video frame and this is a couple of thousand emoji.
-    pub layout: Rc<PickerLayout>,
-    pub collapsed: HashSet<SectionKind>,
-    pub hovered: Option<super::emoji::PickerEmoji>,
-    pub scroll: SmoothScroll,
-    pub rail_scroll: ScrollHandle,
-    pub _search_changed: Subscription,
-}
-
-pub(super) struct Autocomplete {
-    pub trigger: Trigger,
-    /// Byte range of the word, trigger included; what accepting replaces.
-    pub range: Range<usize>,
-    pub query: String,
-    pub items: Vec<Suggestion>,
-    pub selected: usize,
-}
-
 pub(super) struct MemberList {
     pub guild_id: Id<GuildMarker>,
     pub channel_id: Id<ChannelMarker>,
@@ -176,86 +61,37 @@ pub(super) struct MemberList {
     pub scroll: UniformListScrollHandle,
 }
 
-/// Identifies one video attachment or embed. A message id alone isn't enough
-/// (a message can carry several), and the message's own index stays stable as
-/// the list is spliced at either end.
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub(super) struct MediaKey {
-    pub message_id: u64,
-    /// Attachments and embeds are indexed separately, and both can play video.
-    pub embed: bool,
-    pub index: usize,
+#[derive(Default)]
+pub(super) struct DmList {
+    pub list: Vec<DirectMessage>,
+    pub loading: bool,
+    pub error: Option<String>,
+    pub loaded: bool,
+    /// Refetch after a message arrived in a conversation the list lacks.
+    pub refreshing: bool,
 }
 
-impl MediaKey {
-    pub fn attachment(message_id: u64, index: usize) -> Self {
-        Self {
-            message_id,
-            embed: false,
-            index,
-        }
-    }
-
-    /// Both halves go in: two messages can each hold a video at index 0, and a
-    /// shared id would share interaction state.
-    pub fn element_id(self, role: &str) -> ElementId {
-        ElementId::from(SharedString::from(format!(
-            "{role}-{}-{}{}",
-            self.message_id,
-            self.kind(),
-            self.index
-        )))
-    }
-
-    /// Key into `revealed_spoilers`. `role` tells an image from a video, which
-    /// are indexed separately.
-    pub fn spoiler_key(self, role: &str) -> SharedString {
-        SharedString::from(format!(
-            "attachment-{role}-spoiler-{}-{}{}",
-            self.message_id,
-            self.kind(),
-            self.index
-        ))
-    }
-
-    pub fn group(self) -> SharedString {
-        SharedString::from(format!(
-            "media-{}-{}{}",
-            self.message_id,
-            self.kind(),
-            self.index
-        ))
-    }
-
-    fn kind(self) -> char {
-        if self.embed { 'e' } else { 'a' }
-    }
-}
-
-#[derive(Clone, PartialEq, Eq)]
-pub(super) enum PlaybackState {
-    /// Until the first frame lands: covers the download and the decoder opening.
-    Loading,
-    Playing,
-    Ended,
-    Failed(String),
-}
-
-/// Only one plays at a time; starting one stops the other.
-pub(super) struct VideoPlayback {
-    pub key: MediaKey,
-    /// Dropping it stops the decoder, closes the output device and deletes the file.
-    pub player: VideoPlayer,
-    /// Held to hand back to gpui's sprite atlas when the next replaces it; every
-    /// frame takes a slot, so an un-evicted one is a leak.
-    pub frame: Option<Arc<RenderImage>>,
-    /// Zero until the source reports one.
-    pub duration: Duration,
-    pub position: Duration,
-    pub state: PlaybackState,
-    /// A fraction of the run time, not a time, so a duration arriving after
-    /// the first frames needs no reset.
-    pub scrubber: Entity<SliderState>,
+/// What's known of each guild beyond the guild itself, by guild id.
+#[derive(Default)]
+pub(super) struct GuildData {
+    /// From `READY`, or a fetch where it hasn't arrived. Opening a guild draws
+    /// from here at once.
+    pub channels: HashMap<Id<GuildMarker>, Vec<discord::Channel>>,
+    /// Changed since sent; opening one draws what's there and refetches underneath.
+    pub stale_channels: HashSet<Id<GuildMarker>>,
+    pub fetching_channels: HashSet<Id<GuildMarker>>,
+    pub roles: HashMap<Id<GuildMarker>, HashMap<Id<RoleMarker>, discord::Role>>,
+    /// A guild missing here allows only the default.
+    pub upload_limits: HashMap<Id<GuildMarker>, u64>,
+    pub emojis: HashMap<Id<GuildMarker>, Vec<discord::GuildEmoji>>,
+    /// The signed-in user's decide whether a role mention pings them.
+    pub member_roles: HashMap<Id<GuildMarker>, MemberRoles>,
+    pub members: HashMap<Id<GuildMarker>, HashMap<Id<UserMarker>, discord::GuildMember>>,
+    /// Stops an author who left the guild, or a webhook, being re-requested with
+    /// every page.
+    pub requested_members: HashSet<(Id<GuildMarker>, Id<UserMarker>)>,
+    /// By guild and lowercased query, so retyping doesn't ask again.
+    pub member_searches: HashSet<(Id<GuildMarker>, String)>,
 }
 
 /// A view of its own so the window can replay it from the last frame instead
@@ -290,22 +126,11 @@ pub struct HomeScreen {
     pub(super) channel_groups: Vec<ChannelGroup>,
     /// (group, channel) indices; channels are looked up by id for every message drawn.
     pub(super) channel_index: HashMap<Id<ChannelMarker>, (usize, usize)>,
-    /// From `READY`, or a fetch where it hasn't arrived. Opening a guild draws
-    /// from here at once.
-    pub(super) guild_channels: HashMap<Id<GuildMarker>, Vec<discord::Channel>>,
-    /// Changed since sent; opening one draws what's there and refetches underneath.
-    pub(super) stale_guild_channels: HashSet<Id<GuildMarker>>,
-    pub(super) fetching_guild_channels: HashSet<Id<GuildMarker>>,
     pub(super) last_guild_channel: HashMap<Id<GuildMarker>, Id<ChannelMarker>>,
     pub(super) last_dm: Option<Id<ChannelMarker>>,
     pub(super) selected_channel: Option<Id<ChannelMarker>>,
     /// A selected DM reuses `selected_channel` and the message plumbing.
-    pub(super) dms: Vec<DirectMessage>,
-    pub(super) dms_loading: bool,
-    pub(super) dms_error: Option<String>,
-    pub(super) dms_loaded: bool,
-    /// Refetch after a message arrived in a conversation the list lacks.
-    pub(super) dms_refreshing: bool,
+    pub(super) dms: DmList,
     pub(super) collapsed_categories: HashSet<Id<ChannelMarker>>,
     pub(super) unreads: Unreads,
     /// Last message read when the conversation opened; the "new" divider sits under it.
@@ -347,17 +172,7 @@ pub struct HomeScreen {
     /// Stable keys for `pending_attachments`, even if the same image is pasted twice.
     pub(super) next_attachment_id: u64,
     pub(super) voice: Option<VoiceCall>,
-    /// Deafening silences the microphone too, so `voice_muted` can be on without
-    /// the user pressing mute. Kept here, not on the call, so they survive
-    /// between calls.
-    pub(super) voice_muted: bool,
-    pub(super) voice_deafened: bool,
-    /// Restored on undeafen.
-    pub(super) voice_mute_before_deafen: bool,
-    /// `None` follows the system default. Persisted in prefs.
-    pub(super) voice_input_device: Option<String>,
-    /// `None` follows the system default. Persisted in prefs.
-    pub(super) voice_output_device: Option<String>,
+    pub(super) voice_settings: VoiceSettings,
     /// Source of every participant list: call stage tiles and sidebar names.
     pub(super) voice_states: HashMap<Id<UserMarker>, discord::VoiceUserState>,
     /// From received audio, not the gateway.
@@ -398,20 +213,12 @@ pub struct HomeScreen {
     pub(super) focus_handle: FocusHandle,
     pub(super) profile_popup: Option<ProfilePopup>,
     pub(super) profile_cache: HashMap<Id<UserMarker>, discord::UserProfile>,
+    pub(super) guild_data: GuildData,
     /// Dropped when its reaction changes, then refetched by whatever still shows it.
     pub(super) reactors: HashMap<(Id<MessageMarker>, discord::ReactionEmoji), Reactors>,
-    pub(super) guild_roles: HashMap<Id<GuildMarker>, HashMap<Id<RoleMarker>, discord::Role>>,
-    /// A guild missing here allows only the default.
-    pub(super) guild_upload_limits: HashMap<Id<GuildMarker>, u64>,
-    pub(super) guild_emojis: HashMap<Id<GuildMarker>, Vec<discord::GuildEmoji>>,
     pub(super) emoji_picker: Option<EmojiPicker>,
     pub(super) pins_popup: Option<PinsPopup>,
     pub(super) image_viewer: Option<ImageViewer>,
-    /// The signed-in user's decide whether a role mention pings them.
-    pub(super) member_roles: HashMap<Id<GuildMarker>, MemberRoles>,
-    /// Stops an author who left the guild, or a webhook, being re-requested with
-    /// every page.
-    pub(super) requested_members: HashSet<(Id<GuildMarker>, Id<UserMarker>)>,
     pub(super) member_list: Option<MemberList>,
     pub(super) member_list_cache: MemberListCache,
     /// Persisted in prefs.
@@ -434,10 +241,6 @@ pub struct HomeScreen {
     pub(super) autocomplete_dismissed: Option<usize>,
     /// (shown text, sent markup).
     pub(super) composer_mentions: Vec<(String, String)>,
-    pub(super) guild_members:
-        HashMap<Id<GuildMarker>, HashMap<Id<UserMarker>, discord::GuildMember>>,
-    /// By guild and lowercased query, so retyping doesn't ask again.
-    pub(super) member_searches: HashSet<(Id<GuildMarker>, String)>,
     pub(super) _composer_changed: Subscription,
     /// Refocuses the screen when a menu or edit box closes so typing reaches the composer.
     pub(super) _focus_lost: Subscription,
@@ -519,17 +322,10 @@ impl HomeScreen {
             error: None,
             channel_groups: Vec::new(),
             channel_index: HashMap::new(),
-            guild_channels: HashMap::new(),
-            stale_guild_channels: HashSet::new(),
-            fetching_guild_channels: HashSet::new(),
             last_guild_channel: HashMap::new(),
             last_dm: None,
             selected_channel: None,
-            dms: Vec::new(),
-            dms_loading: false,
-            dms_error: None,
-            dms_loaded: false,
-            dms_refreshing: false,
+            dms: DmList::default(),
             collapsed_categories: HashSet::new(),
             unreads: Unreads::default(),
             unread_marker: None,
@@ -558,11 +354,13 @@ impl HomeScreen {
             pending_attachments: Vec::new(),
             next_attachment_id: 0,
             voice: None,
-            voice_muted: false,
-            voice_deafened: false,
-            voice_mute_before_deafen: false,
-            voice_input_device: prefs.input_device,
-            voice_output_device: prefs.output_device,
+            voice_settings: VoiceSettings {
+                muted: false,
+                deafened: false,
+                mute_before_deafen: false,
+                input_device: prefs.input_device,
+                output_device: prefs.output_device,
+            },
             voice_states: HashMap::new(),
             voice_speaking: HashSet::new(),
             call_ringing: HashMap::new(),
@@ -583,12 +381,8 @@ impl HomeScreen {
             focus_handle: cx.focus_handle(),
             profile_popup: None,
             profile_cache: HashMap::new(),
+            guild_data: GuildData::default(),
             reactors: HashMap::new(),
-            guild_roles: HashMap::new(),
-            member_roles: HashMap::new(),
-            requested_members: HashSet::new(),
-            guild_upload_limits: HashMap::new(),
-            guild_emojis: HashMap::new(),
             emoji_picker: None,
             pins_popup: None,
             image_viewer: None,
@@ -608,8 +402,6 @@ impl HomeScreen {
             autocomplete: None,
             autocomplete_dismissed: None,
             composer_mentions: Vec::new(),
-            guild_members: HashMap::new(),
-            member_searches: HashSet::new(),
             _composer_changed: composer_changed,
             _focus_lost: focus_lost,
             messages_scroll: SmoothScroll::list(messages_list.clone()),

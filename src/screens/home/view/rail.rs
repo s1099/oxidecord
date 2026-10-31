@@ -31,6 +31,7 @@ impl HomeScreen {
         let logo_bg = rgb(0x313338);
         let dm_mentions = self
             .dms
+            .list
             .iter()
             .map(|dm| self.unreads.dm_mentions(dm.id))
             .sum();
@@ -79,6 +80,7 @@ impl HomeScreen {
             // Newest first, as in Discord; muted conversations never ping, so never show.
             .children(
                 self.dms
+                    .list
                     .iter()
                     .filter(|dm| self.unreads.dm_mentions(dm.id) > 0)
                     .map(|dm| self.render_rail_dm(dm, cx)),

@@ -13,7 +13,7 @@ use twilight_model::id::{Id, marker::MessageMarker};
 
 use crate::discord;
 use crate::screens::home::HomeScreen;
-use crate::screens::home::state::{MediaKey, PlaybackState, VideoPlayback};
+use crate::screens::home::media::{MediaKey, PlaybackState, VideoPlayback};
 use crate::ui::button::Button;
 use crate::ui::depth::media_shadow;
 

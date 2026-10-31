@@ -223,7 +223,11 @@ impl HomeScreen {
         let Some(gateway) = &self.gateway else {
             return;
         };
-        if self.member_searches.insert((guild_id, query.to_string())) {
+        if self
+            .guild_data
+            .member_searches
+            .insert((guild_id, query.to_string()))
+        {
             gateway.search_members(guild_id, query, LIMIT as u8);
         }
     }
@@ -234,7 +238,7 @@ impl HomeScreen {
         members: Vec<discord::GuildMember>,
         cx: &mut Context<Self>,
     ) {
-        let known = self.guild_members.entry(guild_id).or_default();
+        let known = self.guild_data.members.entry(guild_id).or_default();
         let mut changed = false;
         for member in members {
             // Every live message re-names its author, mostly unchanged; skip recomputing.
@@ -258,7 +262,7 @@ impl HomeScreen {
     /// has named, then roles.
     fn user_suggestions(&self, query: &str) -> Vec<Suggestion> {
         let guild_id = self.selected_guild.filter(|_| self.view == View::Guild);
-        let known = guild_id.and_then(|guild_id| self.guild_members.get(&guild_id));
+        let known = guild_id.and_then(|guild_id| self.guild_data.members.get(&guild_id));
 
         let mut seen = HashSet::new();
         let mut ranked = Vec::new();
@@ -315,6 +319,7 @@ impl HomeScreen {
             None => {
                 let dm = self
                     .dms
+                    .list
                     .iter()
                     .find(|dm| Some(dm.id) == self.selected_channel);
                 if let Some(dm) = dm
@@ -341,7 +346,7 @@ impl HomeScreen {
         guild_id: Id<GuildMarker>,
         query: &str,
     ) -> Vec<((u8, usize), Suggestion)> {
-        let Some(roles) = self.guild_roles.get(&guild_id) else {
+        let Some(roles) = self.guild_data.roles.get(&guild_id) else {
             return Vec::new();
         };
         let any = self.can_mention_everyone();
@@ -447,7 +452,8 @@ impl HomeScreen {
 
     fn emoji_guild_name(&self, emoji_id: Id<EmojiMarker>) -> Option<String> {
         let (guild_id, _) = self
-            .guild_emojis
+            .guild_data
+            .emojis
             .iter()
             .find(|(_, emojis)| emojis.iter().any(|emoji| emoji.id == emoji_id))?;
         let guild = self.guilds.iter().find(|guild| guild.id == *guild_id)?;

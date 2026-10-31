@@ -11,7 +11,7 @@ use twilight_model::id::{
 
 use crate::discord;
 use crate::screens::home::HomeScreen;
-use crate::screens::home::state::Typist;
+use crate::screens::home::composer::Typist;
 
 /// Discord shows it for ten seconds per trigger; re-sending a bit sooner avoids
 /// flicker between keystrokes.

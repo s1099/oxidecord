@@ -129,7 +129,11 @@ impl HomeScreen {
     ) {
         // Whatever list they're from, the members' roles and statuses are
         // current, and colour their names and avatars elsewhere too.
-        let roles = self.member_roles.entry(update.guild_id).or_default();
+        let roles = self
+            .guild_data
+            .member_roles
+            .entry(update.guild_id)
+            .or_default();
         for op in &update.ops {
             let items = match op {
                 MemberListOp::Sync { items, .. } => items.as_slice(),

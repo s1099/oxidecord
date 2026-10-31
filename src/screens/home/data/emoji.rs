@@ -202,7 +202,7 @@ impl HomeScreen {
             .map(|guild| guild.id)
             .filter(move |id| Some(*id) != local);
         local.into_iter().chain(rest).filter_map(|guild_id| {
-            let emojis = self.guild_emojis.get(&guild_id)?;
+            let emojis = self.guild_data.emojis.get(&guild_id)?;
             Some((guild_id, emojis.as_slice()))
         })
     }

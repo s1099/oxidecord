@@ -52,8 +52,8 @@ impl HomeScreen {
         let (tx, rx) = futures::channel::mpsc::unbounded::<VoiceEvent>();
         let engine = VoiceEngine::start(tx);
         // Hand over the remembered devices before any call can be made.
-        engine.set_input_device(self.voice_input_device.clone());
-        engine.set_output_device(self.voice_output_device.clone());
+        engine.set_input_device(self.voice_settings.input_device.clone());
+        engine.set_output_device(self.voice_settings.output_device.clone());
         self.voice_engine = Some(engine);
 
         cx.spawn(async move |this, cx| {
@@ -116,14 +116,15 @@ impl HomeScreen {
                 self.user_presences.clear();
                 // A member asked for in a session that dropped before
                 // answering is worth asking for again.
-                self.requested_members.clear();
+                self.guild_data.requested_members.clear();
                 // Subscriptions don't outlive the session.
                 self.resubscribe_member_list();
                 // Every guild's channels follow, but any the session sends
                 // as unavailable won't be among them, and channel changes
                 // made while disconnected were never heard of.
-                self.stale_guild_channels
-                    .extend(self.guild_channels.keys().copied());
+                self.guild_data
+                    .stale_channels
+                    .extend(self.guild_data.channels.keys().copied());
                 cx.notify();
             }
             discord::GatewayEvent::Presences(presences) => {
@@ -132,7 +133,11 @@ impl HomeScreen {
                 let mut changed = false;
                 for (user_id, status) in presences {
                     if self.user_presences.insert(user_id, status) != Some(status) {
-                        changed |= self.dms.iter().any(|dm| dm.recipient_id == Some(user_id));
+                        changed |= self
+                            .dms
+                            .list
+                            .iter()
+                            .any(|dm| dm.recipient_id == Some(user_id));
                     }
                 }
                 if changed {
@@ -212,13 +217,14 @@ impl HomeScreen {
             }
             discord::GatewayEvent::GuildRoles { guild_id, roles } => {
                 let roles = roles.into_iter().map(|role| (role.id, role)).collect();
-                self.guild_roles.insert(guild_id, roles);
+                self.guild_data.roles.insert(guild_id, roles);
                 cx.notify();
             }
             discord::GatewayEvent::RoleUpdate { guild_id, role } => {
                 // A role's permissions decide which channels its members see.
                 self.invalidate_guild_channels(guild_id, window, cx);
-                self.guild_roles
+                self.guild_data
+                    .roles
                     .entry(guild_id)
                     .or_default()
                     .insert(role.id, role);
@@ -226,20 +232,20 @@ impl HomeScreen {
             }
             discord::GatewayEvent::RoleDelete { guild_id, role_id } => {
                 self.invalidate_guild_channels(guild_id, window, cx);
-                if let Some(roles) = self.guild_roles.get_mut(&guild_id) {
+                if let Some(roles) = self.guild_data.roles.get_mut(&guild_id) {
                     roles.remove(&role_id);
                 }
                 cx.notify();
             }
             discord::GatewayEvent::GuildUploadLimit { guild_id, limit } => {
-                self.guild_upload_limits.insert(guild_id, limit);
+                self.guild_data.upload_limits.insert(guild_id, limit);
             }
             discord::GatewayEvent::GuildDefaultUnreads { guild_id, unreads } => {
                 self.unreads.set_default_unreads(guild_id, unreads);
                 cx.notify();
             }
             discord::GatewayEvent::GuildEmojis { guild_id, emojis } => {
-                self.guild_emojis.insert(guild_id, emojis);
+                self.guild_data.emojis.insert(guild_id, emojis);
             }
             discord::GatewayEvent::ReadStates(states) => {
                 self.unreads.set_read_states(states);
@@ -300,6 +306,7 @@ impl HomeScreen {
                 roles,
             } => {
                 let previous = self
+                    .guild_data
                     .member_roles
                     .entry(guild_id)
                     .or_default()

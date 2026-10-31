@@ -147,7 +147,7 @@ impl HomeScreen {
         let guild_limit = self
             .selected_guild
             .filter(|_| self.view == View::Guild)
-            .and_then(|guild_id| self.guild_upload_limits.get(&guild_id))
+            .and_then(|guild_id| self.guild_data.upload_limits.get(&guild_id))
             .copied()
             .unwrap_or_default();
         let staged: u64 = self

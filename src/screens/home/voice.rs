@@ -103,3 +103,17 @@ pub(super) struct VoiceParticipant {
     pub streaming: bool,
     pub is_self: bool,
 }
+
+/// Kept on the screen, not the call, so they survive between calls.
+pub(super) struct VoiceSettings {
+    /// Deafening silences the microphone too, so this can be on without the
+    /// user pressing mute.
+    pub muted: bool,
+    pub deafened: bool,
+    /// Restored on undeafen.
+    pub mute_before_deafen: bool,
+    /// `None` follows the system default. Persisted in prefs.
+    pub input_device: Option<String>,
+    /// `None` follows the system default. Persisted in prefs.
+    pub output_device: Option<String>,
+}

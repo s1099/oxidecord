@@ -24,7 +24,7 @@ impl HomeScreen {
         // Closed since, it's no longer there to reopen.
         let last = self
             .last_dm
-            .filter(|&id| self.dms.iter().any(|dm| dm.id == id));
+            .filter(|&id| self.dms.list.iter().any(|dm| dm.id == id));
         if let Some(channel_id) = last {
             self.select_channel(channel_id, window, cx);
         }
@@ -50,14 +50,14 @@ impl HomeScreen {
         self.selected_channel = None;
         self.reset_conversation(None, window, cx);
 
-        if !self.dms_loaded && !self.dms_loading {
+        if !self.dms.loaded && !self.dms.loading {
             self.load_dms(cx);
         }
     }
 
     pub(in crate::screens::home) fn load_dms(&mut self, cx: &mut Context<Self>) {
-        self.dms_error = None;
-        self.dms_loading = true;
+        self.dms.error = None;
+        self.dms.loading = true;
         cx.notify();
 
         cx.spawn(async move |this, cx| {
@@ -66,12 +66,12 @@ impl HomeScreen {
                 match result {
                     Ok(dms) => {
                         this.note_dm_latest(&dms);
-                        this.dms = dms;
-                        this.dms_loaded = true;
+                        this.dms.list = dms;
+                        this.dms.loaded = true;
                     }
-                    Err(err) => this.dms_error = Some(err),
+                    Err(err) => this.dms.error = Some(err),
                 }
-                this.dms_loading = false;
+                this.dms.loading = false;
                 cx.notify();
             });
         })
@@ -87,15 +87,15 @@ impl HomeScreen {
         message_id: Id<MessageMarker>,
         cx: &mut Context<Self>,
     ) {
-        if !self.dms_loaded {
+        if !self.dms.loaded {
             // The first load will fetch the list as it stands.
             return;
         }
-        match self.dms.iter().position(|dm| dm.id == channel_id) {
+        match self.dms.list.iter().position(|dm| dm.id == channel_id) {
             Some(index) => {
-                let mut dm = self.dms.remove(index);
+                let mut dm = self.dms.list.remove(index);
                 dm.record_message(message_id.get());
-                self.dms.insert(0, dm);
+                self.dms.list.insert(0, dm);
                 cx.notify();
             }
             None => self.refresh_dms(cx),
@@ -104,19 +104,19 @@ impl HomeScreen {
 
     /// Refetch without the skeleton; the current list stays up meanwhile.
     fn refresh_dms(&mut self, cx: &mut Context<Self>) {
-        if self.dms_refreshing {
+        if self.dms.refreshing {
             return;
         }
-        self.dms_refreshing = true;
+        self.dms.refreshing = true;
 
         cx.spawn(async move |this, cx| {
             let result = discord::fetch_dms().await;
             let _ = this.update(cx, |this, cx| {
-                this.dms_refreshing = false;
+                this.dms.refreshing = false;
                 match result {
                     Ok(dms) => {
                         this.note_dm_latest(&dms);
-                        this.dms = dms;
+                        this.dms.list = dms;
                         cx.notify();
                     }
                     Err(err) => eprintln!("refreshing the DM list failed: {err}"),
@@ -136,6 +136,6 @@ impl HomeScreen {
 
     pub(in crate::screens::home) fn selected_dm_info(&self) -> Option<&DirectMessage> {
         let id = self.selected_channel?;
-        self.dms.iter().find(|dm| dm.id == id)
+        self.dms.list.iter().find(|dm| dm.id == id)
     }
 }

@@ -305,7 +305,7 @@ impl<'a, 'b> Flattener<'a, 'b> {
             Mention::Role(id) => {
                 let role = screen
                     .selected_guild
-                    .and_then(|guild| screen.guild_roles.get(&guild)?.get(id));
+                    .and_then(|guild| screen.guild_data.roles.get(&guild)?.get(id));
                 match role {
                     Some(role) => {
                         let style = match role.color {

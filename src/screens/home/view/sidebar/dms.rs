@@ -111,7 +111,7 @@ impl HomeScreen {
             .py_2()
             .gap(px(2.));
 
-        if self.dms_loading {
+        if self.dms.loading {
             list = list.children(SKELETON_WIDTHS.iter().map(|&width| {
                 h_flex()
                     .px_2()
@@ -121,7 +121,7 @@ impl HomeScreen {
                     .child(Skeleton::new().size(px(32.)).rounded_full())
                     .child(Skeleton::new().w(px(width)).h_4().rounded_md())
             }));
-        } else if let Some(error) = &self.dms_error {
+        } else if let Some(error) = &self.dms.error {
             list = list.child(
                 div()
                     .px_2()
@@ -129,7 +129,7 @@ impl HomeScreen {
                     .text_color(danger)
                     .child(error.clone()),
             );
-        } else if self.dms.is_empty() {
+        } else if self.dms.list.is_empty() {
             list = list.child(
                 div()
                     .px_2()
@@ -139,7 +139,7 @@ impl HomeScreen {
                     .child("No conversations yet."),
             );
         } else {
-            list = list.children(self.dms.iter().map(|dm| self.render_dm_row(dm, cx)));
+            list = list.children(self.dms.list.iter().map(|dm| self.render_dm_row(dm, cx)));
         }
 
         shell("Direct Messages", list, cx)

@@ -18,7 +18,7 @@ impl HomeScreen {
         guild_id: Id<GuildMarker>,
     ) -> Option<&[Id<RoleMarker>]> {
         let self_id = self.self_user_id?;
-        Some(self.member_roles.get(&guild_id)?.get(&self_id)?)
+        Some(self.guild_data.member_roles.get(&guild_id)?.get(&self_id)?)
     }
 
     pub(in crate::screens::home) fn mentions_self_role(
@@ -38,8 +38,9 @@ impl HomeScreen {
     /// as in Discord. `None` in a DM or while roles are unknown.
     pub(in crate::screens::home) fn role_color(&self, user_id: Id<UserMarker>) -> Option<u32> {
         let guild_id = self.selected_guild.filter(|_| self.view == View::Guild)?;
-        let roles = self.guild_roles.get(&guild_id)?;
-        self.member_roles
+        let roles = self.guild_data.roles.get(&guild_id)?;
+        self.guild_data
+            .member_roles
             .get(&guild_id)?
             .get(&user_id)?
             .iter()
@@ -55,7 +56,7 @@ impl HomeScreen {
     /// merge.
     pub(in crate::screens::home) fn member_name(&self, user_id: Id<UserMarker>) -> Option<&str> {
         let guild_id = self.selected_guild.filter(|_| self.view == View::Guild)?;
-        let member = self.guild_members.get(&guild_id)?.get(&user_id)?;
+        let member = self.guild_data.members.get(&guild_id)?.get(&user_id)?;
         Some(&member.name)
     }
 
@@ -80,7 +81,7 @@ impl HomeScreen {
         };
         // Roles alone come from places that don't name the member, like the
         // member list, so it's the name that says whether to ask.
-        let known = self.guild_members.get(&guild_id);
+        let known = self.guild_data.members.get(&guild_id);
         let mut wanted = Vec::new();
         let authors = self.messages.iter().flat_map(|message| {
             iter::once(message.author_id).chain(match &message.reply {
@@ -92,7 +93,11 @@ impl HomeScreen {
             if known.is_some_and(|known| known.contains_key(&user_id)) {
                 continue;
             }
-            if self.requested_members.insert((guild_id, user_id)) {
+            if self
+                .guild_data
+                .requested_members
+                .insert((guild_id, user_id))
+            {
                 wanted.push(user_id);
             }
         }

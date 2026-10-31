@@ -120,8 +120,8 @@ impl HomeScreen {
                 })
             });
 
-        let muted = self.voice_muted;
-        let deafened = self.voice_deafened;
+        let muted = self.voice_settings.muted;
+        let deafened = self.voice_settings.deafened;
         let mic = split_control(
             "panel-mic",
             muted,

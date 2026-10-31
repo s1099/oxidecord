@@ -94,7 +94,7 @@ impl HomeScreen {
             MemberGroupKind::Offline => "Offline".to_owned(),
             MemberGroupKind::Role(role_id) => self
                 .selected_guild
-                .and_then(|guild_id| self.guild_roles.get(&guild_id)?.get(role_id))
+                .and_then(|guild_id| self.guild_data.roles.get(&guild_id)?.get(role_id))
                 .map_or_else(|| "Role".to_owned(), |role| role.name.clone()),
         };
         // A header op carries only the group's id; the count comes from the update's group list.

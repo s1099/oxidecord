@@ -7,11 +7,14 @@
 
 mod autocomplete;
 mod channels;
+mod composer;
 mod data;
 mod emoji;
 mod folders;
 mod history_cache;
+mod media;
 mod member_list_cache;
+mod popups;
 mod selection;
 mod state;
 mod unread;
@@ -33,10 +36,9 @@ pub const EDIT_CONTEXT: &str = "MessageEdit";
 
 pub const COMPOSER_CONTEXT: &str = "MessageComposer";
 
-use state::{
-    Autocomplete, EditingMessage, EmojiPicker, EmojiTarget, ImageViewer, PinsPopup, ProfilePopup,
-    ReplyTarget, View,
-};
+use composer::{Autocomplete, EditingMessage, ReplyTarget};
+use popups::{EmojiPicker, EmojiTarget, ImageViewer, PinsPopup, ProfilePopup};
+use state::View;
 
 actions!(
     oxidecord,

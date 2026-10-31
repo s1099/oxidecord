@@ -18,9 +18,9 @@ use gpui_kit::*;
 
 use crate::discord;
 use crate::screens::home::selection::TextPart;
-use crate::screens::home::state::{EditingMessage, MediaKey};
 use crate::screens::home::view::{avatar, bot_tag};
 use crate::screens::home::{HomeScreen, View};
+use crate::screens::home::{composer::EditingMessage, media::MediaKey};
 
 use super::markdown::MarkdownOptions;
 use super::{GROUP_GAP, MESSAGE_PADDING_X};

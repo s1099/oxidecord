@@ -101,8 +101,8 @@ impl HomeScreen {
         gateway.update_voice_state(
             call.guild_id,
             Some(call.channel_id),
-            self.voice_muted,
-            self.voice_deafened,
+            self.voice_settings.muted,
+            self.voice_settings.deafened,
         );
         self.voice = Some(call);
         self.pending_voice = Some(PendingVoice::default());
@@ -116,7 +116,12 @@ impl HomeScreen {
         self.stop_screen_share(cx);
         let guild_id = self.voice.as_ref().and_then(|call| call.guild_id);
         if let Some(gateway) = &self.gateway {
-            gateway.update_voice_state(guild_id, None, self.voice_muted, self.voice_deafened);
+            gateway.update_voice_state(
+                guild_id,
+                None,
+                self.voice_settings.muted,
+                self.voice_settings.deafened,
+            );
         }
         self.end_call_locally();
         cx.notify();
@@ -136,23 +141,23 @@ impl HomeScreen {
     /// Unmuting while deafened undeafens too, since deafening is what muted the
     /// microphone.
     pub(in crate::screens::home) fn toggle_voice_mute(&mut self, cx: &mut Context<Self>) {
-        self.voice_muted = !self.voice_muted;
-        if !self.voice_muted {
-            self.voice_deafened = false;
+        self.voice_settings.muted = !self.voice_settings.muted;
+        if !self.voice_settings.muted {
+            self.voice_settings.deafened = false;
         }
-        self.voice_mute_before_deafen = self.voice_muted;
+        self.voice_settings.mute_before_deafen = self.voice_settings.muted;
         self.apply_voice_flags(cx);
     }
 
     /// Deafening stops the microphone too; undeafening restores the user's previous
     /// mute state.
     pub(in crate::screens::home) fn toggle_voice_deafen(&mut self, cx: &mut Context<Self>) {
-        self.voice_deafened = !self.voice_deafened;
-        if self.voice_deafened {
-            self.voice_mute_before_deafen = self.voice_muted;
-            self.voice_muted = true;
+        self.voice_settings.deafened = !self.voice_settings.deafened;
+        if self.voice_settings.deafened {
+            self.voice_settings.mute_before_deafen = self.voice_settings.muted;
+            self.voice_settings.muted = true;
         } else {
-            self.voice_muted = self.voice_mute_before_deafen;
+            self.voice_settings.muted = self.voice_settings.mute_before_deafen;
         }
         self.apply_voice_flags(cx);
     }
@@ -164,7 +169,7 @@ impl HomeScreen {
         device: Option<String>,
         cx: &mut Context<Self>,
     ) {
-        self.voice_input_device = device.clone();
+        self.voice_settings.input_device = device.clone();
         prefs::update(|prefs| prefs.input_device = device.clone());
         if let Some(engine) = &self.voice_engine {
             engine.set_input_device(device);
@@ -179,7 +184,7 @@ impl HomeScreen {
         device: Option<String>,
         cx: &mut Context<Self>,
     ) {
-        self.voice_output_device = device.clone();
+        self.voice_settings.output_device = device.clone();
         prefs::update(|prefs| prefs.output_device = device.clone());
         if let Some(engine) = &self.voice_engine {
             engine.set_output_device(device);
@@ -190,8 +195,8 @@ impl HomeScreen {
     /// The gateway half is what shows on the user's tile for everyone else.
     fn apply_voice_flags(&mut self, cx: &mut Context<Self>) {
         if let Some(engine) = &self.voice_engine {
-            engine.set_muted(self.voice_muted);
-            engine.set_deafened(self.voice_deafened);
+            engine.set_muted(self.voice_settings.muted);
+            engine.set_deafened(self.voice_settings.deafened);
         }
         if let Some(call) = &self.voice
             && let Some(gateway) = &self.gateway
@@ -199,8 +204,8 @@ impl HomeScreen {
             gateway.update_voice_state(
                 call.guild_id,
                 Some(call.channel_id),
-                self.voice_muted,
-                self.voice_deafened,
+                self.voice_settings.muted,
+                self.voice_settings.deafened,
             );
         }
         cx.notify();
@@ -247,8 +252,8 @@ impl HomeScreen {
 
                     // The far end can mute or deafen the user; mirror it so the
                     // buttons match what everyone else sees.
-                    self.voice_muted = state.self_mute;
-                    self.voice_deafened = state.self_deaf;
+                    self.voice_settings.muted = state.self_mute;
+                    self.voice_settings.deafened = state.self_deaf;
                 }
                 // Disconnected from the far end: the call is already over, so
                 // only the local side is torn down.
@@ -482,8 +487,8 @@ impl HomeScreen {
         let Some(engine) = &self.voice_engine else {
             return;
         };
-        engine.set_muted(self.voice_muted);
-        engine.set_deafened(self.voice_deafened);
+        engine.set_muted(self.voice_settings.muted);
+        engine.set_deafened(self.voice_settings.deafened);
         engine.connect(connection);
         cx.notify();
     }

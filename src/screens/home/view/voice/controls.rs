@@ -27,13 +27,17 @@ impl HomeScreen {
                     "call-mic-menu",
                     control(
                         "call-mute",
-                        if self.voice_muted {
+                        if self.voice_settings.muted {
                             "icons/mic-off.svg"
                         } else {
                             "icons/mic.svg"
                         },
-                        if self.voice_muted { "Unmute" } else { "Mute" },
-                        self.voice_muted,
+                        if self.voice_settings.muted {
+                            "Unmute"
+                        } else {
+                            "Mute"
+                        },
+                        self.voice_settings.muted,
                     )
                     .on_click(cx.listener(|this, _, _, cx| this.toggle_voice_mute(cx))),
                     cx,
@@ -45,17 +49,17 @@ impl HomeScreen {
                     .child(
                         control(
                             "call-deafen",
-                            if self.voice_deafened {
+                            if self.voice_settings.deafened {
                                 "icons/headphone-off.svg"
                             } else {
                                 "icons/headphones.svg"
                             },
-                            if self.voice_deafened {
+                            if self.voice_settings.deafened {
                                 "Undeafen"
                             } else {
                                 "Deafen"
                             },
-                            self.voice_deafened,
+                            self.voice_settings.deafened,
                         )
                         .on_click(cx.listener(|this, _, _, cx| this.toggle_voice_deafen(cx))),
                     )
@@ -137,8 +141,8 @@ fn device_menu(
         };
         let home = screen.read(cx);
         let (label, chosen) = match direction {
-            Direction::Input => ("Input Device", home.voice_input_device.clone()),
-            Direction::Output => ("Output Device", home.voice_output_device.clone()),
+            Direction::Input => ("Input Device", home.voice_settings.input_device.clone()),
+            Direction::Output => ("Output Device", home.voice_settings.output_device.clone()),
         };
 
         // Enumerated as the menu opens, so a device plugged in since the app

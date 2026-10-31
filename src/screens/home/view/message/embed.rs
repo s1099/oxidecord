@@ -11,8 +11,8 @@ use crate::discord;
 use crate::screens::home::HomeScreen;
 use crate::screens::home::data::gif::gif_source;
 use crate::screens::home::data::image_viewer::ViewerImage;
+use crate::screens::home::media::MediaKey;
 use crate::screens::home::selection::{EmbedPiece, TextPart};
-use crate::screens::home::state::MediaKey;
 use crate::ui::depth::media_shadow;
 
 use super::super::markdown::MarkdownOptions;

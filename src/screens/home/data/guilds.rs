@@ -129,11 +129,11 @@ impl HomeScreen {
         self.channels_error = None;
         self.channels_loading = false;
 
-        match self.guild_channels.get(&guild_id).cloned() {
+        match self.guild_data.channels.get(&guild_id).cloned() {
             Some(channels) => {
                 self.set_channel_groups(build_channel_groups(channels));
                 self.open_guild_channel(window, cx);
-                if self.stale_guild_channels.contains(&guild_id) {
+                if self.guild_data.stale_channels.contains(&guild_id) {
                     self.fetch_guild_channels(guild_id, window, cx);
                 }
             }
@@ -155,7 +155,7 @@ impl HomeScreen {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if !self.fetching_guild_channels.insert(guild_id) {
+        if !self.guild_data.fetching_channels.insert(guild_id) {
             return;
         }
         // The guild list already carries the user's guild-wide permissions, so
@@ -170,7 +170,7 @@ impl HomeScreen {
         cx.spawn_in(window, async move |this, cx| {
             let result = discord::fetch_channels(guild_id, base_permissions, owner).await;
             let _ = this.update_in(cx, |this, window, cx| {
-                this.fetching_guild_channels.remove(&guild_id);
+                this.guild_data.fetching_channels.remove(&guild_id);
                 match result {
                     Ok(channels) => {
                         for channel in &channels {
@@ -200,12 +200,12 @@ impl HomeScreen {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.stale_guild_channels.remove(&guild_id);
+        self.guild_data.stale_channels.remove(&guild_id);
         let open = self.view == View::Guild && self.selected_guild == Some(guild_id);
         if open {
             self.set_channel_groups(build_channel_groups(channels.clone()));
         }
-        self.guild_channels.insert(guild_id, channels);
+        self.guild_data.channels.insert(guild_id, channels);
         if !open {
             return;
         }
@@ -232,10 +232,10 @@ impl HomeScreen {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if !self.guild_channels.contains_key(&guild_id) {
+        if !self.guild_data.channels.contains_key(&guild_id) {
             return;
         }
-        self.stale_guild_channels.insert(guild_id);
+        self.guild_data.stale_channels.insert(guild_id);
         if self.view == View::Guild && self.selected_guild == Some(guild_id) {
             self.fetch_guild_channels(guild_id, window, cx);
         }

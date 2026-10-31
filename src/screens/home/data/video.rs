@@ -15,7 +15,7 @@ use image::{Frame, ImageBuffer};
 
 use crate::platform::video::{VideoEvent, VideoFrame, VideoPlayer};
 use crate::screens::home::HomeScreen;
-use crate::screens::home::state::{MediaKey, PlaybackState, VideoPlayback};
+use crate::screens::home::media::{MediaKey, PlaybackState, VideoPlayback};
 
 impl HomeScreen {
     /// `target` is the decode size in physical pixels. Asking for the size the card
