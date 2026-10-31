@@ -122,7 +122,7 @@ pub(in crate::discord) fn encode_status_settings(status: PresenceStatus) -> Stri
     base64_encode(&length_delimited(11, &status_settings))
 }
 
-fn length_delimited(number: u32, bytes: &[u8]) -> Vec<u8> {
+pub(super) fn length_delimited(number: u32, bytes: &[u8]) -> Vec<u8> {
     let mut out = Vec::with_capacity(bytes.len() + 4);
     write_varint(&mut out, u64::from(number) << 3 | 2);
     write_varint(&mut out, bytes.len() as u64);
@@ -130,7 +130,7 @@ fn length_delimited(number: u32, bytes: &[u8]) -> Vec<u8> {
     out
 }
 
-fn write_varint(out: &mut Vec<u8>, mut value: u64) {
+pub(super) fn write_varint(out: &mut Vec<u8>, mut value: u64) {
     while value >= 0x80 {
         out.push(value as u8 | 0x80);
         value >>= 7;
@@ -206,7 +206,7 @@ fn unwrap_bytes(bytes: &[u8]) -> Option<&[u8]> {
     })
 }
 
-enum Value<'a> {
+pub(super) enum Value<'a> {
     Varint(u64),
     Fixed64(u64),
     Bytes(&'a [u8]),
@@ -214,13 +214,13 @@ enum Value<'a> {
 }
 
 /// Stops at the first malformed or truncated field.
-struct Fields<'a> {
+pub(super) struct Fields<'a> {
     bytes: &'a [u8],
     pos: usize,
 }
 
 impl<'a> Fields<'a> {
-    fn new(bytes: &'a [u8]) -> Self {
+    pub(super) fn new(bytes: &'a [u8]) -> Self {
         Self { bytes, pos: 0 }
     }
 
@@ -252,7 +252,7 @@ impl<'a> Iterator for Fields<'a> {
     }
 }
 
-fn read_varint(bytes: &[u8], pos: &mut usize) -> Option<u64> {
+pub(super) fn read_varint(bytes: &[u8], pos: &mut usize) -> Option<u64> {
     let mut value = 0u64;
     for shift in (0..64).step_by(7) {
         let byte = *bytes.get(*pos)?;
@@ -265,7 +265,7 @@ fn read_varint(bytes: &[u8], pos: &mut usize) -> Option<u64> {
     None
 }
 
-fn base64_encode(bytes: &[u8]) -> String {
+pub(super) fn base64_encode(bytes: &[u8]) -> String {
     const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
     let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
@@ -285,7 +285,7 @@ fn base64_encode(bytes: &[u8]) -> String {
 }
 
 /// Also accepts url-safe characters and missing padding.
-fn base64_decode(input: &str) -> Option<Vec<u8>> {
+pub(super) fn base64_decode(input: &str) -> Option<Vec<u8>> {
     let mut out = Vec::with_capacity(input.len() / 4 * 3);
     let mut buffer = 0u32;
     let mut bits = 0u32;

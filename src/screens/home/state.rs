@@ -28,6 +28,7 @@ use super::history_cache::HistoryCache;
 use super::media::VideoPlayback;
 use super::member_list_cache::MemberListCache;
 use super::popups::{EmojiPicker, ImageViewer, PinsPopup, ProfilePopup, Reactors};
+use super::quick_switcher::Frecency;
 use super::selection::{Selection, TextCopies, TextRegions};
 use super::unread::Unreads;
 use super::voice::{PendingVoice, ScreenShare, StreamWatch, VoiceCall, VoiceSettings};
@@ -134,6 +135,8 @@ pub struct HomeScreen {
     pub(super) dms: DmList,
     pub(super) collapsed_categories: HashSet<Id<ChannelMarker>>,
     pub(super) unreads: Unreads,
+    /// Ranks the quick switcher; see [`Frecency`].
+    pub(super) frecency: Frecency,
     /// Last message read when the conversation opened; the "new" divider sits under it.
     pub(super) unread_marker: Option<Id<MessageMarker>>,
     /// Suppresses acking until the conversation is left.
@@ -329,6 +332,7 @@ impl HomeScreen {
             dms: DmList::default(),
             collapsed_categories: HashSet::new(),
             unreads: Unreads::default(),
+            frecency: Frecency::default(),
             unread_marker: None,
             marked_unread: false,
             pending_acks: HashMap::new(),
@@ -417,6 +421,7 @@ impl HomeScreen {
         };
         this.load_guilds(window, cx);
         this.load_user_settings(cx);
+        this.load_frecency(cx);
         this.load_current_user(cx);
         this.load_dms(cx);
         this.start_gateway(window, cx);

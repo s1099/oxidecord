@@ -141,8 +141,7 @@
 | Appearance settings (compact mode, font scaling, message spacing, zoom level) | Missing | |
 | Accessibility (reduced motion, saturation, role colors, text-to-speech, screen-reader support) | Missing | |
 | Chat settings (display images, embeds, link previews, emoji autoconvert, sticker suggestions) | Missing | |
-| Keybinds settings and global shortcuts (Ctrl+K quick switcher, Alt+Up/Down channel nav) | Missing | Only paste, send, save edit, edit-last-message and Esc mark-as-read are bound |
-| Quick Switcher (Ctrl+K) | Missing | |
+| Keybinds settings and global shortcuts (Alt+Up/Down channel nav) | Missing | Only paste, send, save edit, edit-last-message, Esc mark-as-read and Ctrl+K quick switcher are bound |
 | Language and localization | Missing | |
 | Streamer mode | Missing | |
 | Developer mode (copy IDs) | Missing | |

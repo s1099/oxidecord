@@ -123,6 +123,7 @@ impl HomeScreen {
             return;
         }
         self.selected_guild = Some(guild_id);
+        self.record_use(guild_id.get(), cx);
         self.set_channel_groups(Vec::new());
         self.selected_channel = None;
         self.load_collapsed_categories();

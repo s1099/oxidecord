@@ -15,6 +15,7 @@ mod history_cache;
 mod media;
 mod member_list_cache;
 mod popups;
+mod quick_switcher;
 mod selection;
 mod state;
 mod unread;
@@ -58,6 +59,8 @@ actions!(
         /// does it once nothing else needs closing.
         MarkConversationRead,
         /// Copies the message-list selection, handing on to the input's copy when empty.
-        CopySelection
+        CopySelection,
+        /// Ctrl+K, as in Discord; pressed again it closes.
+        ToggleQuickSwitcher
     ]
 );

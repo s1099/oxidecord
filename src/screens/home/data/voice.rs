@@ -42,6 +42,7 @@ impl HomeScreen {
             return;
         };
         let name = channel.name.clone();
+        self.record_use(channel_id.get(), cx);
         let guild_id = self.selected_guild;
         let guild_name = guild_id
             .and_then(|id| self.guilds.iter().find(|guild| guild.id == id))

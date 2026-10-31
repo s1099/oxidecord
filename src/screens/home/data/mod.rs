@@ -18,6 +18,7 @@ pub(super) mod messages;
 pub(super) mod pins;
 pub(super) mod presence;
 pub(super) mod profile;
+pub(super) mod quick_switcher;
 pub(super) mod read_state;
 pub(super) mod selection;
 pub(super) mod stream;

@@ -7,6 +7,7 @@ mod markdown;
 mod member_list;
 mod message;
 mod profile;
+mod quick_switcher;
 mod rail;
 mod sidebar;
 mod user_panel;
@@ -94,6 +95,7 @@ impl Render for HomeScreen {
                 }
             }))
             .on_action(cx.listener(Self::on_copy_selection))
+            .on_action(cx.listener(Self::toggle_quick_switcher))
             // On the root, since the pointer can be anywhere when the drag ends.
             .on_drop(cx.listener(Self::on_sidebar_resized))
             // After the bindings, so only keystrokes no shortcut took.

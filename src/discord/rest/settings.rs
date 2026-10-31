@@ -1,11 +1,14 @@
 //! Reading and writing the user's settings-proto blob.
 
+use std::collections::HashMap;
+
 use twilight_http::request::{Method, RequestBuilder};
 use twilight_http::response::marker::EmptyBody;
 
 use super::request;
 use crate::discord::model::{
-    PresenceStatus, RawSettingsProto, UserSettings, encode_status_settings, parse_user_settings,
+    FrecencyItem, PresenceStatus, RawSettingsProto, UserSettings, encode_frecency_settings,
+    encode_status_settings, parse_frecency_settings, parse_user_settings,
 };
 
 /// Fetches the rail's server ordering and the user's chosen status
@@ -32,6 +35,35 @@ pub async fn save_status(status: PresenceStatus) -> Result<(), String> {
     request(move |client| async move {
         let request = RequestBuilder::raw(Method::Patch, "users/@me/settings-proto/1".to_owned())
             .json(&serde_json::json!({ "settings": encode_status_settings(status) }))
+            .build()?;
+        client.request::<EmptyBody>(request).await?;
+        Ok(())
+    })
+    .await
+}
+
+/// Fetches how often and lately each guild and channel was opened
+/// (`GET /users/@me/settings-proto/2`), by id.
+pub async fn fetch_frecency() -> Result<HashMap<u64, FrecencyItem>, String> {
+    request(|client| async move {
+        let request =
+            RequestBuilder::raw(Method::Get, "users/@me/settings-proto/2".to_owned()).build()?;
+        let settings = client
+            .request::<RawSettingsProto>(request)
+            .await?
+            .model()
+            .await?;
+        parse_frecency_settings(&settings.settings).map_err(anyhow::Error::msg)
+    })
+    .await
+}
+
+/// Saves the guild and channel frecency (`PATCH /users/@me/settings-proto/2`),
+/// so other clients rank the same way.
+pub async fn save_frecency(items: HashMap<u64, FrecencyItem>, now_ms: u64) -> Result<(), String> {
+    request(move |client| async move {
+        let request = RequestBuilder::raw(Method::Patch, "users/@me/settings-proto/2".to_owned())
+            .json(&serde_json::json!({ "settings": encode_frecency_settings(&items, now_ms) }))
             .build()?;
         client.request::<EmptyBody>(request).await?;
         Ok(())

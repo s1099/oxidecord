@@ -17,7 +17,7 @@ use crate::screens::app::AppScreen;
 use crate::screens::home::{
     AutocompleteAccept, AutocompleteNext, AutocompletePrevious, COMPOSER_CONTEXT, CopySelection,
     EDIT_CONTEXT, EditLastMessage, HOME_CONTEXT, MarkConversationRead, PasteAttachment, SaveEdit,
-    SendMessage,
+    SendMessage, ToggleQuickSwitcher,
 };
 
 fn main() {
@@ -47,6 +47,8 @@ fn main() {
             KeyBinding::new("cmd-v", PasteAttachment, None),
             KeyBinding::new("ctrl-c", CopySelection, None),
             KeyBinding::new("cmd-c", CopySelection, None),
+            KeyBinding::new("ctrl-k", ToggleQuickSwitcher, None),
+            KeyBinding::new("cmd-k", ToggleQuickSwitcher, None),
         ]);
 
         // Same context depth as the input's own bindings, where the later one

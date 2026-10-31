@@ -23,6 +23,7 @@ impl HomeScreen {
         }
         self.save_collapsed_categories();
         self.selected_channel = Some(channel_id);
+        self.record_use(channel_id.get(), cx);
         if self.view == View::Guild
             && let Some(guild_id) = self.selected_guild
         {

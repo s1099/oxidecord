@@ -24,7 +24,7 @@ pub use message::{
     MESSAGE_PAGE_SIZE, MessagePage, REACTORS_PAGE_SIZE, ack_message, delete_message, edit_message,
     fetch_messages, fetch_pins, fetch_reactors, send_message, toggle_reaction, trigger_typing,
 };
-pub use settings::{fetch_user_settings, save_status};
+pub use settings::{fetch_frecency, fetch_user_settings, save_frecency, save_status};
 pub use user::{fetch_current_user, fetch_user_profile};
 
 /// Runs a request against the shared client on the runtime, flattening its
