@@ -257,21 +257,35 @@ impl<'a> Renderer<'a> {
         format!("{}-spoiler-{index}", self.options.scope).into()
     }
 
+    /// The guild nickname wins: fetched history's mentions carry no member, so
+    /// their name is only the username.
     fn user(&self, id: Id<UserMarker>) -> Option<ResolvedUser> {
-        if let Some(user) = self.options.mentions.iter().find(|user| user.id == id) {
-            return Some(user.into());
-        }
         let screen = self.screen;
-        if let Some(user) = screen.current_user.as_ref().filter(|user| user.id == id) {
-            return Some(ResolvedUser {
+        let mut user = if let Some(user) = self.options.mentions.iter().find(|user| user.id == id) {
+            Some(user.into())
+        } else if let Some(user) = screen.current_user.as_ref().filter(|user| user.id == id) {
+            Some(ResolvedUser {
                 name: user.name.clone(),
                 avatar_url: user.avatar_url.clone(),
-            });
+            })
+        } else {
+            screen.profile_cache.get(&id).map(|profile| ResolvedUser {
+                name: profile.name.clone(),
+                avatar_url: profile.avatar_url.clone(),
+            })
+        };
+        if let Some(name) = screen.member_name(id) {
+            match &mut user {
+                Some(user) => user.name = name.to_string(),
+                None => {
+                    user = Some(ResolvedUser {
+                        name: name.to_string(),
+                        avatar_url: None,
+                    })
+                }
+            }
         }
-        screen.profile_cache.get(&id).map(|profile| ResolvedUser {
-            name: profile.name.clone(),
-            avatar_url: profile.avatar_url.clone(),
-        })
+        user
     }
 
     fn text(&self, inlines: &[Inline], edited: bool) -> impl IntoElement {

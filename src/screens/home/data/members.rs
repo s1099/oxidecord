@@ -68,7 +68,8 @@ impl HomeScreen {
         self.member_name(user_id).unwrap_or(fallback)
     }
 
-    /// Requests members of authors, and of authors replies quote, not yet named.
+    /// Requests members of authors, of authors replies quote, and of users mentioned,
+    /// not yet named.
     /// Fetched history carries none and a user session is sent only a few up front,
     /// so without this most names would lack colours and show global names instead of
     /// nicknames. Called as each page of history lands.
@@ -84,10 +85,12 @@ impl HomeScreen {
         let known = self.guild_data.members.get(&guild_id);
         let mut wanted = Vec::new();
         let authors = self.messages.iter().flat_map(|message| {
-            iter::once(message.author_id).chain(match &message.reply {
-                Some(discord::Reply::Quote(quote)) => Some(quote.author_id),
-                _ => None,
-            })
+            iter::once(message.author_id)
+                .chain(match &message.reply {
+                    Some(discord::Reply::Quote(quote)) => Some(quote.author_id),
+                    _ => None,
+                })
+                .chain(message.mentions.iter().map(|user| user.id))
         });
         for user_id in authors {
             if known.is_some_and(|known| known.contains_key(&user_id)) {
