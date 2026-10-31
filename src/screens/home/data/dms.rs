@@ -10,8 +10,8 @@ use crate::discord::{self, DirectMessage};
 use crate::screens::home::{HomeScreen, View};
 
 impl HomeScreen {
-    /// Clears the open conversation. The DM list loads at startup and stays current,
-    /// so this fetches only after that failed.
+    /// Reopens the last DM, as Discord does. The DM list loads at startup and
+    /// stays current, so this fetches only after that failed.
     pub(in crate::screens::home) fn open_direct_messages(
         &mut self,
         window: &mut Window,
@@ -20,6 +20,30 @@ impl HomeScreen {
         if self.view == View::DirectMessages {
             return;
         }
+        self.enter_direct_messages(window, cx);
+        // Closed since, it's no longer there to reopen.
+        let last = self
+            .last_dm
+            .filter(|&id| self.dms.iter().any(|dm| dm.id == id));
+        if let Some(channel_id) = last {
+            self.select_channel(channel_id, window, cx);
+        }
+    }
+
+    /// Opens one DM directly, without first opening the last one.
+    pub(in crate::screens::home) fn open_dm(
+        &mut self,
+        channel_id: Id<ChannelMarker>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.view != View::DirectMessages {
+            self.enter_direct_messages(window, cx);
+        }
+        self.select_channel(channel_id, window, cx);
+    }
+
+    fn enter_direct_messages(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.view = View::DirectMessages;
 
         // Reset so the previous channel's messages don't linger.

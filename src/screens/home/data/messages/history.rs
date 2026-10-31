@@ -30,10 +30,11 @@ impl HomeScreen {
         }
         // A DM's call that started before this session did is only reported
         // on request, and the call view needs to know it's there.
-        if self.view == View::DirectMessages
-            && let Some(gateway) = &self.gateway
-        {
-            gateway.request_call_connect(channel_id);
+        if self.view == View::DirectMessages {
+            self.last_dm = Some(channel_id);
+            if let Some(gateway) = &self.gateway {
+                gateway.request_call_connect(channel_id);
+            }
         }
         self.load_messages(window, cx);
     }

@@ -63,8 +63,7 @@ impl HomeScreen {
             }
             None => {
                 self.pending_jump = Some((channel_id, message_id));
-                self.open_direct_messages(window, cx);
-                self.select_channel(channel_id, window, cx);
+                self.open_dm(channel_id, window, cx);
             }
         }
         cx.notify();

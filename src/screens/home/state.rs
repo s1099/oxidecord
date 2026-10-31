@@ -297,6 +297,7 @@ pub struct HomeScreen {
     pub(super) stale_guild_channels: HashSet<Id<GuildMarker>>,
     pub(super) fetching_guild_channels: HashSet<Id<GuildMarker>>,
     pub(super) last_guild_channel: HashMap<Id<GuildMarker>, Id<ChannelMarker>>,
+    pub(super) last_dm: Option<Id<ChannelMarker>>,
     pub(super) selected_channel: Option<Id<ChannelMarker>>,
     /// A selected DM reuses `selected_channel` and the message plumbing.
     pub(super) dms: Vec<DirectMessage>,
@@ -522,6 +523,7 @@ impl HomeScreen {
             stale_guild_channels: HashSet::new(),
             fetching_guild_channels: HashSet::new(),
             last_guild_channel: HashMap::new(),
+            last_dm: None,
             selected_channel: None,
             dms: Vec::new(),
             dms_loading: false,

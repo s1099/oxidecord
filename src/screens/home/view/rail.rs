@@ -107,8 +107,7 @@ impl HomeScreen {
             .children(rail_badge(self.unreads.dm_mentions(channel_id), cx))
             .tooltip(tooltip::text(SharedString::from(dm.name.clone())))
             .on_click(cx.listener(move |this, _, window, cx| {
-                this.open_direct_messages(window, cx);
-                this.select_channel(channel_id, window, cx);
+                this.open_dm(channel_id, window, cx);
             }))
     }
 
