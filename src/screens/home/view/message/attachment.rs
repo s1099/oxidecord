@@ -154,20 +154,6 @@ impl HomeScreen {
         cx: &Context<Self>,
     ) -> AnyElement {
         let theme = cx.theme();
-
-        let playback = self.video.as_ref().filter(|playback| playback.key == key);
-
-        // Once a frame arrives the card takes its shape: Discord's dimensions can disagree with
-        // the file (anamorphic pixels) or be missing, and sizing to the frame avoids letterboxing.
-        let (width, height) = playback
-            .and_then(|playback| playback.frame.as_ref())
-            .map_or_else(
-                || video_size(video),
-                |frame| {
-                    let size = frame.size(0);
-                    fit_preview(f64::from(size.width.0), f64::from(size.height.0))
-                },
-            );
         let caption = div()
             .text_xs()
             .text_color(theme.muted_foreground)
@@ -175,12 +161,60 @@ impl HomeScreen {
 
         // Covers the play button too, so a spoiler clip can't start unrevealed.
         if let Some(cover) = self.unrevealed_spoiler(video.spoiler.as_ref(), key, "video") {
+            let (width, height) = self.video_card_size(key, video.width, video.height);
             return v_flex()
                 .gap(px(2.))
                 .child(self.render_spoiler_cover(cover, key, "video", width, height, cx))
                 .child(caption)
                 .into_any_element();
         }
+
+        v_flex()
+            .gap(px(2.))
+            .child(self.render_video_player(
+                &video.url,
+                &video.poster_url,
+                (video.width, video.height),
+                key,
+                cx,
+            ))
+            .child(caption)
+            .into_any_element()
+    }
+
+    /// Once a frame arrives the card takes its shape: Discord's dimensions can disagree with
+    /// the file (anamorphic pixels) or be missing, and sizing to the frame avoids letterboxing.
+    fn video_card_size(
+        &self,
+        key: MediaKey,
+        width: Option<u32>,
+        height: Option<u32>,
+    ) -> (f32, f32) {
+        self.video
+            .as_ref()
+            .filter(|playback| playback.key == key)
+            .and_then(|playback| playback.frame.as_ref())
+            .map_or_else(
+                || video_size(width, height),
+                |frame| {
+                    let size = frame.size(0);
+                    fit_preview(f64::from(size.width.0), f64::from(size.height.0))
+                },
+            )
+    }
+
+    /// The card alone, without an attachment's caption; video embeds draw it bare.
+    pub(super) fn render_video_player(
+        &self,
+        url: &str,
+        poster_url: &str,
+        (intrinsic_width, intrinsic_height): (Option<u32>, Option<u32>),
+        key: MediaKey,
+        cx: &Context<Self>,
+    ) -> AnyElement {
+        let theme = cx.theme();
+        let playback = self.video.as_ref().filter(|playback| playback.key == key);
+        let (width, height) = self.video_card_size(key, intrinsic_width, intrinsic_height);
 
         let surface = div()
             .id(key.element_id("video"))
@@ -199,7 +233,7 @@ impl HomeScreen {
             // Raw pixels skip the image cache; `ImageSource::Render` goes straight to the renderer.
             Some(frame) => surface.child(img(frame).size_full()),
             None => surface.child(
-                img(video.poster_url.clone())
+                img(poster_url.to_owned())
                     .image_cache(&self.image_cache)
                     .size_full()
                     .object_fit(ObjectFit::Contain),
@@ -235,7 +269,7 @@ impl HomeScreen {
                     .child(self.video_controls(playback, key, cx))
             }
             None => {
-                let url = video.url.clone();
+                let url = url.to_owned();
                 surface
                     .cursor_pointer()
                     .on_click(cx.listener(move |this, _, window, cx| {
@@ -274,11 +308,7 @@ impl HomeScreen {
             }
         };
 
-        v_flex()
-            .gap(px(2.))
-            .child(surface)
-            .child(caption)
-            .into_any_element()
+        surface.into_any_element()
     }
 
     /// Name and download button both open the URL in the browser, which downloads it.
@@ -509,8 +539,8 @@ fn centered(child: impl IntoElement) -> impl IntoElement {
 
 /// Fixed before decoding so playback doesn't reflow the message, and reused as the decode
 /// target so frames arrive at the size they're drawn.
-fn video_size(video: &discord::VideoAttachment) -> (f32, f32) {
-    match (video.width, video.height) {
+fn video_size(width: Option<u32>, height: Option<u32>) -> (f32, f32) {
+    match (width, height) {
         (Some(width), Some(height)) if width > 0 && height > 0 => {
             fit_preview(f64::from(width), f64::from(height))
         }

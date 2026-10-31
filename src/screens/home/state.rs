@@ -182,16 +182,28 @@ pub(super) struct MemberList {
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(super) struct MediaKey {
     pub message_id: u64,
+    /// Attachments and embeds are indexed separately, and both can play video.
+    pub embed: bool,
     pub index: usize,
 }
 
 impl MediaKey {
+    pub fn attachment(message_id: u64, index: usize) -> Self {
+        Self {
+            message_id,
+            embed: false,
+            index,
+        }
+    }
+
     /// Both halves go in: two messages can each hold a video at index 0, and a
     /// shared id would share interaction state.
     pub fn element_id(self, role: &str) -> ElementId {
         ElementId::from(SharedString::from(format!(
-            "{role}-{}-{}",
-            self.message_id, self.index
+            "{role}-{}-{}{}",
+            self.message_id,
+            self.kind(),
+            self.index
         )))
     }
 
@@ -199,13 +211,24 @@ impl MediaKey {
     /// are indexed separately.
     pub fn spoiler_key(self, role: &str) -> SharedString {
         SharedString::from(format!(
-            "attachment-{role}-spoiler-{}-{}",
-            self.message_id, self.index
+            "attachment-{role}-spoiler-{}-{}{}",
+            self.message_id,
+            self.kind(),
+            self.index
         ))
     }
 
     pub fn group(self) -> SharedString {
-        SharedString::from(format!("media-{}-{}", self.message_id, self.index))
+        SharedString::from(format!(
+            "media-{}-{}{}",
+            self.message_id,
+            self.kind(),
+            self.index
+        ))
+    }
+
+    fn kind(self) -> char {
+        if self.embed { 'e' } else { 'a' }
     }
 }
 

@@ -605,6 +605,7 @@ fn is_bare_media_link(content: &str, embeds: &[Embed]) -> bool {
     !content.contains(char::is_whitespace)
         && embeds.iter().any(|embed| {
             embed.layout == EmbedLayout::Media
+                && embed.video.is_none()
                 && embed
                     .url
                     .as_deref()

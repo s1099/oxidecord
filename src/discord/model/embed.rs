@@ -29,6 +29,9 @@ pub struct Embed {
     pub thumbnail: Option<EmbedMedia>,
     /// The UI overlays a play badge and opens [`Self::url`] on click.
     pub has_video: bool,
+    /// A video file Discord proxies (a linked mp4, a post's clip), played inline in
+    /// place of [`Self::image`], like an attachment.
+    pub video: Option<EmbedVideo>,
     /// A GIF served as video; loops in place of [`Self::image`], its poster
     /// frame until the clip loads.
     pub gif: Option<EmbedGif>,
@@ -91,6 +94,14 @@ pub struct EmbedGif {
     pub height: Option<u32>,
 }
 
+#[derive(Clone)]
+pub struct EmbedVideo {
+    pub url: String,
+    pub poster_url: String,
+    pub width: Option<u32>,
+    pub height: Option<u32>,
+}
+
 impl Embed {
     /// A card with nothing but media is drawn without the content padding.
     pub fn has_text(&self) -> bool {
@@ -110,7 +121,8 @@ pub(in crate::discord) fn convert_embed(embed: twilight_model::channel::message:
     let raw = serde_json::to_string_pretty(&embed).unwrap_or_else(|err| format!("<{err}>"));
 
     let gif = gif_for(&embed);
-    let has_video = gif.is_none() && (embed.video.is_some() || embed.kind == "video");
+    let playable = gif.is_none() && embed.video.as_ref().is_some_and(is_playable);
+    let has_video = gif.is_none() && !playable && (embed.video.is_some() || embed.kind == "video");
     // Tenor and Klipy send a title and provider too, but Discord draws a GIF bare.
     let layout = if gif.is_some() {
         EmbedLayout::Media
@@ -126,6 +138,7 @@ pub(in crate::discord) fn convert_embed(embed: twilight_model::channel::message:
             EmbedLayout::Media => true,
             EmbedLayout::Card => {
                 has_video
+                    || playable
                     || (embed.kind == "article"
                         && embed
                             .thumbnail
@@ -182,6 +195,19 @@ pub(in crate::discord) fn convert_embed(embed: twilight_model::channel::message:
         }
     }
 
+    let video = embed.video.filter(|_| playable).and_then(|video| {
+        let url = video.proxy_url?;
+        Some(EmbedVideo {
+            // Not every source has a thumbnail; the proxy draws a frame of the file itself.
+            poster_url: image
+                .as_ref()
+                .map_or_else(|| video_poster_url(&url), |image| image.url.clone()),
+            url,
+            width: video.width.map(|w| w as u32),
+            height: video.height.map(|h| h as u32),
+        })
+    });
+
     Embed {
         layout,
         color: embed.color,
@@ -215,6 +241,7 @@ pub(in crate::discord) fn convert_embed(embed: twilight_model::channel::message:
         image,
         thumbnail,
         has_video,
+        video,
         gif,
         footer: embed
             .footer
@@ -259,4 +286,15 @@ fn gif_for(embed: &twilight_model::channel::message::Embed) -> Option<EmbedGif> 
         width: video.width.map(|w| w as u32),
         height: video.height.map(|h| h as u32),
     })
+}
+
+/// Discord proxies a file it can play itself; an `iframe` player (YouTube, Twitch) comes
+/// unproxied and only opens in the browser.
+fn is_playable(video: &twilight_model::channel::message::embed::EmbedVideo) -> bool {
+    video.proxy_url.is_some()
+}
+
+fn video_poster_url(url: &str) -> String {
+    let separator = if url.contains('?') { '&' } else { '?' };
+    format!("{url}{separator}format=jpeg")
 }

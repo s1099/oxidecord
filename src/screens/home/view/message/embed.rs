@@ -60,7 +60,11 @@ impl HomeScreen {
             .items_start()
             .gap_2()
             .children(embeds.iter().enumerate().map(|(index, embed)| {
-                let id = MediaKey { message_id, index };
+                let id = MediaKey {
+                    message_id,
+                    embed: true,
+                    index,
+                };
                 match embed.layout {
                     discord::EmbedLayout::Card => self.render_embed_card(id, embed, mentions, cx),
                     discord::EmbedLayout::Media => self.render_embed_media(id, embed, cx),
@@ -168,14 +172,24 @@ impl HomeScreen {
             .pt(px(CARD_PADDING_TOP))
             .pb(px(CARD_PADDING_BOTTOM))
             .when(has_body, |this| this.child(body))
-            .children(embed.image.as_ref().map(|image| {
+            .map(|this| {
                 // `gap` already adds `ROW_GAP`; top up to the wider gap only when a row is above.
-                // The margin
-                // goes on the image itself: a block div wrapper hides its width from this column's
-                // intrinsic sizing and collapses the rows below.
+                // The margin goes on the media itself: a block div wrapper hides its width from
+                // this column's intrinsic sizing and collapses the rows below.
                 let extra = if has_body { IMAGE_GAP - ROW_GAP } else { 0. };
-                self.render_embed_image(id, embed, image, extra, cx)
-            }))
+                match (&embed.video, &embed.image) {
+                    (Some(video), _) => this.child(
+                        div()
+                            .flex()
+                            .mt(px(extra))
+                            .child(self.render_embed_video(id, video, cx)),
+                    ),
+                    (None, Some(image)) => {
+                        this.child(self.render_embed_image(id, embed, image, extra, cx))
+                    }
+                    (None, None) => this,
+                }
+            })
             .children(
                 (embed.footer.is_some() || embed.timestamp.is_some()).then(|| {
                     render_footer(
@@ -214,6 +228,15 @@ impl HomeScreen {
         embed: &discord::Embed,
         cx: &Context<Self>,
     ) -> AnyElement {
+        if let Some(video) = &embed.video {
+            return div()
+                .id(id.element_id("embed"))
+                .group(id.group())
+                .relative()
+                .child(self.render_embed_video(id, video, cx))
+                .children(self.render_embed_debug_copy(id, embed, cx))
+                .into_any_element();
+        }
         let Some(image) = embed.image.as_ref() else {
             return div().into_any_element();
         };
@@ -231,6 +254,21 @@ impl HomeScreen {
             .child(self.render_embed_image(id, embed, image, 0., cx))
             .children(self.render_embed_debug_copy(id, embed, cx))
             .into_any_element()
+    }
+
+    fn render_embed_video(
+        &self,
+        id: MediaKey,
+        video: &discord::EmbedVideo,
+        cx: &Context<Self>,
+    ) -> AnyElement {
+        self.render_video_player(
+            &video.url,
+            &video.poster_url,
+            (video.width, video.height),
+            id,
+            cx,
+        )
     }
 
     /// Video embeds get a play badge and open the source link instead of the frame.

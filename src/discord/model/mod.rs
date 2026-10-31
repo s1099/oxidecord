@@ -23,7 +23,7 @@ mod voice;
 
 pub use cdn::{animated_webp, scaled_url};
 pub use channel::{Channel, ChannelKind, DirectMessage};
-pub use embed::{Embed, EmbedAuthor, EmbedField, EmbedFooter, EmbedLayout, EmbedMedia};
+pub use embed::{Embed, EmbedAuthor, EmbedField, EmbedFooter, EmbedLayout, EmbedMedia, EmbedVideo};
 pub use emoji::GuildEmoji;
 pub use guild::{Guild, GuildMember, Role};
 pub use link::MessageLink;

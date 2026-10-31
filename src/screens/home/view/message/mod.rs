@@ -305,17 +305,23 @@ impl HomeScreen {
             .gap_1()
             .when(!images.is_empty(), |this| {
                 this.child(v_flex().gap_1().children(images.iter().enumerate().map(
-                    |(index, image)| self.render_image(image, MediaKey { message_id, index }, cx),
+                    |(index, image)| {
+                        self.render_image(image, MediaKey::attachment(message_id, index), cx)
+                    },
                 )))
             })
             .when(!videos.is_empty(), |this| {
                 this.child(v_flex().gap_1().children(videos.iter().enumerate().map(
-                    |(index, video)| self.render_video(video, MediaKey { message_id, index }, cx),
+                    |(index, video)| {
+                        self.render_video(video, MediaKey::attachment(message_id, index), cx)
+                    },
                 )))
             })
             .when(!files.is_empty(), |this| {
                 this.child(v_flex().gap_1().children(files.iter().enumerate().map(
-                    |(index, file)| self.render_file(file, MediaKey { message_id, index }, cx),
+                    |(index, file)| {
+                        self.render_file(file, MediaKey::attachment(message_id, index), cx)
+                    },
                 )))
             })
             .when(!embeds.is_empty(), |this| {
