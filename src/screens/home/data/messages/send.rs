@@ -65,7 +65,8 @@ impl HomeScreen {
         let mention_author = self
             .replying_to
             .as_ref()
-            .is_none_or(|target| target.mention);
+            // The toggle is hidden for a reply to yourself, which Discord's client never pings.
+            .is_none_or(|target| target.mention && Some(target.author_id) != self.self_user_id);
         let attachments: Vec<(String, Vec<u8>)> = self
             .pending_attachments
             .drain(..)
