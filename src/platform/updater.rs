@@ -24,7 +24,8 @@ use sha2::{Digest as _, Sha256};
 
 use super::{http, runtime};
 
-const LATEST_RELEASE_API: &str = "https://api.github.com/repos/s1099/oxidecord/releases/latest";
+/// Newest first; one page reaches back far enough for any install worth updating.
+const RELEASES_API: &str = "https://api.github.com/repos/s1099/oxidecord/releases?per_page=100";
 
 const ASSET_NAME: &str = "oxidecord.exe";
 
@@ -73,6 +74,8 @@ pub enum Status {
 #[derive(Default)]
 pub struct Updater {
     status: Status,
+    /// Markdown notes of every release newer than this build, newest first.
+    changelog: SharedString,
 }
 
 impl Global for Updater {}
@@ -88,6 +91,13 @@ pub fn init(cx: &mut App) {
 pub fn status(cx: &App) -> Status {
     cx.try_global::<Updater>()
         .map(|updater| updater.status.clone())
+        .unwrap_or_default()
+}
+
+/// Empty unless a check found newer releases.
+pub fn changelog(cx: &App) -> SharedString {
+    cx.try_global::<Updater>()
+        .map(|updater| updater.changelog.clone())
         .unwrap_or_default()
 }
 
@@ -107,12 +117,18 @@ pub fn check(cx: &mut App) {
             .unwrap_or_else(|_| Err("the check was cut short".into()));
         cx.update(|cx| {
             let status = match result {
-                Ok(Some(release)) => Status::Available {
-                    version: release.version.into(),
-                    url: release.url.into(),
-                    sha256: release.sha256.into(),
-                },
-                Ok(None) => Status::UpToDate,
+                Ok(Some(release)) => {
+                    cx.default_global::<Updater>().changelog = release.changelog.into();
+                    Status::Available {
+                        version: release.version.into(),
+                        url: release.url.into(),
+                        sha256: release.sha256.into(),
+                    }
+                }
+                Ok(None) => {
+                    cx.default_global::<Updater>().changelog = SharedString::default();
+                    Status::UpToDate
+                }
                 Err(error) => Status::Failed(error.to_string().into()),
             };
             set_status(status, cx);
@@ -258,12 +274,13 @@ struct Release {
     version: String,
     url: String,
     sha256: String,
+    changelog: String,
 }
 
 /// `None` when the newest release isn't newer than this build.
 async fn fetch_latest() -> Result<Option<Release>, String> {
     let response = http::client()
-        .get(LATEST_RELEASE_API)
+        .get(RELEASES_API)
         .header("User-Agent", USER_AGENT)
         .header("Accept", "application/vnd.github+json")
         .send()
@@ -278,16 +295,30 @@ async fn fetch_latest() -> Result<Option<Release>, String> {
         .bytes()
         .await
         .map_err(|error| format!("unreadable release data: {error}"))?;
-    let release: serde_json::Value = serde_json::from_slice(&body)
+    let releases: Vec<serde_json::Value> = serde_json::from_slice(&body)
         .map_err(|error| format!("unreadable release data: {error}"))?;
 
-    let tag = release["tag_name"]
-        .as_str()
-        .ok_or("the latest release has no tag")?;
+    // Matches what `releases/latest` would pick: published, not prereleases.
+    let mut newer: Vec<(&str, &serde_json::Value)> = releases
+        .iter()
+        .filter(|release| {
+            release["draft"].as_bool() != Some(true)
+                && release["prerelease"].as_bool() != Some(true)
+        })
+        .filter_map(|release| Some((release["tag_name"].as_str()?, release)))
+        .filter(|(tag, _)| is_newer(tag, CURRENT_VERSION))
+        .collect();
+    // The API orders by creation date, which a re-cut older release can break.
+    newer.sort_by_key(|(tag, _)| std::cmp::Reverse(numbers(tag)));
 
-    if !is_newer(tag, CURRENT_VERSION) {
+    let Some(&(tag, release)) = newer.first() else {
         return Ok(None);
-    }
+    };
+    let changelog = newer
+        .iter()
+        .map(|(tag, release)| release_notes(tag, release["body"].as_str().unwrap_or_default()))
+        .collect::<Vec<_>>()
+        .join("\n\n");
 
     let asset = release["assets"]
         .as_array()
@@ -308,7 +339,29 @@ async fn fetch_latest() -> Result<Option<Release>, String> {
         version: tag.trim_start_matches(['v', 'V']).to_string(),
         url: url.to_string(),
         sha256: sha256.to_ascii_lowercase(),
+        changelog,
     }))
+}
+
+/// One release's section of the changelog. GitHub's generated "What's Changed" heading and
+/// compare link repeat in every release, so they're dropped.
+fn release_notes(tag: &str, body: &str) -> String {
+    let version = tag.trim_start_matches(['v', 'V']);
+    let notes: Vec<&str> = body
+        .lines()
+        .filter(|line| {
+            let line = line.trim();
+            !line.eq_ignore_ascii_case("## what's changed")
+                && !line.starts_with("**Full Changelog**")
+        })
+        .collect();
+    let notes = notes.join("\n");
+    let notes = notes.trim();
+    if notes.is_empty() {
+        format!("## {version}\n\nNo notes for this release.")
+    } else {
+        format!("## {version}\n\n{notes}")
+    }
 }
 
 /// Keeps `staged` only if it hashes to `sha256`.

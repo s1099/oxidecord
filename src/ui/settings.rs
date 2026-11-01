@@ -11,6 +11,7 @@ use gpui_kit::component::{
     h_flex,
     input::{InputEvent, InputState},
     setting::{RenderOptions, SettingField, SettingGroup, SettingItem, SettingPage, Settings},
+    text::TextView,
 };
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
@@ -81,7 +82,7 @@ pub fn open(
                             .sidebar_width(px(SIDEBAR_WIDTH))
                             .sidebar_style(&StyleRefinement::default().rounded_l(inner_radius))
                             .page(themes_page())
-                            .page(updates_page())
+                            .page(updates_page(cx))
                             .when(debug, |this| this.page(gallery::page())),
                     )
                     .child(log_out_footer(on_log_out.clone(), cx)),
@@ -303,16 +304,25 @@ fn color(value: &Option<SharedString>, fallback: Hsla) -> Hsla {
         .unwrap_or(fallback)
 }
 
-fn updates_page() -> SettingPage {
-    SettingPage::new("Updates")
-        .description("Keep Oxidecord up to date.")
-        .resettable(false)
-        .group(
-            SettingGroup::new()
-                .title("Software update")
-                .item(SettingItem::new("Current version", version_field()))
-                .item(SettingItem::new("Check for updates", update_field())),
-        )
+fn updates_page(cx: &App) -> SettingPage {
+    let changelog = updater::changelog(cx);
+
+    let mut group = SettingGroup::new()
+        .title("Software update")
+        .item(SettingItem::new("Current version", version_field()))
+        .item(SettingItem::new("Check for updates", update_field()));
+    // Kept in the one group: a second group would add a sidebar entry under the page.
+    if !changelog.is_empty() {
+        group = group.item(SettingItem::render(
+            move |_: &RenderOptions, _window, _cx| {
+                TextView::markdown("update-changelog", changelog.clone())
+                    .text_sm()
+                    .selectable(true)
+            },
+        ));
+    }
+
+    SettingPage::new("Updates").resettable(false).group(group)
 }
 
 fn version_field() -> SettingField<SharedString> {
