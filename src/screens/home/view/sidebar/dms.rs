@@ -1,17 +1,18 @@
 //! The direct-message sidebar: one row per conversation.
 
+use gpui_kit::component::button::Button;
 use gpui_kit::component::{ActiveTheme as _, h_flex, skeleton::Skeleton, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
 use crate::discord::DirectMessage;
-use crate::screens::home::HomeScreen;
 use crate::screens::home::view::user_panel::status_indicator;
 use crate::screens::home::view::{avatar, mention_badge, unread_pill};
+use crate::screens::home::{HomeScreen, ToggleQuickSwitcher};
 use crate::ui::depth::{Finish, Level, Lit as _, radius};
 use crate::ui::theme;
 
-use super::{shell, title_row};
+use super::{TITLE_HEIGHT, shell};
 
 /// Skeleton row widths, fixed so it doesn't reshuffle between frames.
 const SKELETON_WIDTHS: [f32; 12] = [
@@ -109,7 +110,17 @@ impl HomeScreen {
             )
             .px_2()
             .py_2()
-            .gap(px(2.));
+            .gap(px(2.))
+            .child(
+                div()
+                    .px_2()
+                    .pt_1()
+                    .pb_1()
+                    .text_xs()
+                    .font_weight(FontWeight::SEMIBOLD)
+                    .text_color(muted_foreground)
+                    .child("DIRECT MESSAGES"),
+            );
 
         if self.dms.loading {
             list = list.children(SKELETON_WIDTHS.iter().map(|&width| {
@@ -142,10 +153,23 @@ impl HomeScreen {
             list = list.children(self.dms.list.iter().map(|dm| self.render_dm_row(dm, cx)));
         }
 
-        shell(
-            Some(title_row("Direct Messages", None).into_any_element()),
-            list,
-            cx,
-        )
+        let header = h_flex()
+            .h(px(TITLE_HEIGHT))
+            .pt_2()
+            .px_2()
+            .flex_shrink_0()
+            .items_center()
+            .child(
+                Button::new("find-conversation")
+                    .label("Find or start a conversation")
+                    .w_full()
+                    .h(px(36.))
+                    .tooltip("Ctrl+K")
+                    .on_click(cx.listener(|this, _, window, cx| {
+                        this.toggle_quick_switcher(&ToggleQuickSwitcher, window, cx);
+                    })),
+            );
+
+        shell(Some(header.into_any_element()), list, cx)
     }
 }
