@@ -91,6 +91,13 @@ pub(super) fn wants_animated_webp(animated: bool, content_type: Option<&str>) ->
     animated && content_type != Some("image/gif")
 }
 
+/// gpui can't decode AVIF, and an embed's thumbnail (vxtwitter GIFs) carries no
+/// content type or flags to say so, so the path's extension is all there is.
+pub(super) fn is_avif(url: &str) -> bool {
+    let path = url.split(['?', '#']).next().unwrap_or(url);
+    path.to_ascii_lowercase().ends_with(".avif")
+}
+
 /// Asks the proxy for `url` as animated WebP; see [`wants_animated_webp`].
 pub fn animated_webp(url: String) -> String {
     if !is_discord_proxy(&url) {

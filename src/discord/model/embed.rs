@@ -3,7 +3,7 @@
 
 use twilight_model::channel::message::embed::EmbedMediaFlags;
 
-use super::cdn::{animated_webp, scaled_url, wants_animated_webp};
+use super::cdn::{animated_webp, is_avif, scaled_url, wants_animated_webp};
 use super::markdown::{self, Inline, Markdown};
 use super::time::format_embed_timestamp;
 
@@ -198,32 +198,40 @@ fn convert_embed(embed: twilight_model::channel::message::Embed) -> Embed {
         let animated = image
             .flags
             .is_some_and(|flags| flags.contains(EmbedMediaFlags::IS_ANIMATED));
+        let url = image.proxy_url.as_deref().unwrap_or(&image.url);
         large(
-            image.proxy_url.as_deref().unwrap_or(&image.url),
+            url,
             image.width,
             image.height,
-            wants_animated_webp(animated, image.content_type.as_deref()),
+            wants_animated_webp(animated, image.content_type.as_deref()) || is_avif(url),
         )
     });
     let mut thumbnail = None;
     if let Some(raw) = embed.thumbnail {
         let url = raw.proxy_url.as_deref().unwrap_or(&raw.url);
-        // twilight doesn't carry a thumbnail's flags, so it's never known animated.
+        // twilight doesn't carry a thumbnail's flags, so only an AVIF one, which must
+        // be converted anyway, is asked for animated.
+        let as_webp = is_avif(url);
         if promote_thumbnail {
-            image = Some(large(url, raw.width, raw.height, false));
+            image = Some(large(url, raw.width, raw.height, as_webp));
         } else {
+            let scaled = scaled_url(
+                url,
+                raw.width,
+                raw.height,
+                THUMBNAIL_REQUEST_SIZE,
+                THUMBNAIL_REQUEST_SIZE,
+            );
             thumbnail = Some(EmbedMedia {
-                url: scaled_url(
-                    url,
-                    raw.width,
-                    raw.height,
-                    THUMBNAIL_REQUEST_SIZE,
-                    THUMBNAIL_REQUEST_SIZE,
-                ),
+                url: if as_webp {
+                    animated_webp(scaled)
+                } else {
+                    scaled
+                },
                 source: url.to_owned(),
                 width: raw.width.map(|w| w as u32),
                 height: raw.height.map(|h| h as u32),
-                animated_webp: false,
+                animated_webp: as_webp,
             });
         }
     }
