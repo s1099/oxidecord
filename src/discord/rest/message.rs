@@ -19,7 +19,8 @@ use twilight_model::id::{
 
 use super::request;
 use crate::discord::model::{
-    Message, RawPins, ReactionEmoji, Reactor, UploadProgress, convert_message, convert_reactor,
+    Message, RawPins, RawSearch, ReactionEmoji, Reactor, SearchFilters, SearchResponse,
+    SearchScope, UploadProgress, convert_message, convert_reactor, convert_search,
 };
 use crate::platform::http;
 
@@ -94,6 +95,28 @@ pub async fn fetch_pins(channel_id: Id<ChannelMarker>) -> Result<Vec<Message>, S
                 return Ok(messages);
             }
         }
+    })
+    .await
+}
+
+/// One page of a message search, `offset` hits in. Raw, since twilight has no
+/// helper for it.
+pub async fn search_messages(
+    scope: SearchScope,
+    filters: SearchFilters,
+    offset: usize,
+) -> Result<SearchResponse, String> {
+    request(move |client| async move {
+        let base = match scope {
+            SearchScope::Guild(guild_id) => format!("guilds/{guild_id}/messages/search"),
+            SearchScope::Channel(channel_id) => format!("channels/{channel_id}/messages/search"),
+        };
+        let query = filters.query(offset, |value| {
+            utf8_percent_encode(value, QUERY_VALUE).to_string()
+        });
+        let request = RequestBuilder::raw(Method::Get, format!("{base}?{query}")).build()?;
+        let raw = client.request::<RawSearch>(request).await?.model().await?;
+        Ok(convert_search(raw))
     })
     .await
 }
@@ -406,6 +429,9 @@ const PATH_SEGMENT: &AsciiSet = &CONTROLS
     .add(b'`')
     .add(b'{')
     .add(b'}');
+
+/// What search text can't carry in a query string unescaped.
+const QUERY_VALUE: &AsciiSet = &PATH_SEGMENT.add(b'&').add(b'+').add(b'=').add(b'/');
 
 /// Replaces a message's text. Only ever permitted on the current user's own
 /// messages; attachments and embeds are left as they are.

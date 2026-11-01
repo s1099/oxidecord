@@ -5,10 +5,7 @@ mod channel;
 mod dm;
 mod message_list;
 
-use gpui_kit::component::{
-    ActiveTheme as _, FocusableExt as _, Icon, IconName, Selectable as _, Sizable as _, h_flex,
-    input::Input, v_flex,
-};
+use gpui_kit::component::{ActiveTheme as _, Icon, Selectable as _, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
@@ -94,8 +91,6 @@ pub(super) fn header_actions() -> Div {
     h_flex().flex_shrink_0().gap_2().items_center().occlude()
 }
 
-const SEARCH_WIDTH: f32 = 200.;
-
 impl HomeScreen {
     /// Toggles pinned messages, anchored to the header's bottom rather than the click.
     pub(super) fn render_pins_button(&self, cx: &Context<Self>) -> impl IntoElement {
@@ -111,20 +106,6 @@ impl HomeScreen {
                 let position = point(event.position().x + px(16.), below_header);
                 this.toggle_pins(position, cx);
             }))
-    }
-
-    /// Only drawn for now: typing in it searches nothing.
-    pub(super) fn render_search_box(&self, cx: &App) -> impl IntoElement {
-        div().w(px(SEARCH_WIDTH)).flex_shrink_0().child(
-            Input::new(&self.search_input)
-                .small()
-                .focus_ring(false)
-                .suffix(
-                    Icon::new(IconName::Search)
-                        .small()
-                        .text_color(cx.theme().muted_foreground),
-                ),
-        )
     }
 }
 

@@ -20,6 +20,7 @@ pub(super) mod presence;
 pub(super) mod profile;
 pub(super) mod quick_switcher;
 pub(super) mod read_state;
+pub(super) mod search;
 pub(super) mod selection;
 pub(super) mod stream;
 pub(super) mod type_to_compose;

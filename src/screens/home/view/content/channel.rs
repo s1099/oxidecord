@@ -63,7 +63,10 @@ impl HomeScreen {
                 .min_h_0()
                 .w_full()
                 .child(conversation)
-                .children(self.render_member_list(cx)),
+                .map(|this| match self.render_search_panel(cx) {
+                    Some(panel) => this.child(panel),
+                    None => this.children(self.render_member_list(cx)),
+                }),
         )
         .into_any_element()
     }

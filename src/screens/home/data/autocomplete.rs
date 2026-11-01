@@ -43,7 +43,7 @@ impl HomeScreen {
         let query = word.query.to_lowercase();
         let items = match word.trigger {
             Trigger::User => {
-                self.search_members(&query);
+                self.search_guild_members(&query);
                 self.user_suggestions(&query)
             }
             Trigger::Channel => self.channel_suggestions(&query),
@@ -213,7 +213,7 @@ impl HomeScreen {
 
     /// Searches the gateway for members by name prefix, once per query per session;
     /// a user session only knows a sliver of a guild's members.
-    fn search_members(&mut self, query: &str) {
+    pub(in crate::screens::home) fn search_guild_members(&mut self, query: &str) {
         if query.is_empty() {
             return;
         }
@@ -247,6 +247,9 @@ impl HomeScreen {
                 .is_none_or(|known| known.name != member.name);
             known.insert(member.user_id, member);
         }
+        if changed && self.selected_guild == Some(guild_id) {
+            self.refresh_search_suggestions(cx);
+        }
         if changed
             && self.selected_guild == Some(guild_id)
             && self
@@ -260,7 +263,7 @@ impl HomeScreen {
 
     /// Recent speakers first, then the member list, then whoever else the gateway
     /// has named, then roles.
-    fn user_suggestions(&self, query: &str) -> Vec<Suggestion> {
+    pub(in crate::screens::home) fn user_suggestions(&self, query: &str) -> Vec<Suggestion> {
         let guild_id = self.selected_guild.filter(|_| self.view == View::Guild);
         let known = guild_id.and_then(|guild_id| self.guild_data.members.get(&guild_id));
 
@@ -391,7 +394,7 @@ impl HomeScreen {
     }
 
     /// Sidebar order; none in a DM.
-    fn channel_suggestions(&self, query: &str) -> Vec<Suggestion> {
+    pub(in crate::screens::home) fn channel_suggestions(&self, query: &str) -> Vec<Suggestion> {
         if self.view != View::Guild {
             return Vec::new();
         }

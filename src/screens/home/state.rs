@@ -29,6 +29,7 @@ use super::media::VideoPlayback;
 use super::member_list_cache::MemberListCache;
 use super::popups::{EmojiPicker, ImageViewer, PinsPopup, ProfilePopup, Reactors};
 use super::quick_switcher::Frecency;
+use super::search::{SearchNames, SearchPanel, SearchSuggestions};
 use super::selection::{Selection, TextCopies, TextRegions};
 use super::unread::Unreads;
 use super::voice::{PendingVoice, ScreenShare, StreamWatch, VoiceCall, VoiceSettings};
@@ -229,8 +230,20 @@ pub struct HomeScreen {
     pub(super) member_list_hidden: bool,
     /// The channel/DM sidebar's dragged width, persisted in prefs.
     pub(super) sidebar_width: Pixels,
-    /// The message search box in the conversation header. Not wired up yet.
+    /// The message search box in the conversation header.
     pub(super) search_input: Entity<InputState>,
+    /// Tracked from the input's events: the suggestions show only while it has focus.
+    pub(super) search_focused: bool,
+    pub(super) search_suggestions: Option<SearchSuggestions>,
+    pub(super) search_names: SearchNames,
+    /// Open in place of the member list.
+    pub(super) search: Option<SearchPanel>,
+    pub(super) _search_changed: Subscription,
+    /// The results footer's page number, typed over to jump to a page.
+    pub(super) search_page_input: Entity<InputState>,
+    /// While set, the page box keeps what's typed instead of showing the page.
+    pub(super) search_page_editing: bool,
+    pub(super) _search_page_changed: Subscription,
     /// Cleared with the conversation, as Discord re-hides them on leaving.
     pub(super) revealed_spoilers: HashSet<SharedString>,
     pub(super) text_selection: Option<Selection>,
@@ -274,6 +287,35 @@ impl HomeScreen {
         });
 
         let search_input = cx.new(|cx| InputState::new(window, cx).placeholder("Search"));
+
+        let search_changed =
+            cx.subscribe(
+                &search_input,
+                |this, _, event: &InputEvent, cx| match event {
+                    InputEvent::Change => this.refresh_search_suggestions(cx),
+                    InputEvent::Focus => this.on_search_focus(true, cx),
+                    InputEvent::Blur => this.on_search_focus(false, cx),
+                    InputEvent::PressEnter { .. } => {}
+                },
+            );
+
+        // Digits only; the page count bounds it when submitted.
+        let search_page_input = cx.new(|cx| {
+            InputState::new(window, cx).validate(|text, _| text.chars().all(|c| c.is_ascii_digit()))
+        });
+        let search_page_changed = cx.subscribe_in(
+            &search_page_input,
+            window,
+            |this, _, event: &InputEvent, window, cx| match event {
+                InputEvent::PressEnter { .. } => this.submit_search_page(window, cx),
+                InputEvent::Focus => this.search_page_editing = true,
+                InputEvent::Blur => {
+                    this.search_page_editing = false;
+                    cx.notify();
+                }
+                InputEvent::Change => {}
+            },
+        );
 
         let focus_lost = cx.on_focus_lost(window, |this, window, cx| {
             this.focus_handle.focus(window, cx);
@@ -396,6 +438,14 @@ impl HomeScreen {
             member_list_hidden: prefs.member_list_hidden,
             sidebar_width: super::view::sidebar_width(prefs.sidebar_width),
             search_input,
+            search_focused: false,
+            search_suggestions: None,
+            search_names: SearchNames::default(),
+            search: None,
+            _search_changed: search_changed,
+            search_page_input,
+            search_page_editing: false,
+            _search_page_changed: search_page_changed,
             revealed_spoilers: HashSet::new(),
             text_selection: None,
             text_regions: TextRegions::default(),

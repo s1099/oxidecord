@@ -9,6 +9,7 @@ mod message;
 mod profile;
 mod quick_switcher;
 mod rail;
+mod search;
 mod sidebar;
 mod user_panel;
 mod voice;
@@ -19,7 +20,7 @@ use gpui_kit::component::{ActiveTheme as _, Sizable as _, avatar::Avatar, h_flex
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
-use super::{HOME_CONTEXT, HomeScreen, MarkConversationRead, View};
+use super::{FocusSearch, HOME_CONTEXT, HomeScreen, MarkConversationRead, View};
 use crate::ui::depth;
 use crate::ui::smooth_scroll::SmoothScroll;
 
@@ -50,6 +51,7 @@ impl Render for HomeScreen {
         self.sync_at_bottom(cx);
 
         self.sync_member_list();
+        self.sync_search_scope(window, cx);
 
         // Modifier changes don't repaint on their own, so nudge the screen when shift toggles
         // (it lays the message toolbar's hidden actions out inline).
@@ -96,6 +98,9 @@ impl Render for HomeScreen {
             }))
             .on_action(cx.listener(Self::on_copy_selection))
             .on_action(cx.listener(Self::toggle_quick_switcher))
+            .on_action(
+                cx.listener(|this, _: &FocusSearch, window, cx| this.focus_search(window, cx)),
+            )
             // On the root, since the pointer can be anywhere when the drag ends.
             .on_drop(cx.listener(Self::on_sidebar_resized))
             // After the bindings, so only keystrokes no shortcut took.

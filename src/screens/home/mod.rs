@@ -16,6 +16,7 @@ mod media;
 mod member_list_cache;
 mod popups;
 mod quick_switcher;
+mod search;
 mod selection;
 mod state;
 mod unread;
@@ -36,6 +37,8 @@ pub const HOME_CONTEXT: &str = "HomeScreen";
 pub const EDIT_CONTEXT: &str = "MessageEdit";
 
 pub const COMPOSER_CONTEXT: &str = "MessageComposer";
+
+pub const SEARCH_CONTEXT: &str = "MessageSearch";
 
 use composer::{Autocomplete, EditingMessage, ReplyTarget};
 use popups::{EmojiPicker, EmojiTarget, ImageViewer, PinsPopup, ProfilePopup};
@@ -61,6 +64,14 @@ actions!(
         /// Copies the message-list selection, handing on to the input's copy when empty.
         CopySelection,
         /// Ctrl+K, as in Discord; pressed again it closes.
-        ToggleQuickSwitcher
+        ToggleQuickSwitcher,
+        /// Enter in the search box: takes the highlighted suggestion, or searches.
+        SearchSubmit,
+        SearchPrevious,
+        SearchNext,
+        /// Tab in the search box, taking the highlighted or first suggestion.
+        SearchAccept,
+        /// Ctrl+F, as in Discord.
+        FocusSearch
     ]
 );

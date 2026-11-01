@@ -16,8 +16,9 @@ use gpui_kit::*;
 use crate::screens::app::AppScreen;
 use crate::screens::home::{
     AutocompleteAccept, AutocompleteNext, AutocompletePrevious, COMPOSER_CONTEXT, CopySelection,
-    EDIT_CONTEXT, EditLastMessage, HOME_CONTEXT, MarkConversationRead, PasteAttachment, SaveEdit,
-    SendMessage, ToggleQuickSwitcher,
+    EDIT_CONTEXT, EditLastMessage, FocusSearch, HOME_CONTEXT, MarkConversationRead,
+    PasteAttachment, SEARCH_CONTEXT, SaveEdit, SearchAccept, SearchNext, SearchPrevious,
+    SearchSubmit, SendMessage, ToggleQuickSwitcher,
 };
 
 fn main() {
@@ -56,7 +57,14 @@ fn main() {
         // Shift-enter falls through to the input's newline.
         let edit_input = format!("{EDIT_CONTEXT} > Input");
         let composer_input = format!("{COMPOSER_CONTEXT} > Input");
+        let search_input = format!("{SEARCH_CONTEXT} > Input");
         cx.bind_keys([
+            KeyBinding::new("enter", SearchSubmit, Some(&search_input)),
+            KeyBinding::new("up", SearchPrevious, Some(&search_input)),
+            KeyBinding::new("down", SearchNext, Some(&search_input)),
+            KeyBinding::new("tab", SearchAccept, Some(&search_input)),
+            KeyBinding::new("ctrl-f", FocusSearch, Some(HOME_CONTEXT)),
+            KeyBinding::new("cmd-f", FocusSearch, Some(HOME_CONTEXT)),
             KeyBinding::new("enter", SendMessage, Some(&composer_input)),
             KeyBinding::new("enter", SaveEdit, Some(&edit_input)),
             KeyBinding::new(

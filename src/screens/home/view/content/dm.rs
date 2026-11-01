@@ -1,6 +1,6 @@
 //! The direct-message conversation: its header, messages, and composer.
 
-use gpui_kit::component::{ActiveTheme as _, Disableable as _, Icon, Sizable as _, v_flex};
+use gpui_kit::component::{ActiveTheme as _, Disableable as _, Icon, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
@@ -32,8 +32,21 @@ impl HomeScreen {
             .min_w_0()
             .child(self.render_dm_header(&dm, cx))
             .children(self.render_dm_stage(cx))
-            .child(self.render_messages(cx))
-            .child(self.render_message_bar(true, cx))
+            .child(
+                h_flex()
+                    .flex_1()
+                    .min_h_0()
+                    .w_full()
+                    .child(
+                        v_flex()
+                            .flex_1()
+                            .h_full()
+                            .min_w_0()
+                            .child(self.render_messages(cx))
+                            .child(self.render_message_bar(true, cx)),
+                    )
+                    .children(self.render_search_panel(cx)),
+            )
             .into_any_element()
     }
 

@@ -12,6 +12,8 @@ mod reply;
 mod system;
 mod toolbar;
 
+pub(super) use pins::{CARD_LIST_WIDTH, LIST_GAP};
+
 use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;

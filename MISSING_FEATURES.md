@@ -22,8 +22,7 @@
 | Drag and drop of files onto the chat | Missing | Picker and paste only |
 | Attachment alt text and descriptions | Missing | |
 | Pinning and unpinning messages, and the pinned-messages panel | Partial | The header's pin button opens the pinned-messages popout; pinning, unpinning, and jumping to a pin aren't done yet |
-| Message search (with filters: from, in, has, before, after) | Missing | The header has a search box, but typing in it does nothing yet |
-| Jump to a message (from a reply, a link, or search) | Partial | Reply quotes, the composer's "Replying to" strip, and discord.com message links jump there; search and a forward's source don't yet |
+| Jump to a message (from a reply, a link, or search) | Partial | Reply quotes, the composer's "Replying to" strip, discord.com message links and search results jump there; a forward's source doesn't yet, and a search hit in a thread opens in the browser |
 | "Jump to present" and the new-messages bar | Missing | |
 | Copy message ID and other developer-mode context-menu items | Missing | "Copy Text" and "Copy Message Link" are there |
 | Saving and copying images | Missing | The image viewer can only open the image in the browser |

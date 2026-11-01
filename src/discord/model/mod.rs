@@ -15,6 +15,7 @@ mod markdown;
 mod member_list;
 mod message;
 mod read_state;
+mod search;
 mod settings;
 mod system;
 mod time;
@@ -41,6 +42,10 @@ pub use message::{
 pub use read_state::{
     ChannelLatest, GuildUnreads, MuteSettings, ReadState, UnreadChannel, UnreadSetting,
 };
+pub use search::{
+    AuthorType, SEARCH_MAX_OFFSET, SEARCH_PAGE_SIZE, SearchFilters, SearchHas, SearchHit,
+    SearchResponse, SearchScope, SearchSort,
+};
 pub use settings::{GuildFolders, PresenceStatus, UserSettings};
 pub use system::{SystemEvent, WELCOMES, call_duration};
 pub use upload::{DEFAULT_UPLOAD_LIMIT, MAX_UPLOAD_TOTAL, Upload, UploadProgress};
@@ -57,6 +62,7 @@ pub(super) use read_state::{
     RawChannelUnread, RawGuildChannel, RawGuildSettings, RawReadState, convert_channel_unreads,
     convert_guild_channels, convert_mute_settings, convert_read_states, versioned_list,
 };
+pub(super) use search::{RawSearch, convert_search};
 pub(super) use settings::{RawSettingsProto, encode_status_settings, parse_user_settings};
 pub(super) use upload::boost_upload_limit;
 pub(super) use user::{RawProfile, convert_current_user, convert_reactor, convert_user_profile};

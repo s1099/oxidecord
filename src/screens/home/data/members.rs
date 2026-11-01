@@ -72,7 +72,7 @@ impl HomeScreen {
     /// not yet named.
     /// Fetched history carries none and a user session is sent only a few up front,
     /// so without this most names would lack colours and show global names instead of
-    /// nicknames. Called as each page of history lands.
+    /// nicknames. Called as each page of history or search results lands.
     pub(in crate::screens::home) fn request_author_members(&mut self) {
         let Some(guild_id) = self.selected_guild.filter(|_| self.view == View::Guild) else {
             return;
@@ -84,7 +84,11 @@ impl HomeScreen {
         // member list, so it's the name that says whether to ask.
         let known = self.guild_data.members.get(&guild_id);
         let mut wanted = Vec::new();
-        let authors = self.messages.iter().flat_map(|message| {
+        let hits = self
+            .search
+            .iter()
+            .flat_map(|panel| panel.hits.iter().map(|hit| &hit.message));
+        let authors = self.messages.iter().chain(hits).flat_map(|message| {
             iter::once(message.author_id)
                 .chain(match &message.reply {
                     Some(discord::Reply::Quote(quote)) => Some(quote.author_id),

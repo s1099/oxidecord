@@ -14,14 +14,14 @@ use super::super::markdown::MarkdownOptions;
 use super::{MEDIA_MAX_WIDTH, Media};
 
 const LIST_HEIGHT: f32 = 480.;
-const LIST_GAP: f32 = 8.;
+pub(in crate::screens::home::view) const LIST_GAP: f32 = 8.;
 const AVATAR_SIZE: f32 = 32.;
 const PIN_PADDING: f32 = 12.;
 const CONTENT_INSET: f32 = PIN_PADDING + AVATAR_SIZE + 12.;
-/// Media is fixed-size up to [`MEDIA_MAX_WIDTH`] and doesn't shrink to its column, so the
-/// popout is as wide as it takes to hold it: borders, list padding, and the pin's padding
-/// and avatar gutter.
-const WIDTH: f32 =
+/// Media is fixed-size up to [`MEDIA_MAX_WIDTH`] and doesn't shrink to its column, so a
+/// list of cards is as wide as it takes to hold it: borders, list padding, and the card's
+/// padding and avatar gutter.
+pub(in crate::screens::home::view) const CARD_LIST_WIDTH: f32 =
     MEDIA_MAX_WIDTH + 2. * 1. + 2. * LIST_GAP + 2. * 1. + CONTENT_INSET + PIN_PADDING;
 
 impl HomeScreen {
@@ -79,7 +79,7 @@ impl HomeScreen {
 
         let card = v_flex()
             .occlude()
-            .w(px(WIDTH))
+            .w(px(CARD_LIST_WIDTH))
             .bg(theme.popover)
             .text_color(theme.popover_foreground)
             .border_1()
@@ -146,11 +146,19 @@ impl HomeScreen {
             .px(px(LIST_GAP))
             .pt(px(LIST_GAP))
             .when(ix + 1 == popup.messages.len(), |this| this.pb(px(LIST_GAP)))
-            .child(self.render_pin(message, cx))
+            .child(self.render_message_card(message, "pin", cx))
             .into_any_element()
     }
 
-    fn render_pin(&self, message: &discord::Message, cx: &Context<Self>) -> impl IntoElement {
+    /// A message on its own, outside the conversation: pins and search results.
+    /// `scope` keeps its spoilers apart from the list's, so one revealed here
+    /// stays hidden there.
+    pub(in crate::screens::home::view) fn render_message_card(
+        &self,
+        message: &discord::Message,
+        scope: &str,
+        cx: &Context<Self>,
+    ) -> Stateful<Div> {
         let theme = cx.theme();
         let media = Media::of(message);
         let author_name = self
@@ -158,6 +166,7 @@ impl HomeScreen {
             .to_owned();
 
         div()
+            .id(SharedString::from(format!("{scope}-card-{}", message.id)))
             .relative()
             .w_full()
             .p(px(PIN_PADDING))
@@ -207,10 +216,8 @@ impl HomeScreen {
                             div().w_full().min_w_0().text_sm().child(
                                 self.render_markdown(
                                     &message.markdown,
-                                    // Apart from the list's, so a spoiler
-                                    // revealed here stays hidden there.
                                     MarkdownOptions::new(
-                                        format!("pin-{}", message.id),
+                                        format!("{scope}-{}", message.id),
                                         &message.mentions,
                                     )
                                     .edited(message.edited_label()),
