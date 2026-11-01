@@ -32,6 +32,7 @@ const THUMBNAIL_BOX: f32 = 80.;
 const ROW_GAP: f32 = 8.;
 /// Twice the usual gap, so the large image reads as its own block.
 const IMAGE_GAP: f32 = 16.;
+const GALLERY_GAP: f32 = 4.;
 /// gpui's default golden-ratio line height is far looser than Discord's embed text, so
 /// every row sets its own.
 const LINE_HEIGHT_TITLE: f32 = 19.;
@@ -184,6 +185,9 @@ impl HomeScreen {
                             .mt(px(extra))
                             .child(self.render_embed_video(id, video, cx)),
                     ),
+                    (None, Some(_)) if !embed.gallery.is_empty() => {
+                        this.child(self.render_embed_gallery(id, embed, extra, cx))
+                    }
                     (None, Some(image)) => {
                         this.child(self.render_embed_image(id, embed, image, extra, cx))
                     }
@@ -240,6 +244,15 @@ impl HomeScreen {
         let Some(image) = embed.image.as_ref() else {
             return div().into_any_element();
         };
+        if !embed.gallery.is_empty() {
+            return div()
+                .id(id.element_id("embed"))
+                .group(id.group())
+                .relative()
+                .child(self.render_embed_gallery(id, embed, 0., cx))
+                .children(self.render_embed_debug_copy(id, embed, cx))
+                .into_any_element();
+        }
 
         // Sized to the media so the debug copy button anchors to the image's own corner.
         let size = media_size(embed, image);
@@ -378,6 +391,64 @@ impl HomeScreen {
                         ),
                 )
             })
+    }
+
+    /// Discord's mosaic: two side by side, three as one tall beside two short, four in a
+    /// square. Every tile is cropped to fill its cell, so the grid's shape never depends on
+    /// the images'.
+    fn render_embed_gallery(
+        &self,
+        id: MediaKey,
+        embed: &discord::Embed,
+        top_gap: f32,
+        cx: &Context<Self>,
+    ) -> AnyElement {
+        let images: Vec<&discord::EmbedMedia> = embed.image.iter().chain(&embed.gallery).collect();
+        let cell_width = (MEDIA_MAX_WIDTH - GALLERY_GAP) / 2.;
+        let short = (MEDIA_MAX_HEIGHT - GALLERY_GAP) / 2.;
+        let tile = |index: usize, height: f32| {
+            let image = images[index];
+            let viewed = ViewerImage::from(image);
+            div()
+                .id(id.element_id(&format!("embed-gallery-{index}")))
+                .w(px(cell_width))
+                .h(px(height))
+                .cursor_pointer()
+                .hover(|this| this.opacity(0.9))
+                .on_click(cx.listener(move |this, _, window, cx| {
+                    this.open_image_viewer(viewed.clone(), window, cx);
+                }))
+                .child(
+                    img(image.url.clone())
+                        .image_cache(&self.image_cache)
+                        .id(id.element_id(&format!("embed-gallery-media-{index}")))
+                        .size_full()
+                        .rounded(px(4.))
+                        .object_fit(ObjectFit::Cover),
+                )
+        };
+        let column = |tiles: Vec<Stateful<Div>>| v_flex().gap(px(GALLERY_GAP)).children(tiles);
+        let (left, right) = match images.len() {
+            2 => (
+                vec![tile(0, MEDIA_MAX_HEIGHT)],
+                vec![tile(1, MEDIA_MAX_HEIGHT)],
+            ),
+            3 => (
+                vec![tile(0, MEDIA_MAX_HEIGHT)],
+                vec![tile(1, short), tile(2, short)],
+            ),
+            _ => (
+                vec![tile(0, short), tile(2, short)],
+                vec![tile(1, short), tile(3, short)],
+            ),
+        };
+        h_flex()
+            .self_start()
+            .mt(px(top_gap))
+            .gap(px(GALLERY_GAP))
+            .child(column(left))
+            .child(column(right))
+            .into_any_element()
     }
 
     /// Discord lays fields over twelve columns: inline runs pack up to three per row, other

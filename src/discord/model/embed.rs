@@ -26,6 +26,9 @@ pub struct Embed {
     pub description: Option<Markdown>,
     pub fields: Vec<EmbedField>,
     pub image: Option<EmbedMedia>,
+    /// Images after [`Self::image`] that arrived as embeds of their own sharing this one's
+    /// url, which is how Discord sends a multi-image post; drawn as one grid with it.
+    pub gallery: Vec<EmbedMedia>,
     pub thumbnail: Option<EmbedMedia>,
     /// The UI overlays a play badge and opens [`Self::url`] on click.
     pub has_video: bool,
@@ -115,7 +118,37 @@ impl Embed {
     }
 }
 
-pub(in crate::discord) fn convert_embed(embed: twilight_model::channel::message::Embed) -> Embed {
+/// Discord's client caps a gallery at four, the most its grid lays out.
+const GALLERY_MAX: usize = 4;
+
+/// Converts a message's embeds, folding each image-only embed into the earlier one with the
+/// same url, as Discord's client does.
+pub(in crate::discord) fn convert_embeds(
+    embeds: Vec<twilight_model::channel::message::Embed>,
+) -> Vec<Embed> {
+    let mut out: Vec<Embed> = Vec::with_capacity(embeds.len());
+    for embed in embeds.into_iter().map(convert_embed) {
+        let host = embed
+            .url
+            .as_ref()
+            .filter(|_| embed.image.is_some() && embed.video.is_none() && !embed.has_text())
+            .and_then(|url| {
+                out.iter_mut().find(|host| {
+                    host.url.as_ref() == Some(url)
+                        && host.image.is_some()
+                        && host.video.is_none()
+                        && host.gallery.len() + 1 < GALLERY_MAX
+                })
+            });
+        match (host, embed.image) {
+            (Some(host), Some(image)) => host.gallery.push(image),
+            (_, image) => out.push(Embed { image, ..embed }),
+        }
+    }
+    out
+}
+
+fn convert_embed(embed: twilight_model::channel::message::Embed) -> Embed {
     // Serialised before anything is moved out.
     #[cfg(debug_assertions)]
     let raw = serde_json::to_string_pretty(&embed).unwrap_or_else(|err| format!("<{err}>"));
@@ -239,6 +272,7 @@ pub(in crate::discord) fn convert_embed(embed: twilight_model::channel::message:
             })
             .collect(),
         image,
+        gallery: Vec::new(),
         thumbnail,
         has_video,
         video,

@@ -11,7 +11,7 @@ use twilight_model::id::{
 };
 
 use super::cdn;
-use super::embed::{Embed, EmbedLayout, convert_embed};
+use super::embed::{Embed, EmbedLayout, convert_embeds};
 use super::guild::GuildMember;
 use super::markdown::{self, Inline, Markdown};
 use super::system::{SystemEvent, convert_system};
@@ -411,7 +411,7 @@ pub(in crate::discord) fn convert_message(message: twilight_model::channel::Mess
         images,
         videos,
         files,
-        embeds: message.embeds.into_iter().map(convert_embed).collect(),
+        embeds: convert_embeds(message.embeds),
         reply: match message.referenced_message {
             _ if is_forward => None,
             Some(referenced) => Some(Reply::Quote(convert_reference(*referenced))),
@@ -517,7 +517,7 @@ fn convert_snapshot(snapshot: MessageSnapshot) -> ForwardedMessage {
         images,
         videos,
         files,
-        embeds: message.embeds.into_iter().map(convert_embed).collect(),
+        embeds: convert_embeds(message.embeds),
         guild_id: snapshot.guild_id,
     }
 }
