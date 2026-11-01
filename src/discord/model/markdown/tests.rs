@@ -321,3 +321,9 @@ fn timestamps() {
     assert_eq!(relative.display(1_000 + 7_200), "2 hours ago");
     assert_eq!(relative.display(1_000 - 60), "in 1 minute");
 }
+
+#[test]
+fn stray_variation_selectors() {
+    assert_eq!(inline("\u{FE00}\n\u{FE00}\u{FE00}Today"), [text("\nToday")]);
+    assert_eq!(inline("\u{2764}\u{FE0F} 20"), [text("\u{2764}\u{FE0F} 20")]);
+}

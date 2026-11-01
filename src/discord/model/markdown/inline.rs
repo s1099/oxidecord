@@ -72,11 +72,24 @@ impl Parser<'_> {
             match consumed {
                 Some(len) => pos += len,
                 None => {
-                    self.text.push(c);
+                    if !self.is_stray_selector(c) {
+                        self.text.push(c);
+                    }
                     pos += c.len_utf8();
                 }
             }
         }
+    }
+
+    /// A variation selector with no base to modify. Discord's font hides it, but
+    /// ours draws tofu, and FxTwitter pads blank quote lines with U+FE00.
+    fn is_stray_selector(&self, c: char) -> bool {
+        is_variation_selector(c)
+            && self
+                .text
+                .chars()
+                .next_back()
+                .is_none_or(|prev| prev.is_whitespace() || is_variation_selector(prev))
     }
 
     fn finish(mut self) -> Vec<Inline> {
@@ -459,6 +472,10 @@ fn italic_underscore(rest: &str) -> Option<(usize, usize)> {
         consumed = true;
     }
     None
+}
+
+fn is_variation_selector(c: char) -> bool {
+    matches!(c, '\u{FE00}'..='\u{FE0F}' | '\u{E0100}'..='\u{E01EF}')
 }
 
 fn is_word_char(c: char) -> bool {
