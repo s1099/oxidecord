@@ -313,7 +313,7 @@ impl HomeScreen {
 
         let prefs = prefs::load();
         let mut this = Self {
-            view: View::Guild,
+            view: View::DirectMessages,
             guilds: Vec::new(),
             rail_entries: Vec::new(),
             guild_folders: None,
@@ -419,7 +419,7 @@ impl HomeScreen {
             sidebar_scroll: SmoothScroll::div(),
             dm_scroll: SmoothScroll::div(),
         };
-        this.load_guilds(window, cx);
+        this.load_guilds(cx);
         this.load_user_settings(cx);
         this.load_frecency(cx);
         this.load_current_user(cx);

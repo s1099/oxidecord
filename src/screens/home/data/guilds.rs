@@ -24,23 +24,15 @@ impl HomeScreen {
         cx.emit(SessionEnded);
     }
 
-    pub(in crate::screens::home) fn load_guilds(
-        &mut self,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        cx.spawn_in(window, async move |this, cx| {
+    pub(in crate::screens::home) fn load_guilds(&mut self, cx: &mut Context<Self>) {
+        cx.spawn(async move |this, cx| {
             let result = discord::fetch_guilds().await;
-            let _ = this.update_in(cx, |this, window, cx| {
+            let _ = this.update(cx, |this, cx| {
                 match result {
                     Ok(guilds) => {
-                        let first = guilds.first().map(|guild| guild.id);
                         this.guilds = guilds;
                         this.error = None;
                         this.rebuild_rail();
-                        if let Some(guild_id) = first {
-                            this.select_guild(guild_id, window, cx);
-                        }
                     }
                     // A rejected token is forgotten by the request itself.
                     Err(_) if discord::load_token().is_none() => {
