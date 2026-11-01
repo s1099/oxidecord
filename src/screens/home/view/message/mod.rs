@@ -460,17 +460,17 @@ fn render_continuation(
         .text_sm()
         .when_some(time, |this, time| {
             // Aligned to the content's first line box (`text_sm` at gpui's default phi line
-            // height),
-            // not the whole message: text centres in its line box, so the smaller time's baseline
-            // would
-            // sit above the content's; the nudge down closes that gap.
+            // height), not the whole message: text centres in its line box, so the smaller time's
+            // baseline would sit above the content's; the nudge down closes that gap.
+            // Right-aligned to the avatar's edge as Discord does, spilling left into the padding,
+            // so the full avatar-to-content gap stays clear.
             this.child(
                 div()
                     .absolute()
                     .top(px(MESSAGE_PADDING_Y + GUTTER_TIME_NUDGE))
-                    .left(px(MESSAGE_PADDING_X))
-                    .w(px(CONTENT_INDENT))
-                    .text_center()
+                    .left_0()
+                    .w(px(MESSAGE_PADDING_X + AVATAR_SIZE))
+                    .text_right()
                     .text_size(rems(0.6875))
                     .line_height(rems(0.875 * 1.618_034))
                     .text_color(cx.theme().muted_foreground)
