@@ -11,6 +11,7 @@ use crate::ui::button::Button;
 use crate::ui::depth::radius;
 
 use super::CAMERA_UNAVAILABLE;
+use crate::screens::home::view::INSET;
 
 impl HomeScreen {
     /// The card under the rail and sidebar: the call strip when in a call, the account row always.
@@ -21,16 +22,22 @@ impl HomeScreen {
         cx: &Context<Self>,
     ) -> impl IntoElement {
         let theme = cx.theme();
-        div().flex_shrink_0().w_full().px_2().pb_2().child(
-            v_flex()
-                .w_full()
-                .overflow_hidden()
-                .rounded(radius::CONTROL)
-                .bg(theme.secondary)
-                .text_color(theme.sidebar_foreground)
-                .children(self.render_voice_panel(cx))
-                .child(self.render_user_panel(cx)),
-        )
+        // Tuned by eye to sit level with the composer across the conversation pane's inset.
+        div()
+            .flex_shrink_0()
+            .w_full()
+            .px_2()
+            .pb(px(INSET + 2.))
+            .child(
+                v_flex()
+                    .w_full()
+                    .overflow_hidden()
+                    .rounded(radius::CONTROL)
+                    .bg(theme.secondary)
+                    .text_color(theme.sidebar_foreground)
+                    .children(self.render_voice_panel(cx))
+                    .child(self.render_user_panel(cx)),
+            )
     }
 
     fn render_voice_panel(&self, cx: &Context<Self>) -> Option<impl IntoElement> {
