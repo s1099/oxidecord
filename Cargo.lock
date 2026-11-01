@@ -6366,7 +6366,7 @@ dependencies = [
 
 [[package]]
 name = "oxidecord"
-version = "0.10.1"
+version = "0.11.0"
 dependencies = [
  "aes-gcm",
  "anyhow",
