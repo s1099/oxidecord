@@ -152,7 +152,14 @@ impl<'a> Renderer<'a> {
                     } => {
                         let position = window.mouse_position();
                         let _ = weak.update(cx, |this, cx| {
-                            this.open_profile(*id, name.clone(), avatar_url.clone(), position, cx)
+                            this.open_profile(
+                                *id,
+                                name.clone(),
+                                avatar_url.clone(),
+                                false,
+                                position,
+                                cx,
+                            )
                         });
                     }
                     Action::Channel(id) => {

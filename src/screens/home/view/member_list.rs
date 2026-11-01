@@ -211,6 +211,7 @@ impl HomeScreen {
                         user_id,
                         name.clone(),
                         avatar_url.clone(),
+                        false,
                         point(x, event.position.y),
                         cx,
                     );

@@ -58,19 +58,22 @@ impl HomeScreen {
         let avatar = div()
             .relative()
             .child(avatar(popup.name.clone(), avatar_url, px(AVATAR_SIZE)))
-            .child(
-                div()
-                    .absolute()
-                    .right(px(status_inset))
-                    .bottom(px(status_inset))
-                    .child(status_indicator(
-                        self.user_status(popup.user_id),
-                        px(STATUS_SIZE),
-                        theme.popover,
-                        None,
-                        theme,
-                    )),
-            );
+            // Webhooks have no presence.
+            .when(!popup.webhook, |this| {
+                this.child(
+                    div()
+                        .absolute()
+                        .right(px(status_inset))
+                        .bottom(px(status_inset))
+                        .child(status_indicator(
+                            self.user_status(popup.user_id),
+                            px(STATUS_SIZE),
+                            theme.popover,
+                            None,
+                            theme,
+                        )),
+                )
+            });
 
         // gpui clips to rectangles, so the banner rounds its own corners.
         let banner_radius = radius::CARD - px(1.);
@@ -117,14 +120,16 @@ impl HomeScreen {
                     .pt(px(AVATAR_SIZE / 2. + AVATAR_RING + 6.))
                     .gap(px(10.))
                     .child(render_identity(popup, cx))
-                    .child(match (profile, &popup.error) {
-                        (Some(profile), _) => render_details(profile, cx),
-                        (None, Some(error)) => div()
-                            .text_sm()
-                            .text_color(theme.danger)
-                            .child(error.clone())
-                            .into_any_element(),
-                        (None, None) => render_skeleton().into_any_element(),
+                    .when(!popup.webhook, |this| {
+                        this.child(match (profile, &popup.error) {
+                            (Some(profile), _) => render_details(profile, cx),
+                            (None, Some(error)) => div()
+                                .text_sm()
+                                .text_color(theme.danger)
+                                .child(error.clone())
+                                .into_any_element(),
+                            (None, None) => render_skeleton().into_any_element(),
+                        })
                     }),
             )
     }
@@ -152,9 +157,10 @@ fn render_identity(popup: &ProfilePopup, cx: &App) -> impl IntoElement {
                                 .unwrap_or_else(|| popup.name.clone()),
                         ),
                 )
-                .when(profile.is_some_and(|profile| profile.bot), |this| {
-                    this.child(bot_tag(cx))
-                }),
+                .when(
+                    popup.webhook || profile.is_some_and(|profile| profile.bot),
+                    |this| this.child(bot_tag(cx)),
+                ),
         )
         .child(
             h_flex()

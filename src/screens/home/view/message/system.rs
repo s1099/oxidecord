@@ -110,7 +110,14 @@ impl HomeScreen {
                         let name = this
                             .author_name(user_id, mention.map_or("", |user| user.name.as_str()))
                             .to_owned();
-                        this.open_profile(user_id, name, avatar, window.mouse_position(), cx);
+                        this.open_profile(
+                            user_id,
+                            name,
+                            avatar,
+                            false,
+                            window.mouse_position(),
+                            cx,
+                        );
                     }
                 });
             },

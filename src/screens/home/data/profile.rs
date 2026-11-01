@@ -17,6 +17,7 @@ impl HomeScreen {
         user_id: Id<UserMarker>,
         name: String,
         avatar_url: Option<String>,
+        webhook: bool,
         position: Point<Pixels>,
         cx: &mut Context<Self>,
     ) {
@@ -26,12 +27,13 @@ impl HomeScreen {
             position,
             name,
             avatar_url,
+            webhook,
             profile: cached.clone(),
             error: None,
         });
         cx.notify();
 
-        if cached.is_none() {
+        if cached.is_none() && !webhook {
             self.load_profile(user_id, cx);
         }
     }

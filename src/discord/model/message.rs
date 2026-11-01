@@ -28,6 +28,9 @@ pub struct Message {
     pub author_name: String,
     pub author_avatar_url: Option<String>,
     pub author_bot: bool,
+    /// A plain webhook's author is a stand-in with no profile to fetch. App
+    /// responses also carry a webhook id, but their author is the real bot.
+    pub author_webhook: bool,
     pub content: String,
     /// `content`, parsed. Shared since messages are cloned more often than edited.
     pub markdown: Arc<Markdown>,
@@ -87,6 +90,7 @@ impl Message {
             author_name: author.name.clone(),
             author_avatar_url: author.avatar_url.clone(),
             author_bot: false,
+            author_webhook: false,
             markdown: Arc::new(Markdown::parse(&content)),
             content,
             mentions: Vec::new(),
@@ -401,6 +405,7 @@ pub(in crate::discord) fn convert_message(message: twilight_model::channel::Mess
         author_name,
         author_avatar_url,
         author_bot: message.author.bot,
+        author_webhook: message.webhook_id.is_some() && message.application_id.is_none(),
         markdown: Arc::new(Markdown::parse(&message.content)),
         mentions: convert_mentions(message.mentions),
         mention_everyone: message.mention_everyone,

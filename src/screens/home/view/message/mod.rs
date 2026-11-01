@@ -368,6 +368,7 @@ impl HomeScreen {
         let author_id = message.author_id;
         let profile_name = author_name.clone();
         let author_avatar_url = message.author_avatar_url.clone();
+        let author_webhook = message.author_webhook;
         let avatar = div()
             .id(("message-avatar", message.id.get()))
             .flex_shrink_0()
@@ -382,6 +383,7 @@ impl HomeScreen {
                         author_id,
                         profile_name.clone(),
                         author_avatar_url.clone(),
+                        author_webhook,
                         event.position,
                         cx,
                     );

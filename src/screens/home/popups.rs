@@ -22,6 +22,8 @@ pub(super) struct ProfilePopup {
     pub position: Point<Pixels>,
     pub name: String,
     pub avatar_url: Option<String>,
+    /// Discord refuses profile requests for webhook authors, so none is made.
+    pub webhook: bool,
     /// `None` until the fetch resolves; the card shows a skeleton.
     pub profile: Option<discord::UserProfile>,
     pub error: Option<String>,
