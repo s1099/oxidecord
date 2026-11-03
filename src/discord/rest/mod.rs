@@ -17,7 +17,7 @@ use twilight_http::{Client as HttpClient, error::ErrorType};
 use crate::discord::token;
 use crate::platform::runtime;
 
-pub use auth::log_out;
+pub use auth::{log_out, remove_account};
 pub use channel::{fetch_dms, ring_call, stop_ringing};
 pub use guild::{fetch_channels, fetch_guilds};
 pub use message::{

@@ -6,17 +6,22 @@
 use std::rc::Rc;
 
 use gpui_kit::component::{
-    ActiveTheme as _, Disableable as _, Icon, Sizable as _, ThemeConfig, WindowExt as _,
+    ActiveTheme as _, Disableable as _, Icon, IconName, Sizable as _, ThemeConfig, WindowExt as _,
     group_box::GroupBoxVariant,
     h_flex,
     input::{InputEvent, InputState},
+    menu::{DropdownMenu as _, PopupMenu, PopupMenuItem},
     setting::{RenderOptions, SettingField, SettingGroup, SettingItem, SettingPage, Settings},
     text::TextView,
+    v_flex,
 };
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
+use twilight_model::id::{Id, marker::UserMarker};
 
+use crate::discord;
 use crate::platform::updater::{self, Status};
+use crate::ui::accounts::{AccountCard, account_avatar, account_label};
 use crate::ui::button::Button;
 use crate::ui::{depth, gallery, theme};
 
@@ -34,18 +39,21 @@ const DIALOG_BORDER: f32 = 2.;
 const CARD_WIDTH: f32 = 148.;
 const PREVIEW_HEIGHT: f32 = 84.;
 
-type LogOutHandler = dyn Fn(&mut Window, &mut App);
+type Handler = Box<dyn Fn(&mut Window, &mut App)>;
+type SwitchHandler = Box<dyn Fn(Id<UserMarker>, &mut Window, &mut App)>;
+
+/// What the popup asks of the open session. Each runs after the popup closes.
+pub struct SessionHandlers {
+    pub log_out: Handler,
+    pub switch_account: SwitchHandler,
+    pub add_account: Handler,
+}
 
 const DEBUG_CODE: &str = "debug";
 
-/// Opens the settings popup. `on_log_out` runs after it closes, when logout is clicked.
-pub fn open(
-    window: &mut Window,
-    cx: &mut App,
-    on_log_out: impl Fn(&mut Window, &mut App) + 'static,
-) {
+pub fn open(window: &mut Window, cx: &mut App, session: SessionHandlers) {
     arm_debug_code(cx);
-    let on_log_out: Rc<LogOutHandler> = Rc::new(on_log_out);
+    let session = Rc::new(session);
 
     window.open_dialog(cx, move |dialog, window, cx| {
         let debug = cx
@@ -85,15 +93,16 @@ pub fn open(
                             .page(updates_page(cx))
                             .when(debug, |this| this.page(gallery::page())),
                     )
-                    .child(log_out_footer(on_log_out.clone(), cx)),
+                    .child(session_footer(session.clone(), cx)),
             )
     });
 }
 
-/// The logout button. [`Settings`] doesn't expose the sidebar's footer slot, so
-/// this is laid over the sidebar's bottom edge at its opening width.
-fn log_out_footer(on_log_out: Rc<LogOutHandler>, cx: &App) -> Div {
-    div()
+/// The account switcher and logout button. [`Settings`] doesn't expose the sidebar's footer
+/// slot, so this is laid over the sidebar's bottom edge at its opening width.
+fn session_footer(session: Rc<SessionHandlers>, cx: &App) -> Div {
+    v_flex()
+        .gap_2()
         .absolute()
         .bottom_0()
         .left_0()
@@ -103,6 +112,7 @@ fn log_out_footer(on_log_out: Rc<LogOutHandler>, cx: &App) -> Div {
         .bg(cx.theme().sidebar)
         .border_t_1()
         .border_color(cx.theme().sidebar_border)
+        .child(account_switcher(session.clone()))
         .child(
             Button::new("log-out")
                 .w_full()
@@ -112,7 +122,7 @@ fn log_out_footer(on_log_out: Rc<LogOutHandler>, cx: &App) -> Div {
                 .label("Log Out")
                 .on_click(move |_, window, cx| {
                     window.close_dialog(cx);
-                    on_log_out(window, cx);
+                    (session.log_out)(window, cx);
                 }),
         )
 }
@@ -166,6 +176,110 @@ fn arm_debug_code(cx: &mut App) {
 
     let code = cx.global_mut::<DebugCode>();
     code.armed = !code.unlocked;
+}
+
+/// The active account as a card that drops down the rest. Read fresh each render, so a
+/// removal shows at once.
+fn account_switcher(session: Rc<SessionHandlers>) -> AnyElement {
+    let accounts = discord::accounts();
+    let active = discord::active_account();
+    let Some(current) = accounts
+        .iter()
+        .find(|account| Some(account.id) == active)
+        .cloned()
+    else {
+        return add_account_button(session).into_any_element();
+    };
+
+    let card = AccountCard::new("account-switcher", current)
+        .w_full()
+        // Opens upward: the card sits at the bottom of the popup.
+        .dropdown_menu_with_anchor(Anchor::BottomLeft, move |menu, window, cx| {
+            account_menu(menu, session.clone(), window, cx)
+        });
+
+    // The dropdown wraps the card in a container that only hugs it, so it's stretched here.
+    div().w_full().child(card).into_any_element()
+}
+
+fn account_menu(
+    menu: PopupMenu,
+    session: Rc<SessionHandlers>,
+    window: &mut Window,
+    cx: &mut Context<PopupMenu>,
+) -> PopupMenu {
+    let accounts = discord::accounts();
+    let active = discord::active_account();
+
+    let mut menu = menu.min_w(px(260.));
+    for account in &accounts {
+        let id = account.id;
+        let row = account.clone();
+        let session = session.clone();
+        menu = menu.item(
+            PopupMenuItem::element(move |_, cx| {
+                h_flex()
+                    .gap_2()
+                    .py_0p5()
+                    .child(account_avatar(&row, px(28.)))
+                    .child(account_label(&row, cx))
+            })
+            .checked(Some(id) == active)
+            .on_click(move |_, window, cx| {
+                if Some(id) != active {
+                    window.close_dialog(cx);
+                    (session.switch_account)(id, window, cx);
+                }
+            }),
+        );
+    }
+
+    let others: Vec<_> = accounts
+        .into_iter()
+        .filter(|account| Some(account.id) != active)
+        .collect();
+    menu = menu.separator().item(
+        PopupMenuItem::new("Add an account")
+            .icon(IconName::Plus)
+            .on_click(move |_, window, cx| {
+                window.close_dialog(cx);
+                (session.add_account)(window, cx);
+            }),
+    );
+    if !others.is_empty() {
+        menu = menu.submenu_with_icon(
+            Some(Icon::default().path("icons/log-out.svg")),
+            "Log out of…",
+            window,
+            cx,
+            move |mut menu, _, _| {
+                for account in &others {
+                    let id = account.id;
+                    menu = menu.item(PopupMenuItem::new(account.display_name()).on_click(
+                        move |_, window, _| {
+                            discord::remove_account(id);
+                            window.refresh();
+                        },
+                    ));
+                }
+                menu
+            },
+        );
+    }
+    menu
+}
+
+fn add_account_button(session: Rc<SessionHandlers>) -> Button {
+    Button::new("add-account")
+        .w_full()
+        .small()
+        .outline()
+        .icon(IconName::Plus)
+        .label("Add an account")
+        .on_click(move |_, window, cx| {
+            window.close_dialog(cx);
+            (session.add_account)(window, cx);
+        })
 }
 
 fn themes_page() -> SettingPage {

@@ -1,5 +1,5 @@
 //! Loading the signed-in user, their guilds, and a guild's channels, and
-//! logging them out.
+//! logging them out or handing over to another account.
 
 use gpui_kit::*;
 use twilight_model::id::{
@@ -17,11 +17,16 @@ impl HomeScreen {
     /// A call is left first so Discord doesn't keep showing the user in the channel
     /// until the dropped connection times out.
     pub(in crate::screens::home) fn log_out(&mut self, cx: &mut Context<Self>) {
+        self.end_session(cx);
+        discord::log_out();
+        cx.emit(SessionEnded);
+    }
+
+    /// Run before this screen is dropped for another account's.
+    pub fn end_session(&mut self, cx: &mut Context<Self>) {
         if self.voice.is_some() {
             self.leave_voice(cx);
         }
-        discord::log_out();
-        cx.emit(SessionEnded);
     }
 
     pub(in crate::screens::home) fn load_guilds(&mut self, cx: &mut Context<Self>) {
@@ -88,6 +93,7 @@ impl HomeScreen {
                 // Whichever of this and READY lands first fills in the id voice identifies itself
                 // with.
                 this.self_user_id.get_or_insert(user.id);
+                discord::remember_profile(&user);
                 this.current_user = Some(user);
                 cx.notify();
             });

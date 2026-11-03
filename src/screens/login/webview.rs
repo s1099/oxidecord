@@ -75,12 +75,16 @@ impl LoginWebview {
                     let async_cx_capture = cx.to_async();
                     let app_capture = app.clone();
 
+                    // Incognito so a session left from the last login doesn't sign the
+                    // same account straight back in when adding another.
                     let builder = WebViewBuilder::new()
+                        .with_incognito(true)
                         .with_url("https://discord.com/login")
                         .with_initialization_script(TOKEN_HOOK_SCRIPT)
                         .with_ipc_handler(move |msg| {
                             let token = msg.body().trim_matches('"');
-                            if let Err(err) = discord::save_token(token) {
+                            let saved = discord::save_token(token);
+                            if let Err(err) = &saved {
                                 eprintln!("failed to save token to the credential store: {err}");
                             }
 
@@ -89,10 +93,12 @@ impl LoginWebview {
                             let app_inner = app_capture.clone();
 
                             async_cx_inner.update(move |cx| {
-                                let _ = cx.update_window(main_window, |_, window, cx| {
-                                    let _ =
-                                        app_inner.update(cx, |app, cx| app.show_home(window, cx));
-                                });
+                                if saved.is_ok() {
+                                    let _ = cx.update_window(main_window, |_, window, cx| {
+                                        let _ = app_inner
+                                            .update(cx, |app, cx| app.show_home(window, cx));
+                                    });
+                                }
                                 let _ = cx.update_window(window_handle_inner, |_, window, _| {
                                     window.remove_window();
                                 });

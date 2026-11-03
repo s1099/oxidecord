@@ -1,8 +1,9 @@
-//! Ending the session.
+//! Ending a session.
 
 use twilight_http::Client as HttpClient;
 use twilight_http::request::{Method, RequestBuilder};
 use twilight_http::response::marker::EmptyBody;
+use twilight_model::id::{Id, marker::UserMarker};
 
 use crate::discord::token;
 use crate::platform::runtime;
@@ -12,10 +13,16 @@ use crate::platform::runtime;
 /// Fire-and-forget: being offline, or a token already expired, shouldn't keep the user
 /// signed in here.
 pub fn log_out() {
-    let Some(token) = token::load_token() else {
+    if let Some(id) = token::active_account() {
+        remove_account(id);
+    }
+}
+
+/// Logs one saved account out, the active one or not; see [`log_out`].
+pub fn remove_account(id: Id<UserMarker>) {
+    let Some(token) = token::remove_account(id) else {
         return;
     };
-    token::forget_token(&token);
 
     runtime::handle().spawn(async move {
         // A client of its own, since the shared one went with the token. Built

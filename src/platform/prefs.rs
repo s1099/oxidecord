@@ -97,6 +97,11 @@ fn write_file(prefs: &Prefs) {
 }
 
 fn file_path() -> Option<PathBuf> {
+    config_file(FILE_NAME)
+}
+
+/// `name` in the app's own config directory.
+pub fn config_file(name: &str) -> Option<PathBuf> {
     let dir = if cfg!(target_os = "windows") {
         PathBuf::from(std::env::var_os("APPDATA")?)
     } else if cfg!(target_os = "macos") {
@@ -109,5 +114,5 @@ fn file_path() -> Option<PathBuf> {
             })
     };
 
-    Some(dir.join(APP_DIR).join(FILE_NAME))
+    Some(dir.join(APP_DIR).join(name))
 }

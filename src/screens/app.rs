@@ -3,16 +3,17 @@
 use gpui_kit::*;
 
 use crate::discord;
-use crate::screens::home::{HomeScreen, SessionEnded};
-use crate::screens::login::LoginScreen;
+use crate::screens::home::{AddAccount, HomeScreen, SessionEnded, SwitchAccount};
+use crate::screens::login::{self, LoginScreen};
 use crate::ui::{dialogs, update_notice};
 
 enum Route {
     Login(Entity<LoginScreen>),
-    /// `_ended` sends the user back to login when the session ends.
+    /// `_events` send the user back to login when the session ends, and carry out account
+    /// switches.
     Home {
         screen: Entity<HomeScreen>,
-        _ended: Subscription,
+        _events: [Subscription; 3],
     },
 }
 
@@ -35,14 +36,18 @@ impl AppScreen {
         }
     }
 
+    /// Opens the active account, replacing any account already open.
     pub fn show_home(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if let Route::Home { screen, .. } = &self.route {
+            screen.update(cx, |home, cx| home.end_session(cx));
+        }
         self.route = Self::home_route(window, cx);
         cx.notify();
     }
 
     fn home_route(window: &mut Window, cx: &mut Context<Self>) -> Route {
         let home = cx.new(|cx| HomeScreen::new(window, cx));
-        let subscription = cx.subscribe_in(
+        let ended = cx.subscribe_in(
             &home,
             window,
             |this, _home, _: &SessionEnded, window, cx| {
@@ -50,9 +55,27 @@ impl AppScreen {
                 cx.notify();
             },
         );
+        let switch = cx.subscribe_in(
+            &home,
+            window,
+            |this, _home, SwitchAccount(id): &SwitchAccount, window, cx| {
+                match discord::switch_account(*id) {
+                    Ok(()) => this.show_home(window, cx),
+                    Err(err) => dialogs::show_error(
+                        "Couldn't switch accounts",
+                        [err.to_string()],
+                        window,
+                        cx,
+                    ),
+                }
+            },
+        );
+        let add = cx.subscribe_in(&home, window, |_this, _home, _: &AddAccount, window, cx| {
+            login::open_login_window(cx.weak_entity(), window.window_handle(), cx);
+        });
         Route::Home {
             screen: home,
-            _ended: subscription,
+            _events: [ended, switch, add],
         }
     }
 

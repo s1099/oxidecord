@@ -128,7 +128,6 @@
 
 | Feature | Status | Notes |
 |---|---|---|
-| Switching accounts | Missing | Logging out works; there is no multi-account switcher |
 | Two-factor login (TOTP, SMS, passkey) on the token path | Partial | The webview login handles this through Discord's own page |
 | My Account settings (username, email, password, 2FA) | Missing | |
 | Profile editing (avatar, banner, bio, pronouns, display name) | Missing | |

@@ -10,11 +10,11 @@ use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
 use crate::discord::PresenceStatus;
-use crate::screens::home::HomeScreen;
 use crate::screens::home::view::avatar;
+use crate::screens::home::{AddAccount, HomeScreen, SwitchAccount};
 use crate::ui::button::Button;
 use crate::ui::depth::radius;
-use crate::ui::settings;
+use crate::ui::settings::{self, SessionHandlers};
 
 impl HomeScreen {
     pub(super) fn render_user_panel(&self, cx: &Context<Self>) -> impl IntoElement {
@@ -177,12 +177,25 @@ impl HomeScreen {
                     .tooltip("User Settings")
                     .on_click({
                         let home = cx.weak_entity();
+                        // Each is a no-op if the session ended while the popup was open.
                         move |_, window, cx| {
-                            let home = home.clone();
-                            settings::open(window, cx, move |_, cx| {
-                                // Gone if the session ended while the popup was open.
-                                let _ = home.update(cx, |home, cx| home.log_out(cx));
-                            })
+                            let (log_out, switch, add) = (home.clone(), home.clone(), home.clone());
+                            settings::open(
+                                window,
+                                cx,
+                                SessionHandlers {
+                                    log_out: Box::new(move |_, cx| {
+                                        let _ = log_out.update(cx, |home, cx| home.log_out(cx));
+                                    }),
+                                    switch_account: Box::new(move |id, _, cx| {
+                                        let _ =
+                                            switch.update(cx, |_, cx| cx.emit(SwitchAccount(id)));
+                                    }),
+                                    add_account: Box::new(move |_, cx| {
+                                        let _ = add.update(cx, |_, cx| cx.emit(AddAccount));
+                                    }),
+                                },
+                            )
                         }
                     }),
             )

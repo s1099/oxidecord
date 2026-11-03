@@ -1,4 +1,5 @@
-//! The sign-in screen: pick a login method, then hand the app a token.
+//! The sign-in screen: pick a saved account, or sign in on Discord's page and hand the app
+//! a token.
 
 mod webview;
 
@@ -9,14 +10,18 @@ use gpui_kit::*;
 // Token login is hidden for now; its imports come back with it.
 use gpui_kit::component::{
     ActiveTheme as _,
+    IconName,
     // input::{Input, InputState},
     // tab::{Tab, TabBar},
     Sizable as _,
     h_flex,
     v_flex,
 };
+use twilight_model::id::{Id, marker::UserMarker};
 
+use crate::discord::{self, Account};
 use crate::screens::app::AppScreen;
+use crate::ui::accounts::{account_avatar, account_label};
 use crate::ui::button::Button;
 use crate::ui::depth::{self, radius};
 use crate::ui::window_controls::WindowControls;
@@ -35,9 +40,33 @@ use webview::LoginWebview;
 /// so drawing the full 1024px icon this small aliases.
 const LOGO_SIZE: f32 = 72.;
 
+/// Opens Discord's login page in its own window. A token it reports becomes the active
+/// account and `main_window` switches to it.
+pub fn open_login_window(app: WeakEntity<AppScreen>, main_window: AnyWindowHandle, cx: &mut App) {
+    let options = WindowOptions {
+        titlebar: Some(TitlebarOptions {
+            title: Some("Discord Login".into()),
+            ..Default::default()
+        }),
+        window_bounds: Some(WindowBounds::centered(size(px(875.), px(665.)), cx)),
+        window_min_size: Some(size(px(400.), px(520.))),
+        ..Default::default()
+    };
+
+    if let Err(err) = cx.open_window(options, move |window, cx| {
+        let webview = cx.new(|cx| LoginWebview::new(app, main_window, window, cx));
+        cx.new(|cx| gpui_kit::component::Root::new(webview, window, cx))
+    }) {
+        eprintln!("failed to open the login window: {err}");
+    }
+}
+
 pub struct LoginScreen {
     app: WeakEntity<AppScreen>,
     logo: Arc<Image>,
+    /// Saved sign-ins to pick from; with none, the plain welcome.
+    accounts: Vec<Account>,
+    error: Option<SharedString>,
     // method: LoginMethod,
     // token_input: Entity<InputState>,
 }
@@ -56,13 +85,33 @@ impl LoginScreen {
                 ImageFormat::Png,
                 include_bytes!("../../../assets/logo.png").to_vec(),
             )),
+            accounts: discord::accounts(),
+            error: None,
             // method: LoginMethod::Discord,
             // token_input,
         }
     }
 
+    fn switch_to(&mut self, id: Id<UserMarker>, window: &mut Window, cx: &mut Context<Self>) {
+        match discord::switch_account(id) {
+            Ok(()) => {
+                let _ = self.app.update(cx, |app, cx| app.show_home(window, cx));
+            }
+            Err(err) => {
+                self.accounts = discord::accounts();
+                self.error = Some(err.to_string().into());
+                cx.notify();
+            }
+        }
+    }
+
     fn render_logo(&self, cx: &Context<Self>) -> impl IntoElement {
         let theme = cx.theme();
+        let title = if self.accounts.is_empty() {
+            "Welcome to Oxidecord"
+        } else {
+            "Choose an account"
+        };
 
         v_flex()
             .items_center()
@@ -73,8 +122,47 @@ impl LoginScreen {
                     .text_size(px(26.))
                     .font_weight(FontWeight::BOLD)
                     .text_color(theme.foreground)
-                    .child("Welcome to Oxidecord"),
+                    .child(title),
             )
+    }
+
+    fn render_accounts(&self, cx: &Context<Self>) -> impl IntoElement {
+        let hover = cx.theme().secondary_hover;
+        v_flex()
+            .w_full()
+            .gap_1()
+            .children(self.accounts.iter().map(|account| {
+                let id = account.id;
+                h_flex()
+                    .id(SharedString::from(format!("account-{id}")))
+                    .w_full()
+                    .gap_3()
+                    .p_2()
+                    .items_center()
+                    .rounded(radius::ITEM)
+                    .cursor_pointer()
+                    .hover(move |this| this.bg(hover))
+                    .child(account_avatar(account, px(40.)))
+                    .child(account_label(account, cx))
+                    .child(
+                        Button::new(SharedString::from(format!("remove-account-{id}")))
+                            .icon(IconName::Close)
+                            .ghost()
+                            .xsmall()
+                            .tooltip("Log out of this account")
+                            .on_click(cx.listener(move |this, _, _, cx| {
+                                // The row underneath would switch to it otherwise.
+                                cx.stop_propagation();
+                                discord::remove_account(id);
+                                this.accounts = discord::accounts();
+                                this.error = None;
+                                cx.notify();
+                            })),
+                    )
+                    .on_click(
+                        cx.listener(move |this, _, window, cx| this.switch_to(id, window, cx)),
+                    )
+            }))
     }
 
     // fn render_method_tabs(&self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -103,43 +191,27 @@ impl LoginScreen {
     fn render_discord_pane(&self, cx: &Context<Self>) -> impl IntoElement {
         let app = self.app.clone();
 
+        let button = Button::new("btn-discord-login").large().w_full().on_click(
+            move |_event, window, cx| {
+                // The button lives in the main window, which switches to Home once the
+                // webview reports a token.
+                open_login_window(app.clone(), window.window_handle(), cx);
+            },
+        );
+        let button = if self.accounts.is_empty() {
+            button.label("Continue with Discord").primary()
+        } else {
+            button
+                .icon(IconName::Plus)
+                .label("Add an account")
+                .outline()
+        };
+
         v_flex()
             .w_full()
             .gap(px(12.))
             .items_center()
-            .child(
-                Button::new("btn-discord-login")
-                    .label("Continue with Discord")
-                    .primary()
-                    .large()
-                    .w_full()
-                    .on_click(move |_event, window, cx| {
-                        // The button lives in the main window, which switches to Home
-                        // once the webview reports a token.
-                        let main_window = window.window_handle();
-                        let app = app.clone();
-
-                        let webview_options = WindowOptions {
-                            titlebar: Some(TitlebarOptions {
-                                title: Some("Discord Login".into()),
-                                ..Default::default()
-                            }),
-                            window_bounds: Some(WindowBounds::centered(
-                                size(px(875.), px(665.)),
-                                cx,
-                            )),
-                            window_min_size: Some(size(px(400.), px(520.))),
-                            ..Default::default()
-                        };
-
-                        cx.open_window(webview_options, move |window, cx| {
-                            let webview_view =
-                                cx.new(|cx| LoginWebview::new(app, main_window, window, cx));
-                            cx.new(|cx| gpui_kit::component::Root::new(webview_view, window, cx))
-                        })
-                        .expect("Failed to open webview window");
-                    }),
-            )
+            .child(button)
             .child(
                 div()
                     .text_size(px(12.))
@@ -182,6 +254,18 @@ impl Render for LoginScreen {
             .pb(px(28.))
             .gap(px(28.))
             .child(self.render_logo(cx))
+            .when(!self.accounts.is_empty(), |this| {
+                this.child(self.render_accounts(cx))
+            })
+            .when_some(self.error.clone(), |this, error| {
+                this.child(
+                    div()
+                        .text_sm()
+                        .text_center()
+                        .text_color(cx.theme().danger)
+                        .child(error),
+                )
+            })
             // .child(v_flex().items_center().child(self.render_method_tabs(cx)))
             // .child(match self.method {
             //     LoginMethod::Discord => self.render_discord_pane().into_any_element(),

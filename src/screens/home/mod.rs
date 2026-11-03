@@ -24,6 +24,7 @@ mod view;
 mod voice;
 
 use gpui_kit::{EventEmitter, actions};
+use twilight_model::id::{Id, marker::UserMarker};
 
 pub use state::HomeScreen;
 
@@ -31,6 +32,16 @@ pub use state::HomeScreen;
 pub struct SessionEnded;
 
 impl EventEmitter<SessionEnded> for HomeScreen {}
+
+/// Asks the app to swap this screen for another saved account's.
+pub struct SwitchAccount(pub Id<UserMarker>);
+
+impl EventEmitter<SwitchAccount> for HomeScreen {}
+
+/// Asks the app to open the Discord login window for another account.
+pub struct AddAccount;
+
+impl EventEmitter<AddAccount> for HomeScreen {}
 
 pub const HOME_CONTEXT: &str = "HomeScreen";
 
