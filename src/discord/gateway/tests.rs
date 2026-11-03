@@ -281,6 +281,29 @@ fn channel_changes_mark_their_guild_stale() {
 }
 
 #[test]
+fn group_dm_recipients_join_and_leave() {
+    let events = dispatch_json(
+        "CHANNEL_RECIPIENT_ADD",
+        r#"{"channel_id": "200", "user": {"id": "5", "username": "ann", "global_name": "Ann", "avatar": null, "discriminator": "0"}}"#,
+    );
+    assert!(matches!(
+        events.as_slice(),
+        [GatewayEvent::DmRecipientAdd { channel_id, member }]
+            if *channel_id == Id::new(200) && member.user_id == Id::new(5) && member.name == "Ann"
+    ));
+
+    let events = dispatch_json(
+        "CHANNEL_RECIPIENT_REMOVE",
+        r#"{"channel_id": "200", "user": {"id": "5", "username": "ann"}}"#,
+    );
+    assert!(matches!(
+        events.as_slice(),
+        [GatewayEvent::DmRecipientRemove { channel_id, user_id }]
+            if *channel_id == Id::new(200) && *user_id == Id::new(5)
+    ));
+}
+
+#[test]
 fn presences_arrive_from_ready_supplemental_and_updates() {
     let events = dispatch_json(
         "READY_SUPPLEMENTAL",

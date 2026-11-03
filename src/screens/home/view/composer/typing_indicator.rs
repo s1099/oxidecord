@@ -93,13 +93,25 @@ impl HomeScreen {
     fn typing_names(&self) -> Option<Vec<String>> {
         let channel_id = self.selected_channel?;
         let typists = self.typists.get(&channel_id)?;
+        let dm = self.selected_dm_info();
         let names: Vec<String> = typists
             .iter()
             .map(|typist| {
-                // A DM's dispatch carries no name; take it from the typist's messages.
+                // A DM's dispatch carries no name; take it from the channel's
+                // recipients, else the typist's messages.
                 typist
                     .name
                     .clone()
+                    .or_else(|| {
+                        let dm = dm?;
+                        if dm.recipient_id == Some(typist.user_id) {
+                            return Some(dm.name.clone());
+                        }
+                        dm.members
+                            .iter()
+                            .find(|member| member.user_id == typist.user_id)
+                            .map(|member| member.name.clone())
+                    })
                     .or_else(|| {
                         self.messages
                             .iter()

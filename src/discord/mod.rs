@@ -12,9 +12,9 @@ mod token;
 pub use gateway::{GatewayEvent, GatewaySender, IncomingMessage, ReactionChange, connect_gateway};
 pub use model::{
     AuthorType, Block, Channel, ChannelKind, ChannelLatest, CurrentUser, DEFAULT_UPLOAD_LIMIT,
-    Delivery, DirectMessage, Embed, EmbedAuthor, EmbedField, EmbedFooter, EmbedLayout, EmbedMedia,
-    EmbedVideo, FileAttachment, ForwardedMessage, FrecencyItem, Guild, GuildAppearance, GuildEmoji,
-    GuildFolders, GuildMember, GuildUnreads, ImageAttachment, Inline, List, ListMember,
+    Delivery, DirectMessage, DmMember, Embed, EmbedAuthor, EmbedField, EmbedFooter, EmbedLayout,
+    EmbedMedia, EmbedVideo, FileAttachment, ForwardedMessage, FrecencyItem, Guild, GuildAppearance,
+    GuildEmoji, GuildFolders, GuildMember, GuildUnreads, ImageAttachment, Inline, List, ListMember,
     MAX_UPLOAD_TOTAL, Markdown, MemberGroupKind, MemberListGroup, MemberListItem, MemberListOp,
     MemberListUpdate, Mention, MentionedUser, Message, MessageLink, MessageReference, MuteSettings,
     PresenceStatus, Reaction, ReactionEmoji, Reactor, ReadState, Reply, Role, SEARCH_MAX_OFFSET,

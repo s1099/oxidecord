@@ -8,6 +8,7 @@ use twilight_model::id::{
 };
 
 use super::cdn;
+use super::channel::DmMember;
 
 #[derive(Clone)]
 pub struct Guild {
@@ -134,6 +135,16 @@ impl RawMember {
             user.avatar.as_deref(),
             super::user::parse_discriminator(user.discriminator.as_deref()),
         ))
+    }
+
+    /// Group DM recipient events carry the same `user` and `nick` as a member.
+    pub(in crate::discord) fn dm_member(&self) -> Option<DmMember> {
+        Some(DmMember {
+            user_id: self.user_id()?,
+            name: self.display_name()?,
+            avatar_url: self.avatar_url(),
+            bot: self.is_bot(),
+        })
     }
 
     pub(in crate::discord) fn is_bot(&self) -> bool {

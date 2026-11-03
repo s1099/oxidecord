@@ -24,7 +24,7 @@ mod user;
 mod voice;
 
 pub use cdn::{animated_webp, scaled_url};
-pub use channel::{Channel, ChannelKind, DirectMessage};
+pub use channel::{Channel, ChannelKind, DirectMessage, DmMember};
 pub use embed::{Embed, EmbedAuthor, EmbedField, EmbedFooter, EmbedLayout, EmbedMedia, EmbedVideo};
 pub use emoji::GuildEmoji;
 pub use frecency::FrecencyItem;

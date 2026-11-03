@@ -31,7 +31,7 @@ pub(super) struct EditingMessage {
 /// Shown until `until` passes or their message arrives.
 pub(super) struct Typist {
     pub user_id: Id<UserMarker>,
-    /// From the dispatch; a DM's typists are named from its messages instead.
+    /// From the dispatch; a DM's typists are named from its recipients instead.
     pub name: Option<String>,
     pub until: Instant,
 }

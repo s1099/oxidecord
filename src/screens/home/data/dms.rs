@@ -3,10 +3,10 @@
 use gpui_kit::*;
 use twilight_model::id::{
     Id,
-    marker::{ChannelMarker, MessageMarker},
+    marker::{ChannelMarker, MessageMarker, UserMarker},
 };
 
-use crate::discord::{self, DirectMessage};
+use crate::discord::{self, DirectMessage, DmMember};
 use crate::screens::home::{HomeScreen, View};
 
 impl HomeScreen {
@@ -132,6 +132,47 @@ impl HomeScreen {
                 self.unreads.note_latest(dm.id, latest);
             }
         }
+    }
+
+    pub(in crate::screens::home) fn handle_dm_recipient_add(
+        &mut self,
+        channel_id: Id<ChannelMarker>,
+        member: DmMember,
+        cx: &mut Context<Self>,
+    ) {
+        // The user being added to a group is a DM the list lacks.
+        if Some(member.user_id) == self.self_user_id {
+            if self.dms.loaded {
+                self.refresh_dms(cx);
+            }
+            return;
+        }
+        let Some(dm) = self.dms.list.iter_mut().find(|dm| dm.id == channel_id) else {
+            return;
+        };
+        match dm
+            .members
+            .iter_mut()
+            .find(|known| known.user_id == member.user_id)
+        {
+            Some(known) => *known = member,
+            None => dm.members.push(member),
+        }
+        cx.notify();
+    }
+
+    pub(in crate::screens::home) fn handle_dm_recipient_remove(
+        &mut self,
+        channel_id: Id<ChannelMarker>,
+        user_id: Id<UserMarker>,
+        cx: &mut Context<Self>,
+    ) {
+        if Some(user_id) == self.self_user_id {
+            self.dms.list.retain(|dm| dm.id != channel_id);
+        } else if let Some(dm) = self.dms.list.iter_mut().find(|dm| dm.id == channel_id) {
+            dm.members.retain(|member| member.user_id != user_id);
+        }
+        cx.notify();
     }
 
     pub(in crate::screens::home) fn selected_dm_info(&self) -> Option<&DirectMessage> {

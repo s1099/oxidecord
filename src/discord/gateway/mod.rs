@@ -23,7 +23,7 @@ use twilight_model::id::{
 use crate::platform::runtime;
 
 use super::model::{
-    Channel, ChannelLatest, GuildAppearance, GuildEmoji, GuildMember, GuildUnreads,
+    Channel, ChannelLatest, DmMember, GuildAppearance, GuildEmoji, GuildMember, GuildUnreads,
     MemberListUpdate, Message, MuteSettings, PresenceStatus, ReactionEmoji, ReadState, Role,
     StreamServerInfo, UnreadSetting, VoiceServerInfo, VoiceUserState,
 };
@@ -58,6 +58,14 @@ pub enum GatewayEvent {
         user_id: Id<UserMarker>,
         /// Their name in the guild. `None` in a DM, which sends no member.
         name: Option<String>,
+    },
+    DmRecipientAdd {
+        channel_id: Id<ChannelMarker>,
+        member: DmMember,
+    },
+    DmRecipientRemove {
+        channel_id: Id<ChannelMarker>,
+        user_id: Id<UserMarker>,
     },
     Reaction {
         channel_id: Id<ChannelMarker>,

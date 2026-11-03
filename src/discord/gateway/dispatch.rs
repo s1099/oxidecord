@@ -177,6 +177,24 @@ pub(super) fn dispatch(
                 }]
             })
             .unwrap_or_default(),
+        "CHANNEL_RECIPIENT_ADD" => serde_json::from_str::<RecipientPayload>(data)
+            .ok()
+            .and_then(|payload| {
+                Some(vec![GatewayEvent::DmRecipientAdd {
+                    channel_id: payload.channel_id,
+                    member: payload.recipient.dm_member()?,
+                }])
+            })
+            .unwrap_or_default(),
+        "CHANNEL_RECIPIENT_REMOVE" => serde_json::from_str::<RecipientPayload>(data)
+            .ok()
+            .and_then(|payload| {
+                Some(vec![GatewayEvent::DmRecipientRemove {
+                    channel_id: payload.channel_id,
+                    user_id: payload.recipient.user_id()?,
+                }])
+            })
+            .unwrap_or_default(),
         "VOICE_STATE_UPDATE" => serde_json::from_str::<RawVoiceState>(data)
             .map(|state| vec![GatewayEvent::VoiceState(convert_voice_state(state))])
             .unwrap_or_default(),

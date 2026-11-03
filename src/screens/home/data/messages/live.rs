@@ -182,6 +182,13 @@ impl HomeScreen {
                 user_id,
                 name,
             } => self.handle_typing(channel_id, user_id, name, cx),
+            discord::GatewayEvent::DmRecipientAdd { channel_id, member } => {
+                self.handle_dm_recipient_add(channel_id, member, cx)
+            }
+            discord::GatewayEvent::DmRecipientRemove {
+                channel_id,
+                user_id,
+            } => self.handle_dm_recipient_remove(channel_id, user_id, cx),
             discord::GatewayEvent::Reaction {
                 channel_id,
                 message_id,

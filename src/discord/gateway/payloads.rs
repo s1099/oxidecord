@@ -344,6 +344,13 @@ pub(super) struct TypingStartPayload {
 }
 
 #[derive(Deserialize)]
+pub(super) struct RecipientPayload {
+    pub(super) channel_id: Id<ChannelMarker>,
+    #[serde(flatten)]
+    pub(super) recipient: RawMember,
+}
+
+#[derive(Deserialize)]
 pub(super) struct ReadyUser {
     pub(super) id: Id<UserMarker>,
 }
