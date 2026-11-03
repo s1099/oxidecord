@@ -48,5 +48,5 @@ won't know that generator so either update CMake, or build through Ninja with
 - [x] Caching
 - [x] Markdown rendering
 - [ ] Custom themes
-- [ ] Cross platform autoupdater (only Windows is works right now)
+- [ ] Cross platform autoupdater (only Windows works right now)
 
