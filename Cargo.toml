@@ -37,6 +37,7 @@ image = { version = "0.25", default-features = false }
 emojis = "0.9.0"
 chrono = { version = "0.4.45", default-features = false, features = ["clock", "std"] }
 sha2 = "0.10.9"
+uuid = { version = "1", features = ["v4"] }
 
 # Video playback and screen capture go through Media Foundation and Direct3D,
 # so no codec ships with the app
@@ -46,6 +47,7 @@ windows = { version = "0.62", features = [
     "Graphics_Capture",
     "Graphics_DirectX_Direct3D11",
     "Win32_Foundation",
+    "Win32_Globalization",
     "Win32_Graphics_Direct3D",
     "Win32_Graphics_Direct3D11",
     "Win32_Graphics_Dxgi_Common",
@@ -53,6 +55,7 @@ windows = { version = "0.62", features = [
     "Win32_System_Com",
     "Win32_System_Com_StructuredStorage",
     "Win32_System_Ole",
+    "Win32_System_Registry",
     "Win32_System_Variant",
     "Win32_System_WinRT_Direct3D11",
     "Win32_System_WinRT_Graphics_Capture",

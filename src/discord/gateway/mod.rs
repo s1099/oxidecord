@@ -5,6 +5,7 @@
 //! has no guild id) or not at all. The shard still handles heartbeats, identify and resume.
 
 mod dispatch;
+mod identify;
 mod payloads;
 mod sender;
 #[cfg(test)]
@@ -13,7 +14,7 @@ mod tests;
 use futures::StreamExt as _;
 use serde::Deserialize;
 use serde_json::value::RawValue;
-use twilight_gateway::{Intents, Message as ShardMessage, Shard, ShardId};
+use twilight_gateway::{ConfigBuilder, Intents, Message as ShardMessage, Shard, ShardId};
 use twilight_model::id::{
     Id,
     marker::{ChannelMarker, GuildMarker, MessageMarker, RoleMarker, UserMarker},
@@ -193,9 +194,13 @@ pub fn connect_gateway(
     // Built here so the sender can go back to the caller, but building starts the
     // identify queue's timer, so it must happen inside the runtime.
     let guard = runtime::handle().enter();
-    // Discord ignores intents for user tokens and sends everything the account can see;
-    // IDENTIFY still requires a value, so request all.
-    let mut shard = Shard::new(ShardId::ONE, token, Intents::all());
+    // User tokens get everything the account can see, and the fork leaves intents out of
+    // IDENTIFY like the official clients; the builder still wants a value.
+    let config = ConfigBuilder::new(token, Intents::all())
+        .identify_properties(identify::properties())
+        .client_state(identify::client_state())
+        .build();
+    let mut shard = Shard::with_config(ShardId::ONE, config);
     let sender = GatewaySender {
         inner: shard.sender(),
     };
