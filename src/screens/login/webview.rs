@@ -49,6 +49,30 @@ const TOKEN_HOOK_SCRIPT: &str = r#"
     })();
 "#;
 
+/// Discord's page asks for the camera among other things, and WebView2 prompts for each.
+/// Signing in needs none of them, so they're refused before a prompt shows.
+#[cfg(target_os = "windows")]
+fn deny_permissions(webview: &wry::WebView) {
+    use webview2_com::Microsoft::Web::WebView2::Win32::COREWEBVIEW2_PERMISSION_STATE_DENY;
+    use webview2_com::PermissionRequestedEventHandler;
+    use wry::WebViewExtWindows as _;
+
+    let handler = PermissionRequestedEventHandler::create(Box::new(|_, args| {
+        if let Some(args) = args {
+            unsafe { args.SetState(COREWEBVIEW2_PERMISSION_STATE_DENY)? };
+        }
+        Ok(())
+    }));
+    let mut token = Default::default();
+    if let Err(err) = unsafe {
+        webview
+            .webview()
+            .add_PermissionRequested(&handler, &mut token)
+    } {
+        eprintln!("failed to block the login page's permission prompts: {err}");
+    }
+}
+
 pub struct LoginWebview {
     webview: Option<Entity<WebView>>,
 }
@@ -106,6 +130,8 @@ impl LoginWebview {
                         });
 
                     let wry_webview = builder.build(window).expect("Failed to build webview");
+                    #[cfg(target_os = "windows")]
+                    deny_permissions(&wry_webview);
 
                     cx.new(|cx| {
                         let mut webview = WebView::new(wry_webview, window, cx);

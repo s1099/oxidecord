@@ -6401,6 +6401,7 @@ dependencies = [
  "twilight-model",
  "twilight-util",
  "uuid",
+ "webview2-com",
  "windows 0.62.2",
  "zed-reqwest",
 ]
