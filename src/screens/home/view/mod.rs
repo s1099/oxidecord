@@ -20,6 +20,8 @@ use gpui_kit::component::{ActiveTheme as _, Sizable as _, avatar::Avatar, h_flex
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
+use crate::discord::DirectMessage;
+
 use super::{FocusSearch, HOME_CONTEXT, HomeScreen, MarkConversationRead, View};
 use crate::ui::depth;
 use crate::ui::smooth_scroll::SmoothScroll;
@@ -209,6 +211,47 @@ fn avatar(name: String, url: Option<String>, size: Pixels) -> Avatar {
         Some(url) => avatar.src(url),
         None => avatar,
     }
+}
+
+/// A DM's icon. A group with no icon of its own stacks two of its members, as
+/// Discord does, the front one ringed in `backdrop` so it reads as cut out.
+fn dm_avatar(
+    dm: &DirectMessage,
+    size: Pixels,
+    backdrop: Hsla,
+    hover: Option<(SharedString, Hsla)>,
+) -> AnyElement {
+    let [back, front, ..] = dm.members.as_slice() else {
+        return avatar(dm.name.clone(), dm.avatar_url.clone(), size).into_any_element();
+    };
+    if dm.avatar_url.is_some() {
+        return avatar(dm.name.clone(), dm.avatar_url.clone(), size).into_any_element();
+    }
+    let inner = size * 0.625;
+    let ring = px(2.);
+    div()
+        .relative()
+        .flex_shrink_0()
+        .size(size)
+        .child(div().absolute().top_0().left_0().child(avatar(
+            back.name.clone(),
+            back.avatar_url.clone(),
+            inner,
+        )))
+        .child(
+            div()
+                .absolute()
+                .right(-ring)
+                .bottom(-ring)
+                .p(ring)
+                .rounded_full()
+                .bg(backdrop)
+                .when_some(hover, |this, (group, color)| {
+                    this.group_hover(group, move |style| style.bg(color))
+                })
+                .child(avatar(front.name.clone(), front.avatar_url.clone(), inner)),
+        )
+        .into_any_element()
 }
 
 /// The tag after a bot's name, wherever the name is shown.

@@ -69,6 +69,8 @@ struct RawProfileUser {
     #[serde(default)]
     avatar: Option<String>,
     #[serde(default)]
+    discriminator: Option<String>,
+    #[serde(default)]
     banner: Option<String>,
     #[serde(default)]
     accent_color: Option<u32>,
@@ -112,10 +114,13 @@ impl RawProfile {
         UserProfile {
             name: user.global_name.unwrap_or_else(|| user.username.clone()),
             username: user.username,
-            avatar_url: user
-                .avatar
-                .as_deref()
-                .map(|hash| cdn::avatar_url(user.id.get(), hash, PROFILE_AVATAR_SIZE)),
+            avatar_url: Some(match user.avatar.as_deref() {
+                Some(hash) => cdn::avatar_url(user.id.get(), hash, PROFILE_AVATAR_SIZE),
+                None => cdn::default_avatar_url(
+                    user.id.get(),
+                    parse_discriminator(user.discriminator.as_deref()),
+                ),
+            }),
             banner_url: banner
                 .as_deref()
                 .map(|hash| cdn::banner_url(user.id.get(), hash, PROFILE_BANNER_SIZE)),
@@ -139,9 +144,10 @@ pub(in crate::discord) fn convert_user_profile(user: twilight_model::user::User)
             .clone()
             .unwrap_or_else(|| user.name.clone()),
         username: user.name,
-        avatar_url: user
-            .avatar
-            .map(|hash| cdn::avatar_url(user.id.get(), &hash.to_string(), PROFILE_AVATAR_SIZE)),
+        avatar_url: Some(match user.avatar {
+            Some(hash) => cdn::avatar_url(user.id.get(), &hash.to_string(), PROFILE_AVATAR_SIZE),
+            None => cdn::default_avatar_url(user.id.get(), user.discriminator),
+        }),
         banner_url: user
             .banner
             .map(|hash| cdn::banner_url(user.id.get(), &hash.to_string(), PROFILE_BANNER_SIZE)),
@@ -162,9 +168,11 @@ pub(in crate::discord) fn convert_current_user(
             .global_name
             .clone()
             .unwrap_or_else(|| user.name.clone()),
-        avatar_url: user
-            .avatar
-            .map(|hash| cdn::small_avatar_url(user.id.get(), &hash.to_string())),
+        avatar_url: Some(cdn::small_user_avatar(
+            user.id.get(),
+            user.avatar.map(|hash| hash.to_string()).as_deref(),
+            user.discriminator,
+        )),
         premium: user
             .premium_type
             .is_some_and(|tier| tier != twilight_model::user::PremiumType::None),
@@ -188,6 +196,18 @@ pub(in crate::discord) fn convert_reactor(user: twilight_model::user::User) -> R
 }
 
 pub(super) fn small_avatar_url(user: &twilight_model::user::User) -> Option<String> {
-    user.avatar
-        .map(|hash| cdn::small_avatar_url(user.id.get(), &hash.to_string()))
+    let hash = user.avatar.map(|hash| hash.to_string());
+    Some(cdn::small_user_avatar(
+        user.id.get(),
+        hash.as_deref(),
+        user.discriminator,
+    ))
+}
+
+/// Raw payloads carry the discriminator as a string; a missing one means a
+/// migrated username, same as `"0"`.
+pub(super) fn parse_discriminator(discriminator: Option<&str>) -> u16 {
+    discriminator
+        .and_then(|discriminator| discriminator.parse().ok())
+        .unwrap_or(0)
 }

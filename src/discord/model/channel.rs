@@ -57,8 +57,19 @@ pub struct DirectMessage {
     pub avatar_url: Option<String>,
     /// `None` for a group DM.
     pub recipient_id: Option<Id<UserMarker>>,
+    /// A group DM's members other than the current user; empty for a one-on-one DM.
+    pub members: Vec<DmMember>,
+    pub owner_id: Option<Id<UserMarker>>,
     /// Only for ordering by recency; `None` sorts last.
     last_message_id: Option<u64>,
+}
+
+#[derive(Clone)]
+pub struct DmMember {
+    pub user_id: Id<UserMarker>,
+    pub name: String,
+    pub avatar_url: Option<String>,
+    pub bot: bool,
 }
 
 impl DirectMessage {
@@ -150,6 +161,8 @@ fn convert_dm(channel: twilight_model::channel::Channel) -> Option<DirectMessage
                 avatar_url: small_avatar_url(&user),
                 recipient_id: Some(user.id),
                 name: user.global_name.unwrap_or(user.name),
+                members: Vec::new(),
+                owner_id: None,
                 last_message_id,
             })
         }
@@ -160,6 +173,18 @@ fn convert_dm(channel: twilight_model::channel::Channel) -> Option<DirectMessage
                 .map(|hash| cdn::group_dm_icon_url(channel.id, &hash.to_string())),
             name: group_dm_name(channel.name, channel.recipients.as_deref()),
             recipient_id: None,
+            members: channel
+                .recipients
+                .unwrap_or_default()
+                .into_iter()
+                .map(|user| DmMember {
+                    user_id: user.id,
+                    avatar_url: small_avatar_url(&user),
+                    name: user.global_name.unwrap_or(user.name),
+                    bot: user.bot,
+                })
+                .collect(),
+            owner_id: channel.owner_id,
             last_message_id,
         }),
         _ => None,

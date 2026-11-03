@@ -34,6 +34,25 @@ pub(super) fn small_avatar_url(user_id: u64, hash: &str) -> String {
     format!("https://cdn.discordapp.com/avatars/{user_id}/{hash}.webp?size=80")
 }
 
+/// [`small_avatar_url`], or Discord's default avatar when the user has none.
+pub(super) fn small_user_avatar(user_id: u64, hash: Option<&str>, discriminator: u16) -> String {
+    match hash {
+        Some(hash) => small_avatar_url(user_id, hash),
+        None => default_avatar_url(user_id, discriminator),
+    }
+}
+
+/// The coloured default avatar: picked by id for usernames migrated off
+/// discriminators (`0`), by the discriminator for legacy `name#1234` tags.
+pub(super) fn default_avatar_url(user_id: u64, discriminator: u16) -> String {
+    let index = if discriminator == 0 {
+        (user_id >> 22) % 6
+    } else {
+        u64::from(discriminator) % 5
+    };
+    format!("https://cdn.discordapp.com/embed/avatars/{index}.png")
+}
+
 pub(super) fn guild_icon_url(guild_id: Id<GuildMarker>, hash: &str) -> String {
     format!("https://cdn.discordapp.com/icons/{guild_id}/{hash}.webp?size=100&quality=lossless")
 }

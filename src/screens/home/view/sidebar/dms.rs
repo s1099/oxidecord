@@ -7,7 +7,7 @@ use gpui_kit::*;
 
 use crate::discord::DirectMessage;
 use crate::screens::home::view::user_panel::status_indicator;
-use crate::screens::home::view::{avatar, mention_badge, unread_pill};
+use crate::screens::home::view::{dm_avatar, mention_badge, unread_pill};
 use crate::screens::home::{HomeScreen, ToggleQuickSwitcher};
 use crate::ui::depth::{Finish, Level, Lit as _, radius};
 use crate::ui::theme;
@@ -39,7 +39,12 @@ impl HomeScreen {
             div()
                 .relative()
                 .flex_shrink_0()
-                .child(avatar(dm.name.clone(), dm.avatar_url.clone(), px(32.)))
+                .child(dm_avatar(
+                    dm,
+                    px(32.),
+                    backdrop,
+                    Some((group.clone(), theme.sidebar_accent)),
+                ))
                 .when_some(status, |this, status| {
                     this.child(div().absolute().right(px(-3.)).bottom(px(-3.)).child(
                         status_indicator(

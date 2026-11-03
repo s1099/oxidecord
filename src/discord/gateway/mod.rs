@@ -115,6 +115,10 @@ pub enum GatewayEvent {
         guild_id: Id<GuildMarker>,
         unreads: UnreadSetting,
     },
+    GuildOwner {
+        guild_id: Id<GuildMarker>,
+        owner_id: Id<UserMarker>,
+    },
     GuildAppearance {
         guild_id: Id<GuildMarker>,
         appearance: GuildAppearance,

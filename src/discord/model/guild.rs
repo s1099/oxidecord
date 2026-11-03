@@ -102,6 +102,8 @@ struct RawMemberUser {
     #[serde(default)]
     avatar: Option<String>,
     #[serde(default)]
+    discriminator: Option<String>,
+    #[serde(default)]
     bot: bool,
 }
 
@@ -127,8 +129,11 @@ impl RawMember {
 
     pub(in crate::discord) fn avatar_url(&self) -> Option<String> {
         let user = self.user.as_ref()?;
-        let hash = user.avatar.as_ref()?;
-        Some(cdn::small_avatar_url(user.id.get(), hash))
+        Some(cdn::small_user_avatar(
+            user.id.get(),
+            user.avatar.as_deref(),
+            super::user::parse_discriminator(user.discriminator.as_deref()),
+        ))
     }
 
     pub(in crate::discord) fn is_bot(&self) -> bool {

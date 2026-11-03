@@ -244,6 +244,10 @@ impl HomeScreen {
                 self.unreads.set_default_unreads(guild_id, unreads);
                 cx.notify();
             }
+            discord::GatewayEvent::GuildOwner { guild_id, owner_id } => {
+                self.guild_data.owners.insert(guild_id, owner_id);
+                cx.notify();
+            }
             discord::GatewayEvent::GuildAppearance {
                 guild_id,
                 appearance,

@@ -61,6 +61,7 @@ pub(super) fn dispatch(
                     unreads.extend(guild_upload_limit(&guild));
                     unreads.extend(guild_default_unreads(&guild));
                     unreads.extend(guild_appearance(&guild));
+                    unreads.extend(guild_owner(&guild));
                     unreads.extend(guild_channels(
                         guild.id,
                         ready.user.id,
@@ -231,6 +232,7 @@ pub(super) fn dispatch(
                 let upload_limit = guild_upload_limit(&guild);
                 let default_unreads = guild_default_unreads(&guild);
                 let appearance = guild_appearance(&guild);
+                let owner = guild_owner(&guild);
                 let channels = match *self_id {
                     Some(self_id) => guild_channels(
                         guild.id,
@@ -257,6 +259,7 @@ pub(super) fn dispatch(
                     .chain(upload_limit)
                     .chain(default_unreads)
                     .chain(appearance)
+                    .chain(owner)
                     .chain(channels)
                     .chain(guild_emojis(guild.id, guild.emojis))
                     .chain(guild_roles(guild.id, guild.roles, guild.members))
@@ -279,6 +282,7 @@ pub(super) fn dispatch(
                     .into_iter()
                     .chain(guild_default_unreads(&guild))
                     .chain(guild_appearance(&guild))
+                    .chain(guild_owner(&guild))
                     .collect()
             })
             .unwrap_or_default(),
@@ -440,6 +444,13 @@ fn guild_default_unreads(guild: &GatewayGuild) -> Option<GatewayEvent> {
     Some(GatewayEvent::GuildDefaultUnreads {
         guild_id: guild.id,
         unreads: UnreadSetting::guild_default(guild.default_message_notifications()?),
+    })
+}
+
+fn guild_owner(guild: &GatewayGuild) -> Option<GatewayEvent> {
+    Some(GatewayEvent::GuildOwner {
+        guild_id: guild.id,
+        owner_id: guild.owner_id()?,
     })
 }
 

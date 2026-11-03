@@ -87,6 +87,7 @@ pub(super) struct GuildData {
     pub upload_limits: HashMap<Id<GuildMarker>, u64>,
     pub emojis: HashMap<Id<GuildMarker>, Vec<discord::GuildEmoji>>,
     pub appearances: HashMap<Id<GuildMarker>, discord::GuildAppearance>,
+    pub owners: HashMap<Id<GuildMarker>, Id<UserMarker>>,
     /// The signed-in user's decide whether a role mention pings them.
     pub member_roles: HashMap<Id<GuildMarker>, MemberRoles>,
     pub members: HashMap<Id<GuildMarker>, HashMap<Id<UserMarker>, discord::GuildMember>>,

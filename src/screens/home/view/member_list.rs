@@ -1,17 +1,20 @@
-//! The member list down the right of a guild conversation, under its header.
+//! The member list down the right of a guild conversation or group DM, under its header.
 
 use std::ops::Range;
 
-use gpui_kit::component::{ActiveTheme as _, h_flex, skeleton::Skeleton, v_flex};
+use gpui_kit::component::{
+    ActiveTheme as _, Icon, Sizable as _, h_flex, scroll::ScrollableElement as _,
+    skeleton::Skeleton, tooltip::Tooltip, v_flex,
+};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
 use crate::discord::{
-    ListMember, MemberGroupKind, MemberListGroup, MemberListItem, PresenceStatus,
+    DirectMessage, ListMember, MemberGroupKind, MemberListGroup, MemberListItem, PresenceStatus,
 };
-use crate::screens::home::HomeScreen;
 use crate::screens::home::view::user_panel::status_indicator;
 use crate::screens::home::view::{INSET, avatar, bot_tag};
+use crate::screens::home::{HomeScreen, View};
 use crate::ui::depth::radius;
 use crate::ui::theme;
 
@@ -78,7 +81,14 @@ impl HomeScreen {
             .map(|index| {
                 let row = match list.rows.get(index).cloned().flatten() {
                     Some(MemberListItem::Group(group)) => self.render_group_header(&group, cx),
-                    Some(MemberListItem::Member(member)) => self.render_member_row(&member, cx),
+                    Some(MemberListItem::Member(member)) => {
+                        let owner = self
+                            .guild_data
+                            .owners
+                            .get(&list.guild_id)
+                            .is_some_and(|&owner| owner == member.user_id);
+                        self.render_member_row(&member, owner, cx)
+                    }
                     None => skeleton_row(index).into_any_element(),
                 };
                 // The list sizes items to content; spanning the list makes hover and click cover
@@ -103,24 +113,67 @@ impl HomeScreen {
             .as_ref()
             .and_then(|list| list.groups.iter().find(|known| known.kind == group.kind))
             .map_or(group.count, |known| known.count);
-        h_flex()
-            .h(px(ROW_HEIGHT))
-            .w_full()
-            .px_2()
-            .pb_1()
-            .items_end()
-            .text_xs()
-            .font_weight(FontWeight::SEMIBOLD)
-            .text_color(cx.theme().muted_foreground)
-            .child(
-                div()
-                    .truncate()
-                    .child(format!("{} - {count}", name.to_uppercase())),
-            )
-            .into_any_element()
+        group_header(&name, count, cx).into_any_element()
     }
 
-    fn render_member_row(&self, member: &ListMember, cx: &Context<Self>) -> AnyElement {
+    /// A group DM's members: Discord sends no list for these, so it's the
+    /// recipients the channel came with, plus the current user.
+    pub(in crate::screens::home) fn render_dm_member_list(
+        &self,
+        dm: &DirectMessage,
+        cx: &Context<Self>,
+    ) -> Option<impl IntoElement> {
+        if self.member_list_hidden || dm.recipient_id.is_some() {
+            return None;
+        }
+        let mut members: Vec<ListMember> = dm
+            .members
+            .iter()
+            .map(|member| ListMember {
+                user_id: member.user_id,
+                name: member.name.clone(),
+                avatar_url: member.avatar_url.clone(),
+                roles: Vec::new(),
+                status: PresenceStatus::Invisible,
+                bot: member.bot,
+                activity: None,
+            })
+            .chain(self.current_user.as_ref().map(|user| ListMember {
+                user_id: user.id,
+                name: user.name.clone(),
+                avatar_url: user.avatar_url.clone(),
+                roles: Vec::new(),
+                status: PresenceStatus::Invisible,
+                bot: false,
+                activity: None,
+            }))
+            .collect();
+        members.sort_by_cached_key(|member| member.name.to_lowercase());
+
+        Some(
+            v_flex()
+                .id("dm-member-list")
+                .w(px(MEMBER_LIST_WIDTH))
+                .h_full()
+                .flex_shrink_0()
+                .px_2()
+                .pb_2()
+                .border_l_1()
+                .border_color(cx.theme().border)
+                .overflow_y_scrollbar()
+                .child(group_header("Members", members.len(), cx))
+                .children(members.iter().map(|member| {
+                    self.render_member_row(member, dm.owner_id == Some(member.user_id), cx)
+                })),
+        )
+    }
+
+    fn render_member_row(
+        &self,
+        member: &ListMember,
+        owner: bool,
+        cx: &Context<Self>,
+    ) -> AnyElement {
         let theme = cx.theme();
         let user_id = member.user_id;
         let status = self.user_status(user_id);
@@ -165,7 +218,26 @@ impl HomeScreen {
                     .text_color(name_color)
                     .child(member.name.clone()),
             )
-            .when(member.bot, |this| this.child(bot_tag(cx)));
+            .when(member.bot, |this| this.child(bot_tag(cx)))
+            .when(owner, |this| {
+                let owner_label = if self.view == View::Guild {
+                    "Server Owner"
+                } else {
+                    "Group Owner"
+                };
+                this.child(
+                    div()
+                        .id("owner")
+                        .flex_shrink_0()
+                        .child(
+                            Icon::default()
+                                .path("icons/crown.svg")
+                                .xsmall()
+                                .text_color(cx.theme().warning),
+                        )
+                        .tooltip(move |window, cx| Tooltip::new(owner_label).build(window, cx)),
+                )
+            });
 
         let name_and_activity = v_flex().flex_1().min_w_0().child(name).when_some(
             member.activity.clone().filter(|_| !offline),
@@ -219,6 +291,23 @@ impl HomeScreen {
             )
             .into_any_element()
     }
+}
+
+fn group_header(name: &str, count: usize, cx: &App) -> Div {
+    h_flex()
+        .h(px(ROW_HEIGHT))
+        .w_full()
+        .px_2()
+        .pb_1()
+        .items_end()
+        .text_xs()
+        .font_weight(FontWeight::SEMIBOLD)
+        .text_color(cx.theme().muted_foreground)
+        .child(
+            div()
+                .truncate()
+                .child(format!("{} - {count}", name.to_uppercase())),
+        )
 }
 
 fn skeleton_row(index: usize) -> impl IntoElement {

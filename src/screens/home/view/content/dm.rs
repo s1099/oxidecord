@@ -1,12 +1,14 @@
 //! The direct-message conversation: its header, messages, and composer.
 
-use gpui_kit::component::{ActiveTheme as _, Disableable as _, Icon, Sizable as _, h_flex, v_flex};
+use gpui_kit::component::{
+    ActiveTheme as _, Disableable as _, Icon, Selectable as _, Sizable as _, h_flex, v_flex,
+};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
 use crate::discord::DirectMessage;
 use crate::screens::home::HomeScreen;
-use crate::screens::home::view::avatar;
+use crate::screens::home::view::dm_avatar;
 use crate::ui::button::Button;
 
 use super::{header, header_actions, header_content, pane};
@@ -45,13 +47,16 @@ impl HomeScreen {
                             .child(self.render_messages(cx))
                             .child(self.render_message_bar(true, cx)),
                     )
-                    .children(self.render_search_panel(cx)),
+                    .map(|this| match self.render_search_panel(cx) {
+                        Some(panel) => this.child(panel),
+                        None => this.children(self.render_dm_member_list(&dm, cx)),
+                    }),
             )
             .into_any_element()
     }
 
     fn render_dm_header(&self, dm: &DirectMessage, cx: &Context<Self>) -> impl IntoElement {
-        let avatar = avatar(dm.name.clone(), dm.avatar_url.clone(), px(28.));
+        let avatar = dm_avatar(dm, px(28.), cx.theme().background, None);
 
         // The call buttons drop out while this conversation's call is up —
         // hanging up is the stage's job from there.
@@ -93,6 +98,24 @@ impl HomeScreen {
                             )
                         })
                         .child(self.render_pins_button(cx))
+                        .when(dm.recipient_id.is_none(), |this| {
+                            let hidden = self.member_list_hidden;
+                            this.child(
+                                Button::new("toggle-member-list")
+                                    .icon(Icon::default().path("icons/users.svg"))
+                                    .ghost()
+                                    .small()
+                                    .selected(!hidden)
+                                    .tooltip(if hidden {
+                                        "Show Member List"
+                                    } else {
+                                        "Hide Member List"
+                                    })
+                                    .on_click(
+                                        cx.listener(|this, _, _, cx| this.toggle_member_list(cx)),
+                                    ),
+                            )
+                        })
                         .child(self.render_search_box(cx)),
                 ),
             cx,

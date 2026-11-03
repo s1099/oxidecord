@@ -536,9 +536,11 @@ fn convert_mentions(
         .into_iter()
         .map(|mention| MentionedUser {
             id: mention.id,
-            avatar_url: mention
-                .avatar
-                .map(|hash| cdn::small_avatar_url(mention.id.get(), &hash.to_string())),
+            avatar_url: Some(cdn::small_user_avatar(
+                mention.id.get(),
+                mention.avatar.map(|hash| hash.to_string()).as_deref(),
+                mention.discriminator,
+            )),
             name: mention
                 .member
                 .and_then(|member| member.nick)

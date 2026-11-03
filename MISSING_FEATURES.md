@@ -48,7 +48,7 @@
 | Server and channel notification settings (all, mentions, nothing, suppress `@everyone`) | Partial | Read from Discord and honoured by unread marks and pings; can't be changed in the app |
 | Muting servers, channels and DMs | Missing | |
 | Marking a server or channel as read from the sidebar | Missing | Only Esc in the open conversation marks it read |
-| Member list sidebar with roles, presence and grouping | Partial | Guild text and announcement channels only; group DMs and threads show none, and right-clicking a member does nothing |
+| Member list sidebar with roles, presence and grouping | Partial | Guild text and announcement channels and group DMs; threads show none, a group DM's list doesn't follow members joining or leaving until the DM list refreshes, and right-clicking a member does nothing |
 | Role icons, server tags and badges next to names | Missing | |
 | Server header dropdown menu | Missing | The banner and verified badge are drawn; the name opens nothing yet |
 | Server boosting and boost level perks | Missing | |
