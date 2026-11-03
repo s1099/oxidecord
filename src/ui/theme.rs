@@ -13,7 +13,7 @@ use crate::platform::prefs;
 
 include!(concat!(env!("OUT_DIR"), "/preset_themes.rs"));
 
-const DEFAULT_PRESET: &str = "Zinc";
+const DEFAULT_THEME: &str = "Flexoki Dark";
 
 /// Corners for presets that don't set their own; gpui-component's default is
 /// tighter than the app's (see [`crate::ui::depth::radius`]).
@@ -60,15 +60,9 @@ pub fn init(cx: &mut App) {
 
     cx.set_global(Themes { presets });
 
-    // Default: Zinc, in the mode the system appearance picked during init.
-    let name = prefs::load().theme.unwrap_or_else(|| {
-        let mode = if Theme::global(cx).mode.is_dark() {
-            "Dark"
-        } else {
-            "Light"
-        };
-        format!("{DEFAULT_PRESET} {mode}")
-    });
+    let name = prefs::load()
+        .theme
+        .unwrap_or_else(|| DEFAULT_THEME.to_string());
     apply(&name, None, cx);
 }
 
