@@ -1,7 +1,5 @@
-//! Editing a message in place: opening, saving (applied locally, rolled back on
-//! failure), and edits arriving over the gateway.
-
-use std::time::{SystemTime, UNIX_EPOCH};
+//! Editing a message in place: opening, saving (applied once the server accepts
+//! it), and edits arriving over the gateway.
 
 use gpui_kit::component::WindowExt as _;
 use gpui_kit::component::button::ButtonVariant;
@@ -109,7 +107,7 @@ impl HomeScreen {
         let content = self.resolve_emoji_names(editing.input.read(cx).value().trim());
         let Some(message) = self
             .messages
-            .iter_mut()
+            .iter()
             .find(|message| message.id == message_id)
         else {
             // The message went away while it was being edited.
@@ -127,14 +125,7 @@ impl HomeScreen {
             return self.confirm_delete_from_edit(message_id, window, cx);
         }
 
-        // Shown now, as Discord does; the box closing onto the old text would read as
-        // the edit being lost.
-        let previous = (message.content.clone(), message.edited);
-        message.set_content(content.clone());
-        message.edited = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .ok()
-            .map(|elapsed| elapsed.as_secs() as i64);
+        // Left as it was until the server accepts the edit, as Discord does.
         self.editing = None;
         self.send_error = None;
         self.message_input.focus_handle(cx).focus(window, cx);
@@ -148,23 +139,20 @@ impl HomeScreen {
                 if this.selected_channel != Some(channel_id) {
                     return;
                 }
-                let Some(message) = this
-                    .messages
-                    .iter_mut()
-                    .find(|message| message.id == message_id)
-                else {
-                    return;
-                };
                 match result {
-                    // The server's copy carries embeds for any links the edit
-                    // added, which the local one can't know about.
-                    Ok(edited) => message.apply_edit(edited),
-                    Err(err) => {
-                        let (content, edited) = previous;
-                        message.set_content(content);
-                        message.edited = edited;
-                        this.send_error = Some(err);
+                    Ok(edited) => {
+                        let Some(ix) = this
+                            .messages
+                            .iter()
+                            .position(|message| message.id == message_id)
+                        else {
+                            return;
+                        };
+                        this.messages[ix].apply_edit(edited);
+                        // A row off screen would otherwise keep its old height.
+                        this.messages_list.splice(ix..ix + 1, 1);
                     }
+                    Err(err) => this.send_error = Some(err),
                 }
                 cx.notify();
             });

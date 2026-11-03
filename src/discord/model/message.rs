@@ -162,12 +162,6 @@ impl Message {
             _ => false,
         }
     }
-
-    /// For a local edit shown before the server confirms it.
-    pub fn set_content(&mut self, content: String) {
-        self.markdown = Arc::new(Markdown::parse(&content));
-        self.content = content;
-    }
 }
 
 #[derive(Clone)]
