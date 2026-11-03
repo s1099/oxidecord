@@ -23,25 +23,37 @@ const PILL_RADIUS: f32 = 20.;
 /// 56px frame) / 2.
 const RAIL_GUTTER: Pixels = px(8.);
 
+/// Room left between the rail's edge and an icon the "NEW" pill scrolls to.
+const NEW_PILL_CLEARANCE: Pixels = px(40.);
+
 impl HomeScreen {
     pub(super) fn render_server_rail(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let in_dms = self.view == View::DirectMessages;
         let theme = cx.theme();
         let rail_bg = theme.sidebar;
         let logo_bg = rgb(0x313338);
-        let dm_mentions = self
+        let unread_dms: Vec<&DirectMessage> = self
             .dms
             .list
             .iter()
-            .map(|dm| self.unreads.dm_mentions(dm.id))
-            .sum();
+            .filter(|dm| self.unreads.dm_mentions(dm.id) > 0)
+            .collect();
+
+        // Scroll children: the DMs icon, the unread DMs, the separator, then the rail entries.
+        let first_entry = 1 + unread_dms.len() + 1;
+        let pinged = (1..=unread_dms.len()).chain(
+            self.rail_entries
+                .iter()
+                .enumerate()
+                .filter(|(_, entry)| self.rail_entry_mentions(entry) > 0)
+                .map(|(ix, _)| first_entry + ix),
+        );
+        let (above, below) = offscreen_pings(self.rail_scroll.handle(), pinged);
 
         // The DMs icon, separator and guild list scroll as one column.
-        v_flex()
+        let rail = v_flex()
             .id("server-rail")
-            .w(px(72.))
-            .h_full()
-            .flex_shrink_0()
+            .size_full()
             .items_center()
             .py_3()
             .gap_2()
@@ -71,24 +83,80 @@ impl HomeScreen {
                                     .text_color(white()),
                             ),
                     )
-                    .children(rail_badge(dm_mentions, cx))
                     .tooltip(tooltip::text("Direct Messages"))
                     .on_click(cx.listener(|this, _, window, cx| {
                         this.open_direct_messages(window, cx);
                     })),
             )
             // Newest first, as in Discord; muted conversations never ping, so never show.
-            .children(
-                self.dms
-                    .list
-                    .iter()
-                    .filter(|dm| self.unreads.dm_mentions(dm.id) > 0)
-                    .map(|dm| self.render_rail_dm(dm, cx)),
-            )
+            .children(unread_dms.iter().map(|dm| self.render_rail_dm(dm, cx)))
             .child(Separator::horizontal().w(px(32.)))
             .children(self.rail_entries.iter().map(|entry| match entry {
                 RailEntry::Guild(guild) => self.render_rail_guild(guild, cx).into_any_element(),
                 RailEntry::Folder(folder) => self.render_rail_folder(folder, cx).into_any_element(),
+            }));
+
+        div()
+            .relative()
+            .w(px(72.))
+            .h_full()
+            .flex_shrink_0()
+            .child(rail)
+            .when_some(above, |this, ix| {
+                this.child(self.render_new_pill(ix, true, cx).top(px(8.)))
+            })
+            .when_some(below, |this, ix| {
+                this.child(self.render_new_pill(ix, false, cx).bottom(px(8.)))
+            })
+    }
+
+    fn rail_entry_mentions(&self, entry: &RailEntry) -> u32 {
+        match entry {
+            RailEntry::Guild(guild) => self.unreads.guild_mentions(guild.id),
+            RailEntry::Folder(folder) => folder
+                .guilds
+                .iter()
+                .map(|guild| self.unreads.guild_mentions(guild.id))
+                .sum(),
+        }
+    }
+
+    /// Floats over the rail's edge while a pinged icon is scrolled past it; a click brings the
+    /// nearest one into view.
+    fn render_new_pill(&self, ix: usize, above: bool, cx: &mut Context<Self>) -> Stateful<Div> {
+        let theme = cx.theme();
+        h_flex()
+            .id(if above {
+                "rail-new-above"
+            } else {
+                "rail-new-below"
+            })
+            .absolute()
+            .left(px(8.))
+            .w(px(56.))
+            .h(px(24.))
+            .justify_center()
+            .rounded_full()
+            .bg(theme.danger)
+            .text_color(theme.danger_foreground)
+            .text_size(px(12.))
+            .font_weight(FontWeight::BOLD)
+            .shadow_md()
+            .cursor_pointer()
+            .child("NEW")
+            .on_click(cx.listener(move |this, _, _, cx| {
+                let handle = this.rail_scroll.handle();
+                let (Some(item), viewport) = (handle.bounds_for_item(ix), handle.bounds()) else {
+                    return;
+                };
+                // Clear of the pill, which would otherwise sit on top of it.
+                let target = if above {
+                    viewport.top() + NEW_PILL_CLEARANCE - item.top()
+                } else {
+                    viewport.bottom() - NEW_PILL_CLEARANCE - item.bottom()
+                };
+                this.rail_scroll.glide_to(target);
+                cx.notify();
             }))
     }
 
@@ -252,6 +320,30 @@ fn rail_badge(mentions: u32, cx: &App) -> Option<Div> {
             .border_color(cx.theme().sidebar)
             .child(badge),
     )
+}
+
+/// The nearest pinged child scrolled past each edge, from last frame's layout. A child counts as
+/// past once its centre is, as its badge sits low on the icon.
+fn offscreen_pings(
+    handle: &ScrollHandle,
+    pinged: impl Iterator<Item = usize>,
+) -> (Option<usize>, Option<usize>) {
+    let viewport = handle.bounds();
+    // Child bounds are laid out unscrolled.
+    let scroll = handle.offset().y;
+    let (mut above, mut below) = (None, None);
+    for ix in pinged {
+        let Some(bounds) = handle.bounds_for_item(ix) else {
+            continue;
+        };
+        let centre = bounds.center().y + scroll;
+        if centre < viewport.top() {
+            above = Some(ix);
+        } else if centre > viewport.bottom() && below.is_none() {
+            below = Some(ix);
+        }
+    }
+    (above, below)
 }
 
 fn folder_preview(guilds: &[Guild]) -> impl IntoElement + use<> {
