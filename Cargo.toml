@@ -34,7 +34,7 @@ davey = "0.1.4"
 aes-gcm = "0.10"
 chacha20poly1305 = "0.10"
 raw-window-handle = "0.6"
-image = { version = "0.25", default-features = false }
+image = { version = "0.25", default-features = false, features = ["bmp", "png", "tiff"] }
 emojis = "0.9.0"
 chrono = { version = "0.4.45", default-features = false, features = ["clock", "std"] }
 sha2 = "0.10.9"
@@ -55,6 +55,8 @@ windows = { version = "0.62", features = [
     "Win32_Media_MediaFoundation",
     "Win32_System_Com",
     "Win32_System_Com_StructuredStorage",
+    "Win32_System_DataExchange",
+    "Win32_System_Memory",
     "Win32_System_Ole",
     "Win32_System_Registry",
     "Win32_System_Variant",

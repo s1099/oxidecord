@@ -9,6 +9,7 @@ use std::sync::Arc;
 use gpui_kit::*;
 
 use crate::discord;
+use crate::platform::clipboard;
 use crate::screens::home::{HomeScreen, PasteAttachment, View};
 use crate::ui::dialogs::show_error;
 
@@ -36,27 +37,64 @@ impl HomeScreen {
 
     /// Returns whether the clipboard held an image, staged or not: one too large
     /// to upload gets an error dialog instead of falling through to a text paste.
+    /// A bitmap stages once it's been re-encoded as PNG.
     fn paste_attachment_from_clipboard(
         &mut self,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> bool {
-        let Some(item) = cx.read_from_clipboard() else {
-            return false;
+        let images: Vec<Image> = match clipboard::read_png() {
+            Some(png) => vec![png],
+            None => cx
+                .read_from_clipboard()
+                .into_iter()
+                .flat_map(|item| item.into_entries())
+                .filter_map(|entry| match entry {
+                    ClipboardEntry::Image(image) if !image.bytes.is_empty() => Some(image),
+                    _ => None,
+                })
+                .collect(),
         };
+        if images.is_empty() {
+            return false;
+        }
 
-        let mut found = false;
+        let (ready, to_convert): (Vec<_>, Vec<_>) = images
+            .into_iter()
+            .partition(|image| clipboard::embeds(image.format));
+        self.stage_pasted_images(ready, window, cx);
+
+        if !to_convert.is_empty() {
+            cx.spawn_in(window, async move |this, cx| {
+                let images = cx
+                    .background_spawn(async move {
+                        to_convert
+                            .into_iter()
+                            .map(|image| clipboard::to_png(&image).unwrap_or(image))
+                            .collect()
+                    })
+                    .await;
+                let _ = this.update_in(cx, |this, window, cx| {
+                    this.stage_pasted_images(images, window, cx)
+                });
+            })
+            .detach();
+        }
+        true
+    }
+
+    fn stage_pasted_images(
+        &mut self,
+        images: Vec<Image>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if images.is_empty() {
+            return;
+        }
         let mut rejected = Vec::new();
         let mut budget = self.upload_budget();
-        for entry in item.into_entries() {
-            let ClipboardEntry::Image(image) = entry else {
-                continue;
-            };
-            if image.bytes.is_empty() {
-                continue;
-            }
-            found = true;
-
+        for image in images {
             if let Err(reason) = budget.take("The pasted image", image.bytes.len() as u64) {
                 rejected.push(reason);
                 continue;
@@ -75,10 +113,7 @@ impl HomeScreen {
         if !rejected.is_empty() {
             show_error("Can't attach image", rejected, window, cx);
         }
-        if found {
-            cx.notify();
-        }
-        found
+        cx.notify();
     }
 
     pub(in crate::screens::home) fn pick_attachments(
