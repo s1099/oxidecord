@@ -7,6 +7,7 @@ use super::reactors::ReactionTooltip;
 use crate::discord;
 use crate::screens::home::HomeScreen;
 use crate::ui::depth::{Finish, Level, Lit as _, radius};
+use crate::ui::twemoji;
 
 const CHIP_HEIGHT: f32 = 24.;
 
@@ -76,10 +77,9 @@ impl HomeScreen {
                             .size(px(16.))
                             .into_any_element(),
                         None => match &emoji {
-                            discord::ReactionEmoji::Unicode(name) => div()
-                                .text_size(px(15.))
-                                .child(name.clone())
-                                .into_any_element(),
+                            discord::ReactionEmoji::Unicode(name) => {
+                                twemoji::glyph(name, px(16.), &twemoji::cache(cx))
+                            }
                             _ => div().into_any_element(),
                         },
                     })

@@ -78,6 +78,8 @@ pub enum Inline {
     },
     Mention(Mention),
     Emoji(CustomEmoji),
+    /// Drawn as an image, like a custom emoji. One written in text style stays text.
+    UnicodeEmoji(&'static emojis::Emoji),
     Timestamp(Timestamp),
 }
 
@@ -206,7 +208,7 @@ fn is_jumbo(blocks: &[Block]) -> bool {
     let mut count = 0;
     for inline in inlines {
         match inline {
-            Inline::Emoji(_) => count += 1,
+            Inline::Emoji(_) | Inline::UnicodeEmoji(_) => count += 1,
             Inline::Text(text) => match count_unicode_emoji(text) {
                 Some(n) => count += n,
                 None => return false,

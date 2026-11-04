@@ -127,7 +127,7 @@ impl HomeScreen {
                 category.clone(),
             ),
             Suggestion::Emoji { emoji, guild } => (
-                Some(emoji_glyph(emoji, 22., self, false)),
+                Some(emoji_glyph(emoji, 22., self, false, cx)),
                 emoji.label(),
                 guild.clone(),
             ),

@@ -9,7 +9,9 @@ use std::sync::LazyLock;
 use regex::Regex;
 use twilight_model::id::Id;
 
-use super::{CustomEmoji, GuildNavigation, Inline, Mention, Timestamp, TimestampStyle};
+use super::{
+    CustomEmoji, GuildNavigation, Inline, Mention, Timestamp, TimestampStyle, is_pictographic,
+};
 
 static USER_MENTION: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^<@!?(\d+)>").unwrap());
 static ROLE_MENTION: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^<@&(\d+)>").unwrap());
@@ -68,7 +70,8 @@ impl Parser<'_> {
                 'h' if self.links && !prev_is_alphanumeric(source, pos) => self.url(rest),
                 '*' | '_' | '~' | '|' => self.delimited(source, pos),
                 _ => None,
-            };
+            }
+            .or_else(|| self.unicode_emoji(rest));
             match consumed {
                 Some(len) => pos += len,
                 None => {
@@ -144,6 +147,12 @@ impl Parser<'_> {
             self.push(Inline::Code(code.to_string()));
         }
         Some(close + ticks)
+    }
+
+    fn unicode_emoji(&mut self, rest: &str) -> Option<usize> {
+        let (len, emoji) = match_emoji(rest)?;
+        self.push(Inline::UnicodeEmoji(emoji));
+        Some(len)
     }
 
     fn angle(&mut self, rest: &str) -> Option<usize> {
@@ -491,4 +500,119 @@ fn prev_is_alphanumeric(source: &str, pos: usize) -> bool {
         .chars()
         .next_back()
         .is_some_and(char::is_alphanumeric)
+}
+
+/// The longest emoji sequence `rest` starts with, and its length in bytes. A
+/// sequence the table lacks falls back to its leading part.
+fn match_emoji(rest: &str) -> Option<(usize, &'static emojis::Emoji)> {
+    const ZWJ: char = '\u{200D}';
+    let first = rest.chars().next()?;
+    let keycap = matches!(first, '0'..='9' | '#' | '*');
+    if first.is_ascii() && !keycap {
+        return None;
+    }
+    let lookup = |len: usize| emojis::get(&rest[..len]).map(|emoji| (len, emoji));
+    if keycap {
+        // Only as a keycap: the character, optional variation selector, keycap mark.
+        let mut len = 1;
+        if rest[len..].starts_with('\u{FE0F}') {
+            len += '\u{FE0F}'.len_utf8();
+        }
+        if !rest[len..].starts_with('\u{20E3}') {
+            return None;
+        }
+        return lookup(len + '\u{20E3}'.len_utf8());
+    }
+    if is_regional_indicator(first) {
+        let second = rest[first.len_utf8()..]
+            .chars()
+            .next()
+            .filter(|&c| is_regional_indicator(c))?;
+        return lookup(first.len_utf8() + second.len_utf8());
+    }
+    if !is_pictographic(first as u32) {
+        return None;
+    }
+
+    // Each component's end, so a sequence can shrink back one join at a time.
+    let mut ends = [0; 8];
+    let mut count = 0;
+    let mut len = first.len_utf8();
+    let mut presented = has_emoji_presentation(first);
+    loop {
+        while let Some(c) = rest[len..].chars().next() {
+            match c as u32 {
+                // Text style: left to the system font, as Discord leaves it.
+                0xFE0E if count == 0 => return None,
+                0xFE0F | 0x1F3FB..=0x1F3FF => presented = true,
+                0x20E3 | 0xE0020..=0xE007F => {}
+                _ => break,
+            }
+            len += c.len_utf8();
+        }
+        ends[count] = len;
+        count += 1;
+        let next = rest[len..]
+            .strip_prefix(ZWJ)
+            .and_then(|after| after.chars().next())
+            .filter(|&c| is_pictographic(c as u32));
+        match next {
+            Some(next) if count < ends.len() => {
+                len += ZWJ.len_utf8() + next.len_utf8();
+                presented = true;
+            }
+            _ => break,
+        }
+    }
+    if !presented {
+        return None;
+    }
+    ends[..count].iter().rev().find_map(|&end| lookup(end))
+}
+
+fn is_regional_indicator(c: char) -> bool {
+    ('\u{1F1E6}'..='\u{1F1FF}').contains(&c)
+}
+
+/// Drawn as emoji with no variation selector: everything outside the BMP, and
+/// the BMP's `Emoji_Presentation` characters. The rest (©, ❤, ↔) are text
+/// unless U+FE0F follows.
+fn has_emoji_presentation(c: char) -> bool {
+    matches!(
+        c as u32,
+        0x10000..
+            | 0x231A..=0x231B
+            | 0x23E9..=0x23EC
+            | 0x23F0
+            | 0x23F3
+            | 0x25FD..=0x25FE
+            | 0x2614..=0x2615
+            | 0x2648..=0x2653
+            | 0x267F
+            | 0x2693
+            | 0x26A1
+            | 0x26AA..=0x26AB
+            | 0x26BD..=0x26BE
+            | 0x26C4..=0x26C5
+            | 0x26CE
+            | 0x26D4
+            | 0x26EA
+            | 0x26F2..=0x26F3
+            | 0x26F5
+            | 0x26FA
+            | 0x26FD
+            | 0x2705
+            | 0x270A..=0x270B
+            | 0x2728
+            | 0x274C
+            | 0x274E
+            | 0x2753..=0x2755
+            | 0x2757
+            | 0x2795..=0x2797
+            | 0x27B0
+            | 0x27BF
+            | 0x2B1B..=0x2B1C
+            | 0x2B50
+            | 0x2B55
+    )
 }

@@ -39,6 +39,7 @@ fn main() {
     app.run(|cx: &mut App| {
         gpui_kit::component::init(cx);
         ui::theme::init(cx);
+        ui::twemoji::init(cx);
         platform::updater::init(cx);
 
         // No context, so these resolve ahead of the text input's own paste/copy;

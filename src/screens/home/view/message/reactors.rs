@@ -15,6 +15,7 @@ use crate::screens::home::HomeScreen;
 use crate::screens::home::view::avatar;
 use crate::ui::button::Button;
 use crate::ui::depth::{self, Finish, Level, Lit as _, radius};
+use crate::ui::twemoji;
 
 /// How many reactors the tooltip names before summing up the rest.
 const TOOLTIP_NAMES: usize = 3;
@@ -77,14 +78,12 @@ fn ensure_reactors(
     });
 }
 
-fn emoji_element(emoji: &discord::ReactionEmoji, size: Pixels) -> AnyElement {
+fn emoji_element(emoji: &discord::ReactionEmoji, size: Pixels, cx: &App) -> AnyElement {
     match (emoji.image_url(), emoji) {
         (Some(url), _) => img(url).size(size).into_any_element(),
-        (None, discord::ReactionEmoji::Unicode(text)) => div()
-            .text_size(size * 0.9)
-            .line_height(size)
-            .child(text.clone())
-            .into_any_element(),
+        (None, discord::ReactionEmoji::Unicode(text)) => {
+            twemoji::glyph(text, size, &twemoji::cache(cx))
+        }
         (None, _) => div().size(size).into_any_element(),
     }
 }
@@ -187,7 +186,7 @@ impl Render for ReactionTooltip {
                 .child(
                     div()
                         .flex_shrink_0()
-                        .child(emoji_element(&self.emoji, px(32.))),
+                        .child(emoji_element(&self.emoji, px(32.), cx)),
                 )
                 .child(div().min_w_0().child(line)),
         )
@@ -276,7 +275,7 @@ impl Render for ReactionsDialog {
                     .when(!selected, |this| {
                         this.hover(|this| this.bg(theme.secondary_hover.opacity(0.5)))
                     })
-                    .child(emoji_element(&reaction.emoji, px(20.)))
+                    .child(emoji_element(&reaction.emoji, px(20.), cx))
                     .child(
                         div()
                             .text_sm()

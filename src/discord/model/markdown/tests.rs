@@ -325,5 +325,38 @@ fn timestamps() {
 #[test]
 fn stray_variation_selectors() {
     assert_eq!(inline("\u{FE00}\n\u{FE00}\u{FE00}Today"), [text("\nToday")]);
-    assert_eq!(inline("\u{2764}\u{FE0F} 20"), [text("\u{2764}\u{FE0F} 20")]);
+    // One that follows its base is kept.
+    assert_eq!(
+        inline("\u{2764}\u{FE0F} 20"),
+        [
+            Inline::UnicodeEmoji(emojis::get("\u{2764}\u{FE0F}").unwrap()),
+            text(" 20")
+        ]
+    );
+}
+
+#[test]
+fn unicode_emoji() {
+    let emoji = |s: &str| Inline::UnicodeEmoji(emojis::get(s).unwrap());
+    assert_eq!(inline("hi 👍🏽!"), [text("hi "), emoji("👍🏽"), text("!")]);
+    // Joined sequences, flags and keycaps are one emoji each.
+    assert_eq!(
+        inline("👨\u{200D}👩\u{200D}👧🇺🇸#\u{FE0F}\u{20E3}"),
+        [
+            emoji("👨\u{200D}👩\u{200D}👧"),
+            emoji("🇺🇸"),
+            emoji("#\u{FE0F}\u{20E3}")
+        ]
+    );
+    // Text-style characters stay text unless asked to be emoji.
+    assert_eq!(inline("© ❤ #1"), [text("© ❤ #1")]);
+    assert_eq!(inline("❤\u{FE0F}"), [emoji("❤\u{FE0F}")]);
+    assert_eq!(inline("☕\u{FE0E}"), [text("☕\u{FE0E}")]);
+    assert_eq!(inline("☕"), [emoji("☕")]);
+    // A join the table doesn't know falls back to its parts.
+    assert_eq!(
+        inline("😀\u{200D}🚀"),
+        [emoji("😀"), text("\u{200D}"), emoji("🚀")]
+    );
+    assert_eq!(inline(r"\😀"), [text("😀")]);
 }

@@ -16,6 +16,7 @@ use crate::discord;
 use crate::screens::home::{EmojiTarget, HomeScreen, ReplyTarget};
 use crate::ui::button::Button;
 use crate::ui::depth::{self, Finish, Level, Lit as _, radius};
+use crate::ui::twemoji;
 
 #[derive(Clone, Copy)]
 pub(super) enum Hovered {
@@ -194,14 +195,12 @@ impl HomeScreen {
                         .image_cache(&self.image_cache)
                         .size(px(18.))
                         .into_any_element(),
-                    None => div()
-                        .text_size(px(17.))
-                        .line_height(relative(1.))
-                        .child(match &emoji {
-                            discord::ReactionEmoji::Unicode(text) => text.clone(),
-                            discord::ReactionEmoji::Custom { .. } => String::new(),
-                        })
-                        .into_any_element(),
+                    None => match &emoji {
+                        discord::ReactionEmoji::Unicode(text) => {
+                            twemoji::glyph(text, px(18.), &twemoji::cache(cx))
+                        }
+                        discord::ReactionEmoji::Custom { .. } => div().into_any_element(),
+                    },
                 };
                 Button::new(SharedString::from(format!(
                     "message-quick-react-{}-{index}",

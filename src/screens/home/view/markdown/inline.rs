@@ -13,7 +13,7 @@ use twilight_model::id::{
 use crate::discord::{self, Inline, Mention};
 
 use super::Renderer;
-use super::rich_text::{EMOJI_PLACEHOLDER, Marker, RichText, Segment};
+use super::rich_text::{EMOJI_PLACEHOLDER, InlineImage, Marker, RichText, Segment};
 
 #[derive(Clone)]
 pub(super) enum Action {
@@ -85,7 +85,7 @@ pub(super) struct Flattener<'a, 'b> {
     segments: Vec<Segment>,
     actions: Vec<(Range<usize>, Action)>,
     tooltips: Vec<(Range<usize>, SharedString)>,
-    emoji: Vec<(Range<usize>, SharedString)>,
+    emoji: Vec<(Range<usize>, InlineImage)>,
     emoji_names: Vec<(Range<usize>, SharedString)>,
     marker: Option<Marker>,
 }
@@ -266,9 +266,21 @@ impl<'a, 'b> Flattener<'a, 'b> {
                 self.emoji_names
                     .push((range.clone(), format!(":{}:", emoji.name).into()));
                 if !style.hidden {
-                    self.emoji.push((range.clone(), emoji.url().into()));
+                    self.emoji
+                        .push((range.clone(), InlineImage::Custom(emoji.url().into())));
                     self.tooltips
                         .push((range, format!(":{}:", emoji.name).into()));
+                }
+            }
+            Inline::UnicodeEmoji(emoji) => {
+                let range = self.push(EMOJI_PLACEHOLDER, style);
+                // Copies as itself, not as the gap standing in for it.
+                self.emoji_names
+                    .push((range.clone(), emoji.as_str().into()));
+                if !style.hidden {
+                    self.emoji
+                        .push((range.clone(), InlineImage::Unicode(emoji.as_str())));
+                    self.tooltips.push((range, shortcode(emoji).into()));
                 }
             }
             Inline::Timestamp(timestamp) => {
@@ -354,4 +366,8 @@ impl From<&discord::MentionedUser> for ResolvedUser {
             avatar_url: user.avatar_url.clone(),
         }
     }
+}
+
+pub(super) fn shortcode(emoji: &emojis::Emoji) -> String {
+    format!(":{}:", emoji.shortcode().unwrap_or(emoji.name()))
 }

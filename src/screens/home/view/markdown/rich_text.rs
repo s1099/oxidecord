@@ -19,7 +19,7 @@ use std::rc::Rc;
 use gpui_kit::*;
 
 use crate::screens::home::selection::{TextKey, TextRegion, TextRegions};
-use crate::ui::tooltip;
+use crate::ui::{tooltip, twemoji};
 
 /// An em space plus a quarter-em space, about as wide as Discord's inline emoji.
 pub(super) const EMOJI_PLACEHOLDER: &str = "\u{2003}\u{2005}";
@@ -49,6 +49,11 @@ pub(super) struct Segment {
     pub mono: bool,
 }
 
+pub(super) enum InlineImage {
+    Custom(SharedString),
+    Unicode(&'static str),
+}
+
 type ClickListener = Rc<dyn Fn(usize, &mut Window, &mut App)>;
 
 pub(super) struct Selectable {
@@ -66,7 +71,7 @@ pub(super) struct RichText {
     clickable: Vec<Range<usize>>,
     on_click: Option<ClickListener>,
     tooltips: Vec<(Range<usize>, SharedString)>,
-    emoji: Vec<(Range<usize>, SharedString)>,
+    emoji: Vec<(Range<usize>, InlineImage)>,
     marker: Option<Marker>,
     shaped_marker: Option<ShapedMarker>,
     selectable: Option<Selectable>,
@@ -132,7 +137,7 @@ impl RichText {
         self
     }
 
-    pub fn emoji(mut self, emoji: Vec<(Range<usize>, SharedString)>) -> Self {
+    pub fn emoji(mut self, emoji: Vec<(Range<usize>, InlineImage)>) -> Self {
         self.emoji = emoji;
         self
     }
@@ -267,7 +272,7 @@ impl Element for RichText {
         // from where it starts.
         self.placed.clear();
         let line_height = self.layout.line_height();
-        for (range, url) in &self.emoji {
+        for (range, image) in &self.emoji {
             let Some(start) = self.layout.position_for_index(range.start) else {
                 continue;
             };
@@ -280,10 +285,13 @@ impl Element for RichText {
                 start.x + (width - side) / 2.,
                 start.y + (line_height - side) / 2.,
             );
-            let mut image = img(url.clone())
-                .image_cache(&self.image_cache)
-                .size(side)
-                .into_any_element();
+            let mut image = match image {
+                InlineImage::Custom(url) => img(url.clone())
+                    .image_cache(&self.image_cache)
+                    .size(side)
+                    .into_any_element(),
+                InlineImage::Unicode(emoji) => twemoji::glyph(emoji, side, &twemoji::cache(cx)),
+            };
             image.prepaint_as_root(origin, size(side, side).map(Into::into), window, cx);
             self.placed.push(image);
         }

@@ -22,7 +22,7 @@ use twilight_model::id::{Id, marker::UserMarker};
 use crate::discord::{self, Block, Inline};
 use crate::screens::home::selection::{TextCopy, TextKey, TextOwner, TextPart};
 use crate::screens::home::{HomeScreen, View};
-use crate::ui::{dialogs, tooltip};
+use crate::ui::{dialogs, tooltip, twemoji};
 
 use inline::{Action, Flattener, ResolvedUser};
 use rich_text::{RichText, Segment, Selectable};
@@ -118,6 +118,7 @@ struct Renderer<'a> {
     options: MarkdownOptions<'a>,
     palette: Palette,
     mono_family: SharedString,
+    twemoji: Entity<twemoji::TwemojiCache>,
     on_action: ActionHandler,
     /// Unix seconds.
     now: i64,
@@ -190,6 +191,7 @@ impl<'a> Renderer<'a> {
             options,
             palette: Palette::new(cx),
             mono_family: cx.theme().mono_font_family.clone(),
+            twemoji: twemoji::cache(cx),
             on_action,
             now: SystemTime::now()
                 .duration_since(UNIX_EPOCH)
@@ -455,6 +457,23 @@ impl<'a> Renderer<'a> {
                         )
                         .when(self.options.interactive, |this| {
                             this.tooltip(tooltip::text(format!(":{}:", emoji.name)))
+                        })
+                        .into_any_element(),
+                ),
+                Inline::UnicodeEmoji(emoji) => items.push(
+                    div()
+                        .id(ElementId::NamedInteger(
+                            format!("{scope}-jumbo").into(),
+                            ix as u64,
+                        ))
+                        .flex_shrink_0()
+                        .child(twemoji::glyph(
+                            emoji.as_str(),
+                            px(JUMBO_SIZE),
+                            &self.twemoji,
+                        ))
+                        .when(self.options.interactive, |this| {
+                            this.tooltip(tooltip::text(inline::shortcode(emoji)))
                         })
                         .into_any_element(),
                 ),

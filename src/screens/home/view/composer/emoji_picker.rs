@@ -13,7 +13,7 @@ use gpui_kit::*;
 use crate::screens::home::emoji::{COLUMNS, PickerEmoji, PickerRow, SectionHeader, SectionKind};
 use crate::screens::home::{EmojiTarget, HomeScreen};
 use crate::ui::depth::{self, Level, radius};
-use crate::ui::tooltip;
+use crate::ui::{tooltip, twemoji};
 
 /// Each emoji's square and every list line's height, headers included, so the
 /// list can be virtualized.
@@ -73,7 +73,7 @@ impl HomeScreen {
             .border_color(theme.border)
             .bg(theme.muted.opacity(0.4))
             .map(|this| match &picker.hovered {
-                Some(emoji) => this.child(emoji_glyph(emoji, 28., self, false)).child(
+                Some(emoji) => this.child(emoji_glyph(emoji, 28., self, false, cx)).child(
                     div()
                         .truncate()
                         .text_base()
@@ -258,7 +258,7 @@ impl HomeScreen {
             .items_center()
             .justify_center()
             .rounded(radius::ITEM)
-            .child(emoji_glyph(emoji, EMOJI_SIZE, self, locked.is_some()))
+            .child(emoji_glyph(emoji, EMOJI_SIZE, self, locked.is_some(), cx))
             .on_hover(cx.listener(move |this, hovered: &bool, _, cx| {
                 if *hovered {
                     this.hover_emoji(Some(hover_emoji.clone()), cx);
@@ -343,13 +343,12 @@ pub(super) fn emoji_glyph(
     size: f32,
     screen: &HomeScreen,
     locked: bool,
+    cx: &App,
 ) -> AnyElement {
     match emoji {
-        PickerEmoji::Unicode(emoji) => div()
-            .text_size(px(size * 0.85))
-            .line_height(px(size))
-            .child(emoji.as_str())
-            .into_any_element(),
+        PickerEmoji::Unicode(emoji) => {
+            twemoji::glyph(emoji.as_str(), px(size), &twemoji::cache(cx))
+        }
         PickerEmoji::Custom { emoji, .. } => img(emoji.url())
             .image_cache(&screen.image_cache)
             .size(px(size))
