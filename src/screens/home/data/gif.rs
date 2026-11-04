@@ -3,12 +3,15 @@
 //! A `gifv` clip is decoded whole into one multi-frame [`RenderImage`], the shape
 //! gpui decodes a real GIF into, so `img()` loops it with no player or decoder
 //! left running and the asset cache shares one decode between every place it's drawn.
+//!
+//! A clip can be tens of megabytes of frames, so ones scrolled out of view are released
+//! rather than held until the conversation is left.
 
 use std::cell::RefCell;
-use std::collections::HashSet;
+use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use gpui_kit::*;
 use image::{Delay, Frame, ImageBuffer};
@@ -19,6 +22,13 @@ use crate::screens::home::HomeScreen;
 /// Frames closer together than the screen refreshes would be skipped anyway.
 const MIN_FRAME_DELAY: Duration = Duration::from_millis(10);
 
+/// A playing clip asks for a frame every refresh, so one not drawn for this long has
+/// left the screen.
+const OFF_SCREEN_AFTER: Duration = Duration::from_secs(1);
+
+/// Off-screen clips kept anyway, so scrolling back a little doesn't decode them again.
+const KEPT_OFF_SCREEN: usize = 2;
+
 /// One clip at one size; the same GIF at another display scale is another decode.
 #[derive(Clone, Hash, PartialEq, Eq)]
 pub(in crate::screens::home) struct GifSource {
@@ -27,9 +37,10 @@ pub(in crate::screens::home) struct GifSource {
     target: (u32, u32),
 }
 
-/// Tracked so they can be released on leaving the conversation. Shared with the
-/// `img()` loaders, which run during layout where the screen can't be reached.
-pub(in crate::screens::home) type LoadedGifs = Rc<RefCell<HashSet<GifSource>>>;
+/// Each clip loaded, with when it was last drawn, so they can be released once off
+/// screen or on leaving the conversation. Shared with the `img()` loaders, which run
+/// during layout where the screen can't be reached.
+pub(in crate::screens::home) type LoadedGifs = Rc<RefCell<HashMap<GifSource, Instant>>>;
 
 enum GifLoader {}
 
@@ -74,23 +85,55 @@ pub(in crate::screens::home) fn gif_source(
             ),
         };
         let image = window.use_asset::<GifLoader>(&source, cx);
-        let mut loaded = loaded.borrow_mut();
-        if !loaded.contains(&source) {
-            loaded.insert(source);
+        let now = Instant::now();
+        let mut gifs = loaded.borrow_mut();
+        if let Some(drawn) = gifs.get_mut(&source) {
+            *drawn = now;
+        } else {
+            gifs.insert(source, now);
+            // Deferred so every clip still on screen has been drawn this frame first.
+            let loaded = loaded.clone();
+            window.on_next_frame(move |window, cx| release_off_screen(&loaded, window, cx));
         }
         image
     }))
+}
+
+fn release_off_screen(loaded: &LoadedGifs, window: &mut Window, cx: &mut App) {
+    let mut gifs = loaded.borrow_mut();
+    let Some(latest) = gifs.values().max().copied() else {
+        return;
+    };
+    // Measured from the latest draw rather than now, so a window that sat idle doesn't
+    // make the clips it's showing look abandoned.
+    let mut off_screen: Vec<(GifSource, Instant)> = gifs
+        .iter()
+        .filter(|(_, drawn)| latest.duration_since(**drawn) > OFF_SCREEN_AFTER)
+        // One still decoding isn't asking for frames yet, so its age says nothing, and a
+        // failed one holds no frames and would only be fetched again.
+        .filter(|(source, _)| matches!(window.get_asset::<GifLoader>(source, cx), Some(Ok(_))))
+        .map(|(source, drawn)| (source.clone(), *drawn))
+        .collect();
+    off_screen.sort_by_key(|(_, drawn)| std::cmp::Reverse(*drawn));
+    for (source, _) in off_screen.into_iter().skip(KEPT_OFF_SCREEN) {
+        gifs.remove(&source);
+        release(&source, window, cx);
+    }
+}
+
+fn release(source: &GifSource, window: &mut Window, cx: &mut App) {
+    if let Some(Ok(image)) = window.get_asset::<GifLoader>(source, cx) {
+        cx.drop_image(image, Some(window));
+    }
+    cx.remove_asset::<GifLoader>(source);
 }
 
 impl HomeScreen {
     /// Releases every clip loaded for the conversation being left, from the sprite
     /// atlas and the asset cache, which would otherwise hold the frames all session.
     pub(in crate::screens::home) fn release_gifs(&mut self, window: &mut Window, cx: &mut App) {
-        for source in self.gifs.borrow_mut().drain() {
-            if let Some(Ok(image)) = window.get_asset::<GifLoader>(&source, cx) {
-                cx.drop_image(image, Some(window));
-            }
-            cx.remove_asset::<GifLoader>(&source);
+        for (source, _) in self.gifs.borrow_mut().drain() {
+            release(&source, window, cx);
         }
     }
 }

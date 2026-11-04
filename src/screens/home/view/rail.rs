@@ -1,15 +1,14 @@
 //! The left-hand server rail: the DMs button, the guild icons, and the folders
 //! grouping them.
 
-use gpui_kit::component::{
-    ActiveTheme as _, Icon, IconName, avatar::Avatar, h_flex, separator::Separator, v_flex,
-};
+use gpui_kit::component::{ActiveTheme as _, Icon, IconName, h_flex, separator::Separator, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
 use crate::discord::{DirectMessage, Guild};
 use crate::screens::home::folders::{RailEntry, RailFolder};
 use crate::screens::home::{HomeScreen, View};
+use crate::ui::avatar::CachedAvatar;
 use crate::ui::depth::{Finish, Level, Lit as _};
 use crate::ui::tooltip;
 
@@ -362,6 +361,6 @@ fn folder_preview(guilds: &[Guild]) -> impl IntoElement + use<> {
 }
 
 /// Rounded squares, as in Discord: radius a third of the side (48px gets 16px).
-fn guild_avatar(guild: &Guild, size: Pixels) -> Avatar {
+fn guild_avatar(guild: &Guild, size: Pixels) -> CachedAvatar {
     super::avatar(guild.name.clone(), guild.icon_url.clone(), size).rounded(size / 3.)
 }

@@ -1,20 +1,16 @@
 //! A saved account as the switchers draw it: picture, display name, and username.
 
 use gpui_kit::component::{
-    ActiveTheme as _, Icon, IconName, Selectable, Sizable as _, avatar::Avatar, menu::DropdownMenu,
-    v_flex,
+    ActiveTheme as _, Icon, IconName, Selectable, Sizable as _, menu::DropdownMenu, v_flex,
 };
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
 use crate::discord::Account;
+use crate::ui::avatar::{CachedAvatar, avatar};
 
-pub fn account_avatar(account: &Account, size: Pixels) -> Avatar {
-    let avatar = Avatar::new().name(account.display_name()).with_size(size);
-    match &account.avatar_url {
-        Some(url) => avatar.src(url.clone()),
-        None => avatar,
-    }
+pub fn account_avatar(account: &Account, size: Pixels) -> CachedAvatar {
+    avatar(account.display_name(), account.avatar_url.clone(), size)
 }
 
 /// Display name over `@username`.

@@ -97,6 +97,7 @@ impl HomeScreen {
                     .when_some(banner_url, |this, url| {
                         this.child(
                             img(url)
+                                .image_cache(&crate::ui::avatar::cache(cx))
                                 .size_full()
                                 .rounded_t(banner_radius)
                                 .object_fit(ObjectFit::Cover),

@@ -16,7 +16,7 @@ mod voice;
 
 pub(super) use sidebar::sidebar_width;
 
-use gpui_kit::component::{ActiveTheme as _, Sizable as _, avatar::Avatar, h_flex, v_flex};
+use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
@@ -205,13 +205,7 @@ fn inset(content: AnyElement, cx: &App) -> impl IntoElement {
         })
 }
 
-fn avatar(name: String, url: Option<String>, size: Pixels) -> Avatar {
-    let avatar = Avatar::new().name(name).with_size(size);
-    match url {
-        Some(url) => avatar.src(url),
-        None => avatar,
-    }
-}
+use crate::ui::avatar::avatar;
 
 /// A DM's icon. A group with no icon of its own stacks two of its members, as
 /// Discord does, the front one ringed in `backdrop` so it reads as cut out.

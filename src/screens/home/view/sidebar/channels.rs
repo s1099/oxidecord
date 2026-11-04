@@ -98,7 +98,12 @@ impl HomeScreen {
             .flex_shrink_0()
             .w_full()
             .h(banner_height)
-            .child(img(url).size_full().object_fit(ObjectFit::Cover))
+            .child(
+                img(url)
+                    .image_cache(&crate::ui::avatar::cache(cx))
+                    .size_full()
+                    .object_fit(ObjectFit::Cover),
+            )
             // Keeps the name legible over a bright banner.
             .child(div().absolute().inset_0().bg(linear_gradient(
                 180.,

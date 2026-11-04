@@ -1,6 +1,7 @@
 //! UI building blocks shared across screens.
 
 pub mod accounts;
+pub mod avatar;
 pub mod button;
 pub mod depth;
 pub mod dialogs;

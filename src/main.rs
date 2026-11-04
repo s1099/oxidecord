@@ -40,6 +40,7 @@ fn main() {
         gpui_kit::component::init(cx);
         ui::theme::init(cx);
         ui::twemoji::init(cx);
+        ui::avatar::init(cx);
         platform::updater::init(cx);
 
         // No context, so these resolve ahead of the text input's own paste/copy;

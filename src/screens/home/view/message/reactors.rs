@@ -80,7 +80,10 @@ fn ensure_reactors(
 
 fn emoji_element(emoji: &discord::ReactionEmoji, size: Pixels, cx: &App) -> AnyElement {
     match (emoji.image_url(), emoji) {
-        (Some(url), _) => img(url).size(size).into_any_element(),
+        (Some(url), _) => img(url)
+            .image_cache(&crate::ui::avatar::cache(cx))
+            .size(size)
+            .into_any_element(),
         (None, discord::ReactionEmoji::Unicode(text)) => {
             twemoji::glyph(text, size, &twemoji::cache(cx))
         }
