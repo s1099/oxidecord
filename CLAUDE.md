@@ -105,8 +105,13 @@ sends the UI back to the poster card and its "open externally" action.
 - Home screen state is `pub(super)`; keep it that way.
 - Commits: conventional lowercase (`feat:`, `fix:`, `chore:`).
 - Run `cargo fmt` and `cargo clippy` before committing.
-- `MISSING_FEATURES.md` tracks what the app doesn't do yet. When a feature listed there is
+- `docs/MISSING_FEATURES.md` tracks what the app doesn't do yet. When a feature listed there is
   implemented, delete its row; when one is only partly done, update its status and notes.
+- `docs/CODE_DEBT.md` tracks gaps left in code that already shipped: shortcuts, missing edge
+  cases, known bugs, hacks, TODOs. Whenever you finish work and leave such a gap, add an entry
+  under the feature's name (create the heading if it isn't there) saying what's missing and
+  where (`path:line`). When you close a gap, delete its entry. Features the app lacks entirely
+  belong in `docs/MISSING_FEATURES.md` instead.
 
 ## UI work
 
