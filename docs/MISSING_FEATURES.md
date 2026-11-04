@@ -145,7 +145,7 @@
 | Developer mode (copy IDs) | Missing | |
 | Local caching of guilds, channels and messages across restarts | Missing | Listed on the README TODO |
 | Offline and reconnecting indicator | Missing | The shard reconnects silently |
-| Minimize to system tray and run on startup | Missing | |
+| Minimize to system tray and run on startup | Partial | Windows closes to the tray and keeps one instance; no tray on macOS or Linux, no run on startup |
 | Auto-updater on macOS and Linux | Missing | Windows only |
 | Video playback on macOS and Linux | Missing | `platform/video/unsupported.rs` falls back to the poster card, and GIFs Discord serves as video (Tenor, Klipy, Giphy) stay on their still poster |
 | Deep links (`discord://` URLs) | Missing | discord.com message links in messages already open in the app |

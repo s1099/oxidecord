@@ -49,7 +49,9 @@ older than the installed Visual Studio, build through Ninja: `CMAKE_GENERATOR=Ni
   comes with the gateway's `READY` (REST only fills in until then, or refreshes a list a
   `CHANNEL_*`/role change made stale), and `history_cache.rs` keeps recently opened
   conversations, drawn at once and merged with the newest page when it lands.
-- `src/platform/` — runtime, http client, prefs, updater, `video/` (inline video
+- `src/platform/` — runtime, http client, prefs, updater, `tray.rs` and `instance.rs`
+  (Windows: closing hides to a notification-area icon; a second launch shows the running
+  instance instead), `video/` (inline video
   playback, decoded by the OS), `capture/` (screen capture and H.264 encoding for
   Go Live, also by the OS), and `h264/` (decoding a watched stream, also by the OS).
 - `platform/prefs.rs` — user preferences persisted to `prefs.json` in the config dir (theme,

@@ -27,6 +27,11 @@ fn main() {
         platform::updater::apply_update();
     }
 
+    #[cfg(windows)]
+    let Some(instance) = platform::instance::claim() else {
+        return;
+    };
+
     // The login webview doesn't work with DirectComposition.
     #[cfg(target_os = "windows")]
     unsafe {
@@ -112,11 +117,16 @@ fn main() {
             ..Default::default()
         };
 
-        cx.open_window(options, move |window, cx| {
-            let app_view = cx.new(|cx| AppScreen::new(window, cx));
-            cx.new(|cx| Root::new(app_view, window, cx))
-        })
-        .expect("Failed to open window");
+        let main_window = cx
+            .open_window(options, move |window, cx| {
+                let app_view = cx.new(|cx| AppScreen::new(window, cx));
+                cx.new(|cx| Root::new(app_view, window, cx))
+            })
+            .expect("Failed to open window");
+        #[cfg(windows)]
+        platform::tray::install(main_window.into(), instance.activations(), cx);
+        #[cfg(not(windows))]
+        let _ = main_window;
 
         // Needs the window open for the toast.
         if platform::updater::supported() {

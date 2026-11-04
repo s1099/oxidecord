@@ -12,3 +12,10 @@ Entry format:
 
 - **<Short gap title>** — what's missing or wrong, and why it was left. `src/path.rs:123`
 ```
+
+## Close to tray
+
+- **No setting to quit on close** — closing the main window always hides it to the tray;
+  Discord offers a toggle. `src/platform/tray.rs:31`
+- **Inline video keeps playing while hidden** — hiding doesn't pause the clip, so its audio
+  goes on with no window to stop it from. `src/platform/tray.rs:32`

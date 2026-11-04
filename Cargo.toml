@@ -59,11 +59,18 @@ windows = { version = "0.62", features = [
     "Win32_System_Memory",
     "Win32_System_Ole",
     "Win32_System_Registry",
+    "Win32_System_Threading",
     "Win32_System_Variant",
     "Win32_System_WinRT_Direct3D11",
     "Win32_System_WinRT_Graphics_Capture",
     "Win32_UI_Shell",
+    "Win32_UI_WindowsAndMessaging",
 ] }
+
+# Closing the window leaves the app running behind a notification-area icon
+[target.'cfg(windows)'.dependencies.tray-icon]
+version = "0.26"
+default-features = false
 
 # Denies the login webview's permission prompts; matches the version wry uses
 [target.'cfg(windows)'.dependencies.webview2-com]
