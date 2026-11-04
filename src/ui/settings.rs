@@ -453,13 +453,15 @@ fn update_field() -> SettingField<SharedString> {
         let status = updater::status(cx);
         let (message, tone) = status_message(&status, cx);
 
+        // The setting row sizes its field to content, so a long error would push the button
+        // off; capping the message makes it wrap instead.
         h_flex()
             .gap_3()
             .items_center()
             .when_some(message, |this, message| {
-                this.child(div().text_sm().text_color(tone).child(message))
+                this.child(div().max_w_80().text_sm().text_color(tone).child(message))
             })
-            .children(action_button(&status))
+            .children(action_button(&status).map(|button| button.flex_shrink_0()))
     })
 }
 

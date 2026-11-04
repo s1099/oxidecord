@@ -270,6 +270,15 @@ enum Progress {
     Done(Result<(), String>),
 }
 
+/// reqwest's own text leads with the whole URL, which buries the cause in a settings row.
+fn network_error(context: &str, error: reqwest::Error) -> String {
+    if error.is_connect() || error.is_timeout() {
+        format!("{context}. Check your internet connection.")
+    } else {
+        format!("{context}: {}", error.without_url())
+    }
+}
+
 struct Release {
     version: String,
     url: String,
@@ -285,7 +294,7 @@ async fn fetch_latest() -> Result<Option<Release>, String> {
         .header("Accept", "application/vnd.github+json")
         .send()
         .await
-        .map_err(|error| format!("couldn't reach GitHub: {error}"))?;
+        .map_err(|error| network_error("couldn't reach GitHub", error))?;
 
     if !response.status().is_success() {
         return Err(format!("GitHub returned {}", response.status()));
@@ -390,9 +399,9 @@ async fn write_asset(
         .header("User-Agent", USER_AGENT)
         .send()
         .await
-        .map_err(|error| format!("couldn't start the download: {error}"))?
+        .map_err(|error| network_error("couldn't start the download", error))?
         .error_for_status()
-        .map_err(|error| format!("couldn't start the download: {error}"))?;
+        .map_err(|error| network_error("couldn't start the download", error))?;
 
     let total = response.content_length().unwrap_or(0);
     let mut file = fs::File::create(staged)
@@ -404,7 +413,7 @@ async fn write_asset(
     while let Some(chunk) = response
         .chunk()
         .await
-        .map_err(|error| format!("the download was interrupted: {error}"))?
+        .map_err(|error| network_error("the download was interrupted", error))?
     {
         file.write_all(&chunk)
             .map_err(|error| format!("couldn't write the download: {error}"))?;
