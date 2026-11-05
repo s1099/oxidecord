@@ -27,6 +27,7 @@ use crate::ui::depth::{self, Level, radius};
 use super::message::{CARD_LIST_WIDTH, LIST_GAP};
 
 const BOX_WIDTH: f32 = 200.;
+const BOX_HEIGHT: f32 = 28.;
 const POPOUT_WIDTH: f32 = 320.;
 const ROW_HEIGHT: f32 = 32.;
 const PANEL_HEADER_HEIGHT: f32 = 48.;
@@ -83,9 +84,11 @@ impl HomeScreen {
             }))
             .on_action(cx.listener(Self::on_search_escape))
             .child(
-                // Default size, taller than the header's buttons, as Discord's box is;
-                // still well inside the header.
+                // Taller than the header's buttons, as Discord's box is; still well inside the
+                // header. The default padding would overflow the trimmed height.
                 Input::new(&self.search_input)
+                    .h(px(BOX_HEIGHT))
+                    .py(px(4.))
                     .focus_ring(false)
                     .suffix(suffix),
             )
