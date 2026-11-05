@@ -149,9 +149,16 @@ impl HomeScreen {
                 theme.muted_foreground,
             ),
             (None, Some(error)) => ("Stream stopped", error.clone(), theme.danger),
-            (None, None) => match &call.watch_error {
-                Some(error) => ("Couldn't watch", error.clone(), theme.danger),
-                None => return None,
+            (None, None) => match (&self.activity, &self.activity_error, &call.watch_error) {
+                (Some(session), _, _) if session.window.is_some() => {
+                    ("In activity", session.app.name.clone(), theme.success)
+                }
+                (Some(session), _, _) => {
+                    ("Starting", session.app.name.clone(), theme.muted_foreground)
+                }
+                (None, Some(error), _) => ("Activity failed", error.clone(), theme.danger),
+                (None, None, Some(error)) => ("Couldn't watch", error.clone(), theme.danger),
+                (None, None, None) => return None,
             },
         };
 

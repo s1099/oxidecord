@@ -19,6 +19,7 @@ use crate::discord::{self, DirectMessage, Guild};
 use crate::platform::prefs;
 use crate::ui::smooth_scroll::SmoothScroll;
 
+use super::activities::{ActivitySession, ShelfState};
 use super::channels::ChannelGroup;
 use super::commands::{CommandChoices, IndexState, PendingCommands};
 use super::composer::{Autocomplete, EditingMessage, ReplyTarget, Typist};
@@ -203,6 +204,14 @@ pub struct HomeScreen {
     /// While open, the voice channel is the conversation every message path
     /// works on. Kept across voice channels until closed.
     pub(super) voice_chat_open: bool,
+    /// By the channel they run in; kept for every guild, as `READY` sends them all.
+    pub(super) activity_instances: HashMap<Id<ChannelMarker>, Vec<discord::ActivityInstance>>,
+    /// By guild, `None` for calls outside one. Fetched when a call opens.
+    pub(super) activity_shelf: HashMap<Option<Id<GuildMarker>>, ShelfState>,
+    pub(super) activity: Option<ActivitySession>,
+    pub(super) next_activity_session: u64,
+    /// Why the last launch failed, shown in the activities menu until the next.
+    pub(super) activity_error: Option<String>,
     /// Voice join and leave are gateway commands, not REST calls.
     pub(super) gateway: Option<discord::GatewaySender>,
     /// From whichever of `READY` or `GET /users/@me` lands first; voice needs it to identify.
@@ -434,6 +443,11 @@ impl HomeScreen {
             retired_stream_frames: Vec::new(),
             voice_stage_size: Size::default(),
             voice_chat_open: false,
+            activity_instances: HashMap::new(),
+            activity_shelf: HashMap::new(),
+            activity: None,
+            next_activity_session: 0,
+            activity_error: None,
             gateway: None,
             self_user_id: None,
             blocked_users: HashSet::new(),

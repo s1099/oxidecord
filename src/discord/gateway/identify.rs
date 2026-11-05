@@ -164,7 +164,7 @@ fn os_version() -> Option<String> {
 }
 
 #[cfg(windows)]
-fn system_locale() -> String {
+pub fn system_locale() -> String {
     use windows::Win32::Globalization::GetUserDefaultLocaleName;
 
     let mut buffer = [0u16; 85];
@@ -178,7 +178,7 @@ fn system_locale() -> String {
 }
 
 #[cfg(not(windows))]
-fn system_locale() -> String {
+pub fn system_locale() -> String {
     // `en_US.UTF-8` becomes `en-US`.
     ["LC_ALL", "LC_MESSAGES", "LANG"]
         .iter()

@@ -108,7 +108,7 @@
 | Server mute and deafen, moving and disconnecting members (moderator actions) | Missing | Server mute/deaf state is read but can't be set |
 | Voice channel user limit and bitrate display | Missing | |
 | Soundboard | Missing | |
-| Activities (embedded apps in voice) | Missing | |
+| Activities (embedded apps in voice) | Partial | Started and joined from the call's activities menu and run in their own window; see `CODE_DEBT.md` for the RPC commands not yet answered |
 | Incoming call ringing and accept or decline UI | Partial | Join and Decline show in the DM's call band once it's opened; no ringtone, and no prompt anywhere else |
 | Join and leave sound effects | Missing | |
 | Picture-in-picture and pop-out call window | Missing | |

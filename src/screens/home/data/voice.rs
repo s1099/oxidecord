@@ -105,9 +105,12 @@ impl HomeScreen {
             self.voice_settings.muted,
             self.voice_settings.deafened,
         );
+        // Fetched now so the activities menu has it when opened.
+        self.ensure_activity_shelf(call.guild_id, cx);
         self.voice = Some(call);
         self.pending_voice = Some(PendingVoice::default());
         self.voice_speaking.clear();
+        self.end_activity_outside_call(cx);
         cx.notify();
     }
 
@@ -125,6 +128,7 @@ impl HomeScreen {
             );
         }
         self.end_call_locally();
+        self.end_activity_outside_call(cx);
         cx.notify();
     }
 
@@ -260,6 +264,7 @@ impl HomeScreen {
                 // only the local side is torn down.
                 None => self.end_call_locally(),
             }
+            self.end_activity_outside_call(cx);
         }
 
         cx.notify();

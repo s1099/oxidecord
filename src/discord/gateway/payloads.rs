@@ -11,8 +11,8 @@ use twilight_model::id::{
 use twilight_model::util::Timestamp;
 
 use crate::discord::model::{
-    PresenceStatus, RawChannelUnread, RawChoice, RawEmoji, RawGuildChannel, RawGuildSettings,
-    RawMember, RawReadState, RawRole, RawVoiceState, versioned_list,
+    PresenceStatus, RawActivityInstance, RawChannelUnread, RawChoice, RawEmoji, RawGuildChannel,
+    RawGuildSettings, RawMember, RawReadState, RawRole, RawVoiceState, versioned_list,
 };
 
 /// `STREAM_CREATE`, of which only what a connection needs is read.
@@ -148,11 +148,20 @@ pub(super) fn convert_presences(
         .collect()
 }
 
-/// `READY_SUPPLEMENTAL`, of which only the presences are read.
+/// `READY_SUPPLEMENTAL`, of which only the presences and running activities are read.
 #[derive(Deserialize)]
 pub(super) struct ReadySupplementalPayload {
     #[serde(default)]
     pub(super) merged_presences: Option<MergedPresences>,
+    #[serde(default, deserialize_with = "skip_invalid")]
+    pub(super) guilds: Vec<SupplementalGuild>,
+}
+
+#[derive(Deserialize)]
+pub(super) struct SupplementalGuild {
+    pub(super) id: Id<GuildMarker>,
+    #[serde(default, deserialize_with = "skip_invalid")]
+    pub(super) activity_instances: Vec<RawActivityInstance>,
 }
 
 /// A guild as `READY` and `GUILD_CREATE` send it. An unavailable guild arrives with none
@@ -164,6 +173,9 @@ pub(super) struct GatewayGuild {
     /// unexpectedly shouldn't cost the whole session its roles.
     #[serde(default, deserialize_with = "skip_invalid")]
     pub(super) voice_states: Vec<RawVoiceState>,
+    /// `None` when the payload doesn't carry them, as opposed to none running.
+    #[serde(default, deserialize_with = "skip_invalid_opt")]
+    pub(super) activity_instances: Option<Vec<RawActivityInstance>>,
     #[serde(default)]
     pub(super) roles: Vec<RawRole>,
     #[serde(default)]

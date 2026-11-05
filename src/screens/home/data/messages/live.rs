@@ -340,12 +340,22 @@ impl HomeScreen {
             }
             discord::GatewayEvent::InteractionFailed { nonce, timed_out } => {
                 self.interaction_failed(nonce, timed_out, cx);
+                self.activity_launch_failed(nonce, timed_out, cx);
             }
             discord::GatewayEvent::CommandChoices { nonce, choices } => {
                 self.receive_command_choices(nonce, choices, cx);
             }
             discord::GatewayEvent::CommandIndexChanged(guild_id) => {
                 self.forget_command_index(guild_id);
+            }
+            discord::GatewayEvent::ActivityInstance(instance) => {
+                self.handle_activity_instance(instance, cx);
+            }
+            discord::GatewayEvent::GuildActivities {
+                guild_id,
+                instances,
+            } => {
+                self.handle_guild_activities(guild_id, instances, cx);
             }
             discord::GatewayEvent::MemberList(update) => {
                 self.apply_member_list_update(update, cx);

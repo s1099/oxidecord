@@ -11,13 +11,13 @@ use twilight_model::channel::message::MessageFlags;
 
 use crate::discord::NotifyLevel;
 use crate::discord::model::{
-    RawEmoji, RawGuildChannel, RawGuildSettings, RawMember, RawMemberListUpdate, RawRole,
-    RawVoiceServer, RawVoiceState, StreamServerInfo, author_member, boost_upload_limit,
-    convert_call_voice_states, convert_channel_unreads, convert_guild_appearance,
-    convert_guild_channels, convert_guild_emoji, convert_guild_voice_states,
-    convert_member_list_update, convert_message, convert_mute_settings, convert_reaction_emoji,
-    convert_read_states, convert_role, convert_stream_server, convert_voice_server,
-    convert_voice_state, parse_user_settings,
+    RawActivityInstance, RawEmoji, RawGuildChannel, RawGuildSettings, RawMember,
+    RawMemberListUpdate, RawRole, RawVoiceServer, RawVoiceState, StreamServerInfo, author_member,
+    boost_upload_limit, convert_activity_instance, convert_call_voice_states,
+    convert_channel_unreads, convert_guild_appearance, convert_guild_channels, convert_guild_emoji,
+    convert_guild_voice_states, convert_member_list_update, convert_message, convert_mute_settings,
+    convert_reaction_emoji, convert_read_states, convert_role, convert_stream_server,
+    convert_voice_server, convert_voice_state, parse_user_settings,
 };
 
 use super::payloads::*;
@@ -78,6 +78,7 @@ pub(super) fn dispatch(
                         guild.voice_states,
                         guild.members.iter().chain(&merged),
                     ));
+                    unreads.extend(guild_activities(guild.id, guild.activity_instances));
                     roles.extend(member_roles(guild.id, merged));
                     roles.extend(guild_emojis(guild.id, guild.emojis));
                     roles.extend(guild_roles(guild.id, guild.roles, guild.members));
@@ -289,8 +290,10 @@ pub(super) fn dispatch(
                     ),
                 };
                 let presences = GatewayEvent::Presences(convert_presences(guild.presences));
+                let activities = guild_activities(guild.id, guild.activity_instances);
                 std::iter::once(voice)
                     .chain(std::iter::once(presences))
+                    .chain(activities)
                     .chain(upload_limit)
                     .chain(default_notifications)
                     .chain(appearance)
@@ -323,10 +326,16 @@ pub(super) fn dispatch(
             .unwrap_or_default(),
         "GUILD_DELETE" => serde_json::from_str::<GuildDeletePayload>(data)
             .map(|guild| {
-                vec![GatewayEvent::GuildVoiceStates {
-                    guild_id: guild.id,
-                    states: Vec::new(),
-                }]
+                vec![
+                    GatewayEvent::GuildVoiceStates {
+                        guild_id: guild.id,
+                        states: Vec::new(),
+                    },
+                    GatewayEvent::GuildActivities {
+                        guild_id: guild.id,
+                        instances: Vec::new(),
+                    },
+                ]
             })
             .unwrap_or_default(),
         "GUILD_ROLE_CREATE" | "GUILD_ROLE_UPDATE" => {
@@ -389,11 +398,21 @@ pub(super) fn dispatch(
             .map(|update| vec![GatewayEvent::MemberList(convert_member_list_update(update))])
             .unwrap_or_default(),
         "READY_SUPPLEMENTAL" => serde_json::from_str::<ReadySupplementalPayload>(data)
-            .ok()
-            .and_then(|ready| ready.merged_presences)
-            .map(|merged| {
-                vec![GatewayEvent::Presences(convert_presences(
-                    merged.into_presences(),
+            .map(|ready| {
+                let presences = ready.merged_presences.map(|merged| {
+                    GatewayEvent::Presences(convert_presences(merged.into_presences()))
+                });
+                let activities = ready
+                    .guilds
+                    .into_iter()
+                    .filter_map(|guild| guild_activities(guild.id, Some(guild.activity_instances)));
+                presences.into_iter().chain(activities).collect()
+            })
+            .unwrap_or_default(),
+        "EMBEDDED_ACTIVITY_UPDATE_V2" => serde_json::from_str::<RawActivityInstance>(data)
+            .map(|instance| {
+                vec![GatewayEvent::ActivityInstance(convert_activity_instance(
+                    instance,
                 ))]
             })
             .unwrap_or_default(),
@@ -486,6 +505,19 @@ pub(super) fn dispatch(
         }
         _ => Vec::new(),
     }
+}
+
+fn guild_activities(
+    guild_id: Id<GuildMarker>,
+    instances: Option<Vec<RawActivityInstance>>,
+) -> Option<GatewayEvent> {
+    Some(GatewayEvent::GuildActivities {
+        guild_id,
+        instances: instances?
+            .into_iter()
+            .map(convert_activity_instance)
+            .collect(),
+    })
 }
 
 /// A guild's channels and unread mark as events, unless it arrived unavailable.

@@ -1,6 +1,6 @@
 //! Host-facing plumbing: audio-device helpers, the Tokio runtime, the HTTP
 //! client, prefs, the updater, desktop notifications, OS screen capture and
-//! video decoders, and on Windows the single-instance guard, tray icon and
+//! video decoders, embedded webview setup, and on Windows the single-instance guard, tray icon and
 //! taskbar call buttons.
 
 pub mod audio;
@@ -19,3 +19,4 @@ pub mod taskbar;
 pub mod tray;
 pub mod updater;
 pub mod video;
+pub mod webview;

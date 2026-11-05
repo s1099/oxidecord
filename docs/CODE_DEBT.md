@@ -34,6 +34,30 @@ Entry format:
   opens the option list, and Enter then takes the option instead of sending.
   `src/screens/home/commands.rs:207`
 
+## Activities
+
+- **Loaded top-level, not framed** — the activity's page is the webview's document, with a shim
+  standing in for `window.parent`, instead of an iframe inside a Discord-origin page. An activity
+  that checks `window.top` or its referrer may behave differently than in Discord's client.
+  `src/screens/activity/shim.js:1`
+- **Only participant events are dispatched** — `SUBSCRIBE` succeeds for every event, but only
+  `ACTIVITY_INSTANCE_PARTICIPANTS_UPDATE` is ever sent; voice state, speaking, layout mode and
+  current-user updates never arrive. `src/screens/activity/mod.rs:343`
+- **`SET_ACTIVITY` goes nowhere** — the activity is told its rich presence was set, but presence
+  updates always send empty activities. `src/screens/activity/mod.rs:376`
+- **Purchases, invites and sharing are refused** — SKUs and entitlements answer empty, and
+  invite, share, image upload, purchase and quest commands error as unsupported.
+  `src/screens/activity/mod.rs:433`
+- **`GET_CHANNEL` omits voice states and messages** — both arrays are always empty.
+  `src/screens/activity/mod.rs:397`
+- **Permissions are guild-wide** — the activities button and `GET_CHANNEL_PERMISSIONS` ignore
+  channel overwrites. `src/screens/home/data/activities.rs:67`
+- **Running activities only show in the call's menu** — the channel list and stage don't mark a
+  channel with an activity in it. `src/screens/home/view/voice/activities.rs:85`
+- **External links open without asking** — `OPEN_EXTERNAL_LINK` and navigations off the
+  activity's origin go straight to the browser, where Discord's client asks first.
+  `src/screens/activity/mod.rs:379`
+
 ## Markdown
 
 - **Shortcodes use gemoji's names** — `:name:` in received text resolves through the `emojis`

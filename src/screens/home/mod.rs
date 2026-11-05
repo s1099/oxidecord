@@ -5,6 +5,7 @@
 //! [`crate::discord`], mutates state) and [`view`] (renders) extend it with
 //! inherent methods.
 
+mod activities;
 mod autocomplete;
 mod channels;
 mod commands;

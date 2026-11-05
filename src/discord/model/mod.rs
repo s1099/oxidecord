@@ -4,6 +4,7 @@
 //! Everything the UI renders goes through these types, so the twilight models
 //! stay confined to this module and [`super::rest`]/[`super::gateway`].
 
+mod activity;
 mod cdn;
 mod channel;
 mod command;
@@ -24,6 +25,7 @@ mod upload;
 mod user;
 mod voice;
 
+pub use activity::{ActivityApp, ActivityInstance, EntryPoint};
 pub use cdn::{animated_webp, scaled_url};
 pub use channel::{Channel, ChannelKind, DirectMessage, DmMember};
 pub use command::{
@@ -57,6 +59,9 @@ pub use upload::{DEFAULT_UPLOAD_LIMIT, MAX_UPLOAD_TOTAL, Upload, UploadProgress}
 pub use user::{CurrentUser, Reactor, UserProfile};
 pub use voice::{StreamServerInfo, VoiceServerInfo, VoiceUserState, stream_key};
 
+pub(super) use activity::{
+    RawActivityInstance, RawShelf, convert_activity_instance, convert_shelf, entry_point,
+};
 pub(super) use channel::{convert_channel, convert_dms};
 pub(super) use command::{RawChoice, RawCommandIndex, convert_command_index};
 pub(super) use emoji::{RawEmoji, convert_guild_emoji};

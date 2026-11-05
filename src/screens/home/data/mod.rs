@@ -5,6 +5,7 @@
 //! handles are `!Send`, so each loader bridges the two over a channel that a
 //! foreground task drains.
 
+pub(super) mod activities;
 pub(super) mod attachments;
 pub(super) mod autocomplete;
 pub(super) mod commands;

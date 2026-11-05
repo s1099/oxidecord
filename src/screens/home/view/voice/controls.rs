@@ -84,6 +84,7 @@ impl HomeScreen {
                 .disabled(!self.share_button_enabled())
                 .on_click(cx.listener(|this, _, window, cx| this.toggle_screen_share(window, cx))),
             )
+            .child(self.render_activities_control(cx))
             .child(
                 Button::new("call-hangup")
                     .icon(Icon::default().path("icons/phone-off.svg"))

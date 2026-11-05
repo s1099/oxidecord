@@ -153,14 +153,52 @@ fn guild_emojis_arrive_with_the_guild_and_their_updates() {
 }
 
 #[test]
-fn guild_delete_clears_the_guilds_voice_states() {
+fn guild_delete_clears_the_guilds_voice_states_and_activities() {
     let events = dispatch_json("GUILD_DELETE", r#"{"id": "10", "unavailable": true}"#);
 
     assert!(matches!(
         events.as_slice(),
-        [GatewayEvent::GuildVoiceStates { guild_id, states }]
-            if *guild_id == Id::new(10) && states.is_empty()
+        [
+            GatewayEvent::GuildVoiceStates { guild_id, states },
+            GatewayEvent::GuildActivities { instances, .. },
+        ] if *guild_id == Id::new(10) && states.is_empty() && instances.is_empty()
     ));
+}
+
+#[test]
+fn activity_instances_arrive_with_supplemental_and_updates() {
+    let events = dispatch_json(
+        "READY_SUPPLEMENTAL",
+        r#"{"guilds": [{"id": "10", "activity_instances": [{
+            "application_id": "7", "composite_instance_id": "i-1-gc-10-20",
+            "instance_id": "1", "launch_id": "1",
+            "location": {"id": "gc-10-20", "kind": "gc", "channel_id": "20", "guild_id": "10"},
+            "participants": [{"user_id": "2", "session_id": "s"}]
+        }]}]}"#,
+    );
+    let [
+        GatewayEvent::GuildActivities {
+            guild_id,
+            instances,
+        },
+    ] = events.as_slice()
+    else {
+        panic!("READY_SUPPLEMENTAL should yield the guild's activities");
+    };
+    assert_eq!(*guild_id, Id::new(10));
+    assert_eq!(instances[0].channel_id, Id::new(20));
+
+    let events = dispatch_json(
+        "EMBEDDED_ACTIVITY_UPDATE_V2",
+        r#"{"application_id": "7", "composite_instance_id": "i-1-pc-30",
+            "instance_id": "1", "launch_id": "1",
+            "location": {"id": "pc-30", "kind": "pc", "channel_id": "30"},
+            "participants": []}"#,
+    );
+    let [GatewayEvent::ActivityInstance(instance)] = events.as_slice() else {
+        panic!("EMBEDDED_ACTIVITY_UPDATE_V2 should yield the instance");
+    };
+    assert!(instance.guild_id.is_none() && instance.participants.is_empty());
 }
 
 #[test]

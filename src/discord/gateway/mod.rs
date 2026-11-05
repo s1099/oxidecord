@@ -23,11 +23,13 @@ use twilight_model::id::{
 use crate::platform::runtime;
 
 use super::model::{
-    Channel, ChannelLatest, CommandChoice, DmMember, GuildAppearance, GuildEmoji, GuildMember,
-    GuildUnreads, MemberListUpdate, Message, MuteSettings, NotifyLevel, PresenceStatus,
-    ReactionEmoji, ReadState, Role, StreamServerInfo, VoiceServerInfo, VoiceUserState,
+    ActivityInstance, Channel, ChannelLatest, CommandChoice, DmMember, GuildAppearance, GuildEmoji,
+    GuildMember, GuildUnreads, MemberListUpdate, Message, MuteSettings, NotifyLevel,
+    PresenceStatus, ReactionEmoji, ReadState, Role, StreamServerInfo, VoiceServerInfo,
+    VoiceUserState,
 };
 
+pub use identify::system_locale;
 pub use sender::GatewaySender;
 
 pub struct IncomingMessage {
@@ -199,6 +201,13 @@ pub enum GatewayEvent {
     },
     /// A guild's commands changed, or with `None` the user's own apps did.
     CommandIndexChanged(Option<Id<GuildMarker>>),
+    /// An activity instance started or changed; with no participants left, it ended.
+    ActivityInstance(ActivityInstance),
+    /// Replaces the activities known to be running in the guild.
+    GuildActivities {
+        guild_id: Id<GuildMarker>,
+        instances: Vec<ActivityInstance>,
+    },
 }
 
 pub enum ReactionChange {

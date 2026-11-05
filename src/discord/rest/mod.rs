@@ -3,6 +3,7 @@
 //! Each entry point is an `async fn` that runs its request on the shared
 //! background Tokio runtime, so it can be awaited straight from a gpui task.
 
+mod activity;
 mod auth;
 mod channel;
 mod command;
@@ -18,6 +19,11 @@ use twilight_http::{Client as HttpClient, error::ErrorType};
 use crate::discord::token;
 use crate::platform::runtime;
 
+pub use activity::{
+    ActivityLaunch, OAuthRequest, authorize, fetch_activity_shelf, fetch_entry_point,
+    fetch_install_type, fetch_oauth_identity, fetch_proxy_ticket, fetch_user_object, join_activity,
+    leave_activity, preview_authorization, start_activity,
+};
 pub use auth::{log_out, remove_account};
 pub use channel::{fetch_dms, ring_call, stop_ringing};
 pub use command::{

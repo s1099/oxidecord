@@ -49,6 +49,10 @@ older than the installed Visual Studio, build through Ninja: `CMAKE_GENERATOR=Ni
   comes with the gateway's `READY` (REST only fills in until then, or refreshes a list a
   `CHANNEL_*`/role change made stale), and `history_cache.rs` keeps recently opened
   conversations, drawn at once and merged with the newest page when it lands.
+- `src/screens/activity/` — an activity's window. The activity's `discordsays.com` page loads
+  top-level in a webview; `shim.js` replaces `window.parent` so the Embedded App SDK's RPC comes
+  to the app, which answers it as Discord's client would (`rpc.rs`). Launching, joining and the
+  running instances (`EMBEDDED_ACTIVITY_UPDATE_V2`) live in `screens/home/data/activities.rs`.
 - `src/platform/` — runtime, http client, prefs, updater, `tray.rs` and `instance.rs`
   (Windows: closing hides to a notification-area icon; a second launch shows the running
   instance instead), `notify/` (desktop notifications as WinRT toasts; which messages
