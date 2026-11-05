@@ -1,7 +1,10 @@
 //! The full-screen image viewer: the clicked image over a scrim, zoomed by the wheel and panned by
 //! dragging.
 
-use gpui_kit::component::{Icon, Sizable as _, h_flex};
+use gpui_kit::component::{
+    Icon, IconName, Sizable as _, h_flex,
+    menu::{ContextMenuExt as _, PopupMenuItem},
+};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
@@ -58,7 +61,9 @@ impl HomeScreen {
 
         let pannable = width > viewport.width || height > viewport.height;
         let dragging = viewer.drag.is_some();
+        let screen = cx.entity().downgrade();
         let image = div()
+            .id("image-viewer-image")
             .absolute()
             .left((viewport.width - width) / 2. + viewer.offset.x)
             .top((viewport.height - height) / 2. + viewer.offset.y)
@@ -83,7 +88,25 @@ impl HomeScreen {
                     cx.stop_propagation();
                     this.start_image_pan(event.position, cx);
                 }),
-            );
+            )
+            .context_menu(move |menu, _, _| {
+                let (copy, copy_link) = (screen.clone(), screen.clone());
+                menu.item(
+                    PopupMenuItem::new("Copy Image")
+                        .icon(IconName::Copy)
+                        .on_click(move |_, _, cx| {
+                            let _ = copy.update(cx, |this, cx| this.copy_viewer_image(cx));
+                        }),
+                )
+                .item(
+                    PopupMenuItem::new("Copy Image Link")
+                        .icon(Icon::default().path("icons/link.svg"))
+                        .on_click(move |_, _, cx| {
+                            let _ =
+                                copy_link.update(cx, |this, cx| this.copy_viewer_image_link(cx));
+                        }),
+                )
+            });
 
         let source = viewer.source_url.clone();
         let open = h_flex()

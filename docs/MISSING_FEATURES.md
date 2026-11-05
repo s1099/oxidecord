@@ -25,7 +25,7 @@
 | Jump to a message (from a reply, a link, or search) | Partial | Reply quotes, the composer's "Replying to" strip, discord.com message links and search results jump there; a forward's source doesn't yet, and a search hit in a thread opens in the browser |
 | "Jump to present" and the new-messages bar | Missing | |
 | Copy message ID and other developer-mode context-menu items | Missing | "Copy Text" and "Copy Message Link" are there |
-| Saving and copying images | Missing | The image viewer can only open the image in the browser |
+| Saving images | Missing | The image viewer's right-click menu copies the image or its link, but can't save it |
 | Invite links shown as server cards | Missing | |
 | Right-click context menus (message, user, channel, server) | Missing | Actions are on the hover toolbar and "More" menu only |
 | Report message | Missing | |

@@ -19,3 +19,13 @@ Entry format:
   Discord offers a toggle. `src/platform/tray.rs:31`
 - **Inline video keeps playing while hidden** — hiding doesn't pause the clip, so its audio
   goes on with no window to stop it from. `src/platform/tray.rs:32`
+
+## Copying images
+
+- **Failures are silent** — a download or decode that fails (an AVIF from a third-party
+  host, say) only logs to the console; a toast would sit under the viewer's overlay.
+  `src/screens/home/data/image_viewer.rs:233`
+- **Clicking off the menu also closes the viewer** — the press that dismisses the
+  right-click menu reaches the scrim too. `src/screens/home/view/image_viewer.rs:92`
+- **Animated images copy their first frame** — only PNG and a bitmap go on the clipboard,
+  as Discord's own "Copy Image" does. `src/platform/clipboard.rs:89`

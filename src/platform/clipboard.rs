@@ -1,6 +1,7 @@
-//! Clipboard images in the form Discord embeds.
+//! Clipboard images: pasted ones in the form Discord embeds, and copied ones in
+//! the forms other apps read.
 
-use gpui_kit::{Image, ImageFormat};
+use gpui_kit::{App, Image, ImageFormat};
 
 /// The clipboard's registered `PNG` format, when an app put one there.
 ///
@@ -74,4 +75,102 @@ pub fn to_png(image: &Image) -> Option<Image> {
         )
         .ok()?;
     Some(Image::from_bytes(ImageFormat::Png, bytes))
+}
+
+/// A downloaded image, decoded and re-encoded for the clipboard.
+pub struct CopiedImage {
+    png: Vec<u8>,
+    /// gpui writes only `PNG`, which Paint and Office ignore in favour of a bitmap.
+    #[cfg(windows)]
+    dib: Vec<u8>,
+}
+
+/// Slow for a large image, so keep it off the foreground thread.
+pub fn prepare_copy(bytes: &[u8]) -> Option<CopiedImage> {
+    let decoded = image::load_from_memory(bytes).ok()?;
+    let mut png = Vec::new();
+    decoded
+        .write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png)
+        .ok()?;
+    Some(CopiedImage {
+        png,
+        #[cfg(windows)]
+        dib: to_dib(&decoded.to_rgba8()),
+    })
+}
+
+/// A bottom-up 32-bit `BITMAPINFOHEADER` bitmap, as `CF_DIB` expects.
+#[cfg(windows)]
+fn to_dib(rgba: &image::RgbaImage) -> Vec<u8> {
+    let (width, height) = rgba.dimensions();
+    let pixels = width as usize * height as usize * 4;
+    let mut dib = Vec::with_capacity(40 + pixels);
+    dib.extend(40u32.to_le_bytes());
+    dib.extend((width as i32).to_le_bytes());
+    dib.extend((height as i32).to_le_bytes());
+    dib.extend(1u16.to_le_bytes());
+    dib.extend(32u16.to_le_bytes());
+    // BI_RGB, then the image size and the four fields left at zero.
+    dib.extend(0u32.to_le_bytes());
+    dib.extend((pixels as u32).to_le_bytes());
+    dib.extend([0; 16]);
+    for row in rgba.rows().rev() {
+        for pixel in row {
+            dib.extend([pixel[2], pixel[1], pixel[0], pixel[3]]);
+        }
+    }
+    dib
+}
+
+#[cfg(windows)]
+pub fn write_image(image: &CopiedImage, _: &mut App) {
+    use windows::Win32::Foundation::{GlobalFree, HANDLE};
+    use windows::Win32::System::DataExchange::{
+        CloseClipboard, EmptyClipboard, OpenClipboard, RegisterClipboardFormatW, SetClipboardData,
+    };
+    use windows::Win32::System::Memory::{GMEM_MOVEABLE, GlobalAlloc, GlobalLock, GlobalUnlock};
+    use windows::Win32::System::Ole::CF_DIB;
+
+    unsafe fn set(format: u32, bytes: &[u8]) -> windows::core::Result<()> {
+        unsafe {
+            let global = GlobalAlloc(GMEM_MOVEABLE, bytes.len())?;
+            let ptr = GlobalLock(global) as *mut u8;
+            if ptr.is_null() {
+                let err = windows::core::Error::from_thread();
+                let _ = GlobalFree(Some(global));
+                return Err(err);
+            }
+            std::ptr::copy_nonoverlapping(bytes.as_ptr(), ptr, bytes.len());
+            let _ = GlobalUnlock(global);
+            // The clipboard owns the memory only once this succeeds.
+            if let Err(err) = SetClipboardData(format, Some(HANDLE(global.0))) {
+                let _ = GlobalFree(Some(global));
+                return Err(err);
+            }
+            Ok(())
+        }
+    }
+
+    unsafe {
+        if let Err(err) = OpenClipboard(None) {
+            eprintln!("failed to open the clipboard: {err}");
+            return;
+        }
+        let png = RegisterClipboardFormatW(windows::core::w!("PNG"));
+        let result = EmptyClipboard()
+            .and_then(|()| set(png, &image.png))
+            .and_then(|()| set(CF_DIB.0 as u32, &image.dib));
+        let _ = CloseClipboard();
+        if let Err(err) = result {
+            eprintln!("failed to copy the image: {err}");
+        }
+    }
+}
+
+#[cfg(not(windows))]
+pub fn write_image(image: &CopiedImage, cx: &mut App) {
+    cx.write_to_clipboard(gpui_kit::ClipboardItem::new_image(&Image::from_bytes(
+        ImageFormat::Png,
+        image.png.clone(),
+    )));
 }

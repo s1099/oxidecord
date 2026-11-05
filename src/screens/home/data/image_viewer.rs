@@ -1,9 +1,10 @@
-//! Opening and closing the full-screen image viewer, and zooming and panning
-//! the image inside it.
+//! Opening and closing the full-screen image viewer, zooming and panning the
+//! image inside it, and copying it.
 
 use gpui_kit::*;
 
 use crate::discord;
+use crate::platform::{clipboard, http, runtime};
 use crate::screens::home::{HomeScreen, ImageViewer};
 
 const VIEWER_MARGIN_X: f32 = 80.;
@@ -211,6 +212,41 @@ impl HomeScreen {
             && viewer.drag.take().is_some()
         {
             cx.notify();
+        }
+    }
+
+    /// Copies the original, as "Open in Browser" shows it, rather than the
+    /// window-sized copy on screen.
+    pub(in crate::screens::home) fn copy_viewer_image(&self, cx: &mut Context<Self>) {
+        let Some(viewer) = &self.image_viewer else {
+            return;
+        };
+        let url = viewer.source_url.clone();
+        cx.spawn(async move |_, cx| {
+            let bytes = runtime::run(async move {
+                let response = http::client().get(url).send().await?;
+                response.error_for_status()?.bytes().await
+            })
+            .await;
+            let bytes = match bytes {
+                Ok(Ok(bytes)) => bytes,
+                Ok(Err(err)) => return eprintln!("failed to download the image to copy: {err}"),
+                Err(err) => return eprintln!("failed to download the image to copy: {err}"),
+            };
+            let Some(image) = cx
+                .background_spawn(async move { clipboard::prepare_copy(&bytes) })
+                .await
+            else {
+                return eprintln!("failed to decode the image to copy");
+            };
+            cx.update(|cx| clipboard::write_image(&image, cx));
+        })
+        .detach();
+    }
+
+    pub(in crate::screens::home) fn copy_viewer_image_link(&self, cx: &mut App) {
+        if let Some(viewer) = &self.image_viewer {
+            cx.write_to_clipboard(ClipboardItem::new_string(viewer.source_url.clone()));
         }
     }
 
