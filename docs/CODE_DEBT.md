@@ -34,6 +34,12 @@ Entry format:
   opens the option list, and Enter then takes the option instead of sending.
   `src/screens/home/commands.rs:207`
 
+## Markdown
+
+- **Shortcodes use gemoji's names** — `:name:` in received text resolves through the `emojis`
+  crate plus Discord's `flag_xx`; names only Discord's own table has stay text.
+  `src/discord/model/markdown/inline.rs:592`
+
 ## Close to tray
 
 - **No setting to quit on close** — closing the main window always hides it to the tray;

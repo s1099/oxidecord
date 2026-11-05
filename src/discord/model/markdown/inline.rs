@@ -66,6 +66,7 @@ impl Parser<'_> {
                 '`' => self.code(rest),
                 '<' => self.angle(rest),
                 '@' => self.everyone(rest),
+                ':' => self.shortcode(rest),
                 '[' if self.links => self.masked_link(rest),
                 'h' if self.links && !prev_is_alphanumeric(source, pos) => self.url(rest),
                 '*' | '_' | '~' | '|' => self.delimited(source, pos),
@@ -153,6 +154,20 @@ impl Parser<'_> {
         let (len, emoji) = match_emoji(rest)?;
         self.push(Inline::UnicodeEmoji(emoji));
         Some(len)
+    }
+
+    /// Bots write emoji as `:name:`, which Discord's client draws as the emoji.
+    fn shortcode(&mut self, rest: &str) -> Option<usize> {
+        let name_len = rest[1..]
+            .bytes()
+            .take_while(|&b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'+' | b'-'))
+            .count();
+        if name_len == 0 || rest.as_bytes().get(1 + name_len) != Some(&b':') {
+            return None;
+        }
+        let emoji = shortcode_emoji(&rest[1..1 + name_len])?;
+        self.push(Inline::UnicodeEmoji(emoji));
+        Some(name_len + 2)
     }
 
     fn angle(&mut self, rest: &str) -> Option<usize> {
@@ -570,6 +585,23 @@ fn match_emoji(rest: &str) -> Option<(usize, &'static emojis::Emoji)> {
         return None;
     }
     ends[..count].iter().rev().find_map(|&end| lookup(end))
+}
+
+/// Discord names every flag `flag_xx` by its region code, where gemoji's
+/// shortcodes mostly spell out the country.
+fn shortcode_emoji(name: &str) -> Option<&'static emojis::Emoji> {
+    if let Some(emoji) = emojis::get_by_shortcode(name) {
+        return Some(emoji);
+    }
+    let code = name.strip_prefix("flag_")?;
+    if code.len() != 2 || !code.bytes().all(|b| b.is_ascii_lowercase()) {
+        return None;
+    }
+    let flag: String = code
+        .bytes()
+        .filter_map(|b| char::from_u32(0x1F1E6 + u32::from(b - b'a')))
+        .collect();
+    emojis::get(&flag)
 }
 
 fn is_regional_indicator(c: char) -> bool {

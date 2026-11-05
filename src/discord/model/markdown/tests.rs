@@ -368,3 +368,16 @@ fn unicode_emoji() {
     );
     assert_eq!(inline(r"\😀"), [text("😀")]);
 }
+
+#[test]
+fn shortcode_emoji() {
+    let emoji = |s: &str| Inline::UnicodeEmoji(emojis::get(s).unwrap());
+    assert_eq!(
+        inline(":flag_cz: Čeština :+1:"),
+        [emoji("🇨🇿"), text(" Čeština "), emoji("👍")]
+    );
+    assert_eq!(
+        inline(r"12:30:45 :nope: \:smile:"),
+        [text("12:30:45 :nope: :smile:")]
+    );
+}
