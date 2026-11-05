@@ -93,12 +93,15 @@ Entry format:
   dropped. `src/platform/notify/unsupported.rs:9`
 - **Clicks only work while the app runs** — a toast is opened through its `Activated`
   event, so one clicked in Action Center after a restart does nothing. Fixing that needs a
-  registered COM activator. `src/platform/notify/windows.rs:103`
+  registered COM activator. `src/platform/notify/windows.rs:128`
 - **Threads are treated as mention-only** — per-thread notification settings aren't read,
   so a message in a thread notifies only when it pings the user.
   `src/screens/home/data/notifications.rs:110`
 - **System messages never notify** — Discord notifies of joins, boosts and similar in
   all-messages channels. `src/screens/home/data/notifications.rs:84`
+- **No trailing sound after a burst** — Discord's throttle plays one more sound at the end
+  of a burst's second; here the sound rides on the toast, so the burst's later toasts are
+  just silent. `src/platform/notify/windows.rs:67`
 - **Avatar cache never shrinks** — senders' avatars pile up in the temp directory.
   `src/platform/notify/mod.rs:77`
 

@@ -6,9 +6,10 @@
 //! Clicks arrive through each toast's `Activated` event, which fires only
 //! while the app runs; the toasts are held so their handlers stay alive.
 
-use std::collections::{HashSet, VecDeque};
+use std::collections::{HashMap, VecDeque};
 use std::path::Path;
 use std::sync::mpsc::Receiver;
+use std::time::{Duration, Instant};
 
 use futures::channel::mpsc::UnboundedSender;
 use windows::Data::Xml::Dom::XmlDocument;
@@ -25,9 +26,12 @@ use windows::core::{HSTRING, IInspectable, PCWSTR, w};
 use super::{Request, Toast, ToastId};
 
 const APP_ID: &str = "Oxidecord";
-/// Beyond this the oldest toasts lose their click handler; by then they've
-/// long left the screen.
-const KEPT_TOASTS: usize = 50;
+/// As Discord's desktop client: past this, a channel's oldest toast is taken
+/// down, so a busy conversation can't bury the rest.
+const TOASTS_PER_CHANNEL: usize = 20;
+/// Discord throttles its message sound to one a second; later toasts in a burst
+/// arrive silent.
+const SOUND_INTERVAL: Duration = Duration::from_secs(1);
 const BODY_LIMIT: usize = 300;
 
 pub(super) fn spawn(requests: Receiver<Request>, clicks: UnboundedSender<ToastId>) {
@@ -53,18 +57,26 @@ fn run(requests: Receiver<Request>, clicks: UnboundedSender<ToastId>) {
         }
     };
 
-    let mut kept = VecDeque::with_capacity(KEPT_TOASTS);
-    let mut shown_channels = HashSet::new();
+    // Held so their click handlers stay alive, by channel.
+    let mut shown: HashMap<u64, VecDeque<ToastNotification>> = HashMap::new();
+    let mut last_sound: Option<Instant> = None;
     for request in requests {
         match request {
             Request::Show { toast, image } => {
-                match show(&notifier, &toast, image.as_deref(), &clicks) {
+                let now = Instant::now();
+                let silent = last_sound.is_some_and(|at| now - at < SOUND_INTERVAL);
+                match show(&notifier, &toast, image.as_deref(), silent, &clicks) {
                     Ok(notification) => {
-                        shown_channels.insert(toast.id.channel);
-                        if kept.len() == KEPT_TOASTS {
-                            kept.pop_front();
+                        if !silent {
+                            last_sound = Some(now);
                         }
-                        kept.push_back(notification);
+                        let channel = shown.entry(toast.id.channel).or_default();
+                        channel.push_back(notification);
+                        if channel.len() > TOASTS_PER_CHANNEL
+                            && let Some(oldest) = channel.pop_front()
+                        {
+                            take_down(&notifier, &oldest);
+                        }
                     }
                     Err(err) => eprintln!("toast failed: {err}"),
                 }
@@ -72,7 +84,7 @@ fn run(requests: Receiver<Request>, clicks: UnboundedSender<ToastId>) {
             // Asking the history about channels never toasted would be a COM
             // call per read.
             Request::Clear { channel } => {
-                if shown_channels.remove(&channel) {
+                if shown.remove(&channel).is_some() {
                     _ = ToastNotificationManager::History().and_then(|history| {
                         history.RemoveGroupWithId(
                             &HSTRING::from(channel.to_string()),
@@ -85,14 +97,27 @@ fn run(requests: Receiver<Request>, clicks: UnboundedSender<ToastId>) {
     }
 }
 
+/// Off the screen if it's still up, and out of the notification center.
+fn take_down(notifier: &ToastNotifier, notification: &ToastNotification) {
+    _ = notifier.Hide(notification);
+    _ = (|| {
+        ToastNotificationManager::History()?.RemoveGroupedTagWithId(
+            &notification.Tag()?,
+            &notification.Group()?,
+            &HSTRING::from(APP_ID),
+        )
+    })();
+}
+
 fn show(
     notifier: &ToastNotifier,
     toast: &Toast,
     image: Option<&Path>,
+    silent: bool,
     clicks: &UnboundedSender<ToastId>,
 ) -> windows::core::Result<ToastNotification> {
     let document = XmlDocument::new()?;
-    document.LoadXml(&HSTRING::from(toast_xml(toast, image)))?;
+    document.LoadXml(&HSTRING::from(toast_xml(toast, image, silent)))?;
     let notification = ToastNotification::CreateToastNotification(&document)?;
     // The group lets a channel's toasts be cleared together once it's read.
     notification.SetGroup(&HSTRING::from(toast.id.channel.to_string()))?;
@@ -110,7 +135,7 @@ fn show(
     Ok(notification)
 }
 
-fn toast_xml(toast: &Toast, image: Option<&Path>) -> String {
+fn toast_xml(toast: &Toast, image: Option<&Path>, silent: bool) -> String {
     let body = if toast.body.chars().count() > BODY_LIMIT {
         let cut: String = toast.body.chars().take(BODY_LIMIT).collect();
         format!("{}…", cut.trim_end())
@@ -125,15 +150,21 @@ fn toast_xml(toast: &Toast, image: Option<&Path>) -> String {
             )
         })
         .unwrap_or_default();
+    let audio = if silent {
+        r#"<audio silent="true"/>"#
+    } else {
+        r#"<audio src="ms-winsoundevent:Notification.IM"/>"#
+    };
     format!(
         concat!(
             r#"<toast><visual><binding template="ToastGeneric">"#,
             r#"<text hint-maxLines="1">{}</text><text>{}</text>{}"#,
-            r#"</binding></visual><audio src="ms-winsoundevent:Notification.IM"/></toast>"#,
+            r#"</binding></visual>{}</toast>"#,
         ),
         escape(&toast.title),
         escape(&body),
         image,
+        audio,
     )
 }
 
@@ -220,9 +251,10 @@ mod tests {
             body: "x".repeat(BODY_LIMIT + 10),
             avatar_url: None,
         };
-        let xml = toast_xml(&toast, Some(Path::new(r"C:\a&b.png")));
+        let xml = toast_xml(&toast, Some(Path::new(r"C:\a&b.png")), true);
         assert!(xml.contains("a &lt;b&gt; &amp; &quot;c&quot;</text>"));
         assert!(xml.contains(&format!("{}…", "x".repeat(BODY_LIMIT))));
+        assert!(xml.contains(r#"<audio silent="true"/>"#));
         XmlDocument::new()
             .unwrap()
             .LoadXml(&HSTRING::from(xml))
