@@ -12,9 +12,17 @@ use icons::EXTRA_ICONS;
 
 pub struct Assets;
 
+/// One of the app's own icons, for drawing outside gpui.
+pub fn icon_svg(path: &str) -> Option<&'static str> {
+    EXTRA_ICONS
+        .iter()
+        .find(|(name, _)| *name == path)
+        .map(|(_, svg)| *svg)
+}
+
 impl AssetSource for Assets {
     fn load(&self, path: &str) -> Result<Option<Cow<'static, [u8]>>> {
-        if let Some((_, svg)) = EXTRA_ICONS.iter().find(|(name, _)| *name == path) {
+        if let Some(svg) = icon_svg(path) {
             return Ok(Some(Cow::Borrowed(svg.as_bytes())));
         }
         gpui_kit::assets::Assets.load(path)

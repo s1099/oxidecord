@@ -262,6 +262,9 @@ pub struct HomeScreen {
     pub(super) _composer_changed: Subscription,
     /// Refocuses the screen when a menu or edit box closes so typing reaches the composer.
     pub(super) _focus_lost: Subscription,
+    /// The taskbar thumbnail's call buttons, and what keeps them current.
+    #[cfg(windows)]
+    pub(super) thumb_bar: Option<(crate::platform::taskbar::ThumbBar, Subscription)>,
     pub(super) messages_list: ListState,
     pub(super) message_list_view: Entity<MessageListView>,
     pub(super) typing_dots: Entity<TypingDots>,
@@ -460,6 +463,8 @@ impl HomeScreen {
             composer_mentions: Vec::new(),
             _composer_changed: composer_changed,
             _focus_lost: focus_lost,
+            #[cfg(windows)]
+            thumb_bar: None,
             messages_scroll: SmoothScroll::list(messages_list.clone()),
             messages_list,
             message_list_view,
@@ -476,6 +481,8 @@ impl HomeScreen {
         this.load_current_user(cx);
         this.load_dms(cx);
         this.start_gateway(window, cx);
+        #[cfg(windows)]
+        this.install_thumb_bar(window, cx);
         // Seeds the focus path so key listeners work before anything is clicked.
         this.focus_handle.focus(window, cx);
         this
