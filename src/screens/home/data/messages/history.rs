@@ -8,6 +8,7 @@ use twilight_model::id::{
 };
 
 use crate::discord::{self, MessagePage};
+use crate::platform::prefs;
 use crate::screens::home::history_cache::merge_latest;
 use crate::screens::home::{HomeScreen, View};
 
@@ -29,6 +30,12 @@ impl HomeScreen {
             && let Some(guild_id) = self.selected_guild
         {
             self.last_guild_channel.insert(guild_id, channel_id);
+            let (guild, channel) = (guild_id.get(), channel_id.get());
+            if prefs::with(|prefs| prefs.last_guild_channel.get(&guild) != Some(&channel)) {
+                prefs::update(|prefs| {
+                    prefs.last_guild_channel.insert(guild, channel);
+                });
+            }
         }
         // A DM's call that started before this session did is only reported
         // on request, and the call view needs to know it's there.

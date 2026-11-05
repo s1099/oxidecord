@@ -397,7 +397,13 @@ impl HomeScreen {
             error: None,
             channel_groups: Vec::new(),
             channel_index: HashMap::new(),
-            last_guild_channel: HashMap::new(),
+            last_guild_channel: prefs
+                .last_guild_channel
+                .iter()
+                .filter_map(|(&guild, &channel)| {
+                    Some((Id::new_checked(guild)?, Id::new_checked(channel)?))
+                })
+                .collect(),
             last_dm: None,
             selected_channel: None,
             dms: DmList::default(),

@@ -30,6 +30,9 @@ pub struct Prefs {
     /// Keyed by guild id. Raw ids keep this module free of Discord types.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub collapsed_categories: BTreeMap<u64, Vec<u64>>,
+    /// Guild id to the channel last open in it, reopened when the guild is.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub last_guild_channel: BTreeMap<u64, u64>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub recent_emojis: Vec<RecentEmoji>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
