@@ -612,13 +612,16 @@ fn render_author(
     cache: &Entity<RetainAllImageCache>,
     hover_color: Hsla,
 ) -> impl IntoElement {
+    // Shrinkable, or a long name keeps its one-line width and runs out of the card.
     let name = div()
+        .min_w_0()
         .text_size(TEXT_BODY)
         .line_height(px(LINE_HEIGHT_BODY))
         .font_weight(FontWeight::SEMIBOLD)
         .child(author.name.clone());
 
     h_flex()
+        .min_w_0()
         .gap(px(8.))
         .items_center()
         .children(author.icon_url.clone().map(|url| {
@@ -631,6 +634,7 @@ fn render_author(
         .child(match author.url.clone() {
             Some(url) => div()
                 .id(id.element_id("embed-author"))
+                .min_w_0()
                 .cursor_pointer()
                 .hover(|this| this.text_color(hover_color).underline())
                 .child(name)

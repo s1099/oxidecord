@@ -61,6 +61,8 @@ pub(super) struct Selectable {
     pub regions: TextRegions,
     pub selected: Option<Range<usize>>,
     pub color: Hsla,
+    /// Off inside something clickable, whose pointing hand the I-beam would hide.
+    pub ibeam: bool,
 }
 
 pub(super) struct RichText {
@@ -321,7 +323,7 @@ impl Element for RichText {
                 paint_selection(&self.layout, bounds, range, selectable.color, window);
             }
             // Before the inner text's paint, so a link's pointing hand wins.
-            if let Some(hitbox) = hitbox.as_ref() {
+            if let Some(hitbox) = hitbox.as_ref().filter(|_| selectable.ibeam) {
                 window.set_cursor_style(CursorStyle::IBeam, hitbox);
             }
         }

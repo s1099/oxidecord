@@ -234,6 +234,7 @@ impl<'a> Renderer<'a> {
             regions: screen.text_regions.clone(),
             selected,
             color: self.palette.selection,
+            ibeam: self.options.interactive,
         })
     }
 
