@@ -295,15 +295,28 @@ fn render_picker_header(
         .items_end()
         .pb_1p5()
         .px_1()
-        .gap_1p5()
         .text_sm()
         .font_semibold()
         .text_color(theme.muted_foreground)
         .cursor_pointer()
         .hover(|this| this.text_color(theme.foreground))
-        .child(section_icon(section, 16., 16.))
-        .child(div().truncate().child(section.title.clone()))
-        .child(Icon::new(chevron).size(px(14.)).flex_shrink_0())
+        .child(
+            // Sits on the cell's bottom edge, but its icons centre on the title's line.
+            h_flex()
+                .min_w_0()
+                .items_center()
+                .gap_1p5()
+                .child(section_icon(section, 16., 16.))
+                .child(div().truncate().child(section.title.clone()))
+                // The line box's centre sits above the glyphs' optical centre.
+                .child(
+                    Icon::new(chevron)
+                        .size(px(14.))
+                        .flex_shrink_0()
+                        .relative()
+                        .top(px(2.)),
+                ),
+        )
         .on_click(cx.listener(move |this, _, _, cx| this.toggle_picker_section(kind, cx)))
         .into_any_element()
 }
