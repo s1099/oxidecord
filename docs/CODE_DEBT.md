@@ -20,6 +20,21 @@ Entry format:
 - **Inline video keeps playing while hidden** — hiding doesn't pause the clip, so its audio
   goes on with no window to stop it from. `src/platform/tray.rs:32`
 
+## Desktop notifications
+
+- **Only on Windows** — other platforms have no backend, so their notifications are
+  dropped. `src/platform/notify/unsupported.rs:9`
+- **Clicks only work while the app runs** — a toast is opened through its `Activated`
+  event, so one clicked in Action Center after a restart does nothing. Fixing that needs a
+  registered COM activator. `src/platform/notify/windows.rs:103`
+- **Threads are treated as mention-only** — per-thread notification settings aren't read,
+  so a message in a thread notifies only when it pings the user.
+  `src/screens/home/data/notifications.rs:110`
+- **System messages never notify** — Discord notifies of joins, boosts and similar in
+  all-messages channels. `src/screens/home/data/notifications.rs:84`
+- **Avatar cache never shrinks** — senders' avatars pile up in the temp directory.
+  `src/platform/notify/mod.rs:77`
+
 ## Copying images
 
 - **Failures are silent** — a download or decode that fails (an AVIF from a third-party

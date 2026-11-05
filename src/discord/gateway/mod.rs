@@ -24,8 +24,8 @@ use crate::platform::runtime;
 
 use super::model::{
     Channel, ChannelLatest, DmMember, GuildAppearance, GuildEmoji, GuildMember, GuildUnreads,
-    MemberListUpdate, Message, MuteSettings, PresenceStatus, ReactionEmoji, ReadState, Role,
-    StreamServerInfo, UnreadSetting, VoiceServerInfo, VoiceUserState,
+    MemberListUpdate, Message, MuteSettings, NotifyLevel, PresenceStatus, ReactionEmoji, ReadState,
+    Role, StreamServerInfo, VoiceServerInfo, VoiceUserState,
 };
 
 pub use sender::GatewaySender;
@@ -37,6 +37,8 @@ pub struct IncomingMessage {
     pub message: Message,
     /// The sender's nonce; matches the id of the optimistic copy of a message sent from here.
     pub nonce: Option<u64>,
+    /// Sent with `@silent`, so it raises no notification.
+    pub silent: bool,
 }
 
 pub enum GatewayEvent {
@@ -119,9 +121,9 @@ pub enum GatewayEvent {
         guild_id: Id<GuildMarker>,
         limit: u64,
     },
-    GuildDefaultUnreads {
+    GuildDefaultNotifications {
         guild_id: Id<GuildMarker>,
-        unreads: UnreadSetting,
+        level: NotifyLevel,
     },
     GuildOwner {
         guild_id: Id<GuildMarker>,
@@ -149,6 +151,12 @@ pub enum GatewayEvent {
     MemberList(MemberListUpdate),
     Presences(Vec<(Id<UserMarker>, PresenceStatus)>),
     StatusSettings(PresenceStatus),
+    /// Replaces who the user has blocked.
+    BlockedUsers(Vec<Id<UserMarker>>),
+    Blocked {
+        user_id: Id<UserMarker>,
+        blocked: bool,
+    },
     /// Follows `Ready`, which clears what an earlier session knew.
     ReadStates(Vec<ReadState>),
     /// The user read a channel up to a message, here or on another client.

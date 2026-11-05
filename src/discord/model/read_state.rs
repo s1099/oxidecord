@@ -56,12 +56,10 @@ pub enum UnreadSetting {
 
 impl UnreadSetting {
     /// For when no unread setting was picked apart from the notification level.
-    /// `None` for the level that inherits from the guild.
-    fn from_notifications(level: u8) -> Option<Self> {
+    pub fn from_notifications(level: NotifyLevel) -> Self {
         match level {
-            0 => Some(Self::AllMessages),
-            1 | 2 => Some(Self::OnlyMentions),
-            _ => None,
+            NotifyLevel::AllMessages => Self::AllMessages,
+            NotifyLevel::OnlyMentions | NotifyLevel::Nothing => Self::OnlyMentions,
         }
     }
 
@@ -77,12 +75,30 @@ impl UnreadSetting {
         } else if flags & only_mentions != 0 {
             Some(Self::OnlyMentions)
         } else {
-            notifications.and_then(Self::from_notifications)
+            notifications
+                .and_then(NotifyLevel::from_raw)
+                .map(Self::from_notifications)
         }
     }
+}
 
-    pub(in crate::discord) fn guild_default(level: u8) -> Self {
-        Self::from_notifications(level).unwrap_or(Self::AllMessages)
+/// `message_notifications`: which messages raise a desktop notification.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum NotifyLevel {
+    AllMessages,
+    OnlyMentions,
+    Nothing,
+}
+
+impl NotifyLevel {
+    /// `None` for 3, the level that inherits from the category or guild.
+    pub(in crate::discord) fn from_raw(level: u8) -> Option<Self> {
+        match level {
+            0 => Some(Self::AllMessages),
+            1 => Some(Self::OnlyMentions),
+            2 => Some(Self::Nothing),
+            _ => None,
+        }
     }
 }
 
@@ -95,6 +111,10 @@ pub struct MuteSettings {
     pub unreads: Option<UnreadSetting>,
     /// Channels and categories with a setting of their own.
     pub channel_unreads: Vec<(Id<ChannelMarker>, UnreadSetting)>,
+    /// `None` leaves it to the guild's default notifications.
+    pub notifications: Option<NotifyLevel>,
+    /// Channels and categories with a level of their own.
+    pub channel_notifications: Vec<(Id<ChannelMarker>, NotifyLevel)>,
     pub suppress_everyone: bool,
     pub suppress_roles: bool,
 }
@@ -367,6 +387,17 @@ pub(in crate::discord) fn convert_mute_settings(settings: RawGuildSettings) -> M
                     channel.message_notifications,
                 )?;
                 Some((channel.channel_id, unreads))
+            })
+            .collect(),
+        notifications: settings
+            .message_notifications
+            .and_then(NotifyLevel::from_raw),
+        channel_notifications: settings
+            .channel_overrides
+            .iter()
+            .filter_map(|channel| {
+                let level = NotifyLevel::from_raw(channel.message_notifications?)?;
+                Some((channel.channel_id, level))
             })
             .collect(),
         suppress_everyone: settings.suppress_everyone,

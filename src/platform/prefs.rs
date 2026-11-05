@@ -37,6 +37,9 @@ pub struct Prefs {
     /// `None` is the default width.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sidebar_width: Option<f32>,
+    /// Negative so a file from before the setting existed reads as on.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub notifications_off: bool,
 }
 
 /// Untagged, so the JSON is just a number (custom) or a string (unicode).
@@ -56,6 +59,11 @@ pub fn load() -> Prefs {
 pub fn save(prefs: &Prefs) {
     *cached() = Some(prefs.clone());
     write_file(prefs);
+}
+
+/// Reads without cloning the whole file, for checks made per message.
+pub fn with<R>(read: impl FnOnce(&Prefs) -> R) -> R {
+    read(cached().get_or_insert_with(read_file))
 }
 
 /// Edits one field without clobbering the rest.

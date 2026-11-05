@@ -40,7 +40,7 @@ pub use message::{
     VideoAttachment,
 };
 pub use read_state::{
-    ChannelLatest, GuildUnreads, MuteSettings, ReadState, UnreadChannel, UnreadSetting,
+    ChannelLatest, GuildUnreads, MuteSettings, NotifyLevel, ReadState, UnreadChannel, UnreadSetting,
 };
 pub use search::{
     AuthorType, SEARCH_MAX_OFFSET, SEARCH_PAGE_SIZE, SearchFilters, SearchHas, SearchHit,

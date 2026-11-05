@@ -17,11 +17,12 @@ pub use model::{
     GuildEmoji, GuildFolders, GuildMember, GuildUnreads, ImageAttachment, Inline, List, ListMember,
     MAX_UPLOAD_TOTAL, Markdown, MemberGroupKind, MemberListGroup, MemberListItem, MemberListOp,
     MemberListUpdate, Mention, MentionedUser, Message, MessageLink, MessageReference, MuteSettings,
-    PresenceStatus, Reaction, ReactionEmoji, Reactor, ReadState, Reply, Role, SEARCH_MAX_OFFSET,
-    SEARCH_PAGE_SIZE, SPOILER_PREFIX, SearchFilters, SearchHas, SearchHit, SearchResponse,
-    SearchScope, SearchSort, SpoilerCover, StreamServerInfo, SystemEvent, UnreadChannel,
-    UnreadSetting, Upload, UploadProgress, UserProfile, VideoAttachment, VoiceServerInfo,
-    VoiceUserState, WELCOMES, animated_webp, call_duration, scaled_url, stream_key,
+    NotifyLevel, PresenceStatus, Reaction, ReactionEmoji, Reactor, ReadState, Reply, Role,
+    SEARCH_MAX_OFFSET, SEARCH_PAGE_SIZE, SPOILER_PREFIX, SearchFilters, SearchHas, SearchHit,
+    SearchResponse, SearchScope, SearchSort, SpoilerCover, StreamServerInfo, SystemEvent,
+    UnreadChannel, UnreadSetting, Upload, UploadProgress, UserProfile, VideoAttachment,
+    VoiceServerInfo, VoiceUserState, WELCOMES, animated_webp, call_duration, scaled_url,
+    stream_key,
 };
 pub use rest::{
     MESSAGE_PAGE_SIZE, MessagePage, REACTORS_PAGE_SIZE, ack_message, delete_message, edit_message,

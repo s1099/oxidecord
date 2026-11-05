@@ -28,6 +28,7 @@ impl HomeScreen {
             tx.unbounded_send(event).is_ok()
         });
         self.gateway = Some(gateway);
+        self.start_notifications(window, cx);
 
         // In the window, since a channel list arriving for the open guild
         // opens one of its channels.
@@ -148,6 +149,16 @@ impl HomeScreen {
                 self.presence_status = Some(status);
                 cx.notify();
             }
+            discord::GatewayEvent::BlockedUsers(users) => {
+                self.blocked_users = users.into_iter().collect();
+            }
+            discord::GatewayEvent::Blocked { user_id, blocked } => {
+                if blocked {
+                    self.blocked_users.insert(user_id);
+                } else {
+                    self.blocked_users.remove(&user_id);
+                }
+            }
             discord::GatewayEvent::Message(incoming) => {
                 self.unreads
                     .note_message(incoming.channel_id, incoming.message.id);
@@ -160,6 +171,7 @@ impl HomeScreen {
                 if incoming.guild_id.is_none() {
                     self.note_dm_activity(incoming.channel_id, incoming.message.id, cx);
                 }
+                self.notify_message(&incoming, window);
                 self.stop_typing(incoming.channel_id, incoming.message.author_id, cx);
                 self.history_cache
                     .push(incoming.channel_id, &incoming.message);
@@ -247,8 +259,8 @@ impl HomeScreen {
             discord::GatewayEvent::GuildUploadLimit { guild_id, limit } => {
                 self.guild_data.upload_limits.insert(guild_id, limit);
             }
-            discord::GatewayEvent::GuildDefaultUnreads { guild_id, unreads } => {
-                self.unreads.set_default_unreads(guild_id, unreads);
+            discord::GatewayEvent::GuildDefaultNotifications { guild_id, level } => {
+                self.unreads.set_default_notifications(guild_id, level);
                 cx.notify();
             }
             discord::GatewayEvent::GuildOwner { guild_id, owner_id } => {
@@ -287,6 +299,12 @@ impl HomeScreen {
                     let mentions = mention_count.unwrap_or(self.unreads.mentions(channel_id));
                     self.unreads.set_acked(channel_id, message_id, mentions);
                 } else {
+                    // Read on another client. The open conversation acks
+                    // itself even while the window is in the background,
+                    // which would take down the toast just raised for it.
+                    if self.selected_channel != Some(channel_id) {
+                        self.clear_notifications(channel_id);
+                    }
                     self.unreads.ack(channel_id, message_id);
                     if let Some(mentions) = mention_count {
                         self.unreads.set_mentions(channel_id, mentions);

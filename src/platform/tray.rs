@@ -104,6 +104,12 @@ fn build(tx: futures::channel::mpsc::UnboundedSender<Request>) -> anyhow::Result
     Ok(tray)
 }
 
+/// Brings the window back from the tray and to the front.
+pub fn show(window: &mut Window) {
+    set_visible(window, true);
+    window.activate_window();
+}
+
 /// gpui has no hide, so this goes to the OS. Hiding also drops the taskbar button,
 /// and the maximized state survives it.
 fn set_visible(window: &Window, visible: bool) {

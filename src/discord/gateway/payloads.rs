@@ -82,6 +82,23 @@ pub(super) struct ReadyPayload {
     pub(super) presences: Vec<RawPresence>,
     #[serde(default)]
     pub(super) merged_presences: Option<MergedPresences>,
+    #[serde(default, deserialize_with = "skip_invalid")]
+    pub(super) relationships: Vec<RawRelationship>,
+}
+
+/// One of `READY`'s `relationships`, or a `RELATIONSHIP_*` dispatch. `id` is
+/// the other user's.
+#[derive(Deserialize)]
+pub(super) struct RawRelationship {
+    pub(super) id: Id<UserMarker>,
+    #[serde(rename = "type", default)]
+    kind: u8,
+}
+
+impl RawRelationship {
+    pub(super) fn is_block(&self) -> bool {
+        self.kind == 2
+    }
 }
 
 /// Presences gathered in one place, from `READY` or `READY_SUPPLEMENTAL`

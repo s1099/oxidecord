@@ -8,6 +8,9 @@
 //! to mark only pings (which an "Only @mentions" notification level implies
 //! unless an unread setting overrides it).
 //!
+//! Notification levels live here too, since they're set alongside mutes and
+//! decide unreads where no unread setting is picked.
+//!
 //! Mentions are counted here for the red badges. Discord reports the count only
 //! at session start and on ack, so the client counts arriving pings itself.
 
@@ -20,7 +23,7 @@ use twilight_model::id::{
 };
 
 use crate::discord::{
-    ChannelLatest, GuildUnreads, MuteSettings, ReadState, UnreadChannel, UnreadSetting,
+    ChannelLatest, GuildUnreads, MuteSettings, NotifyLevel, ReadState, UnreadChannel, UnreadSetting,
 };
 
 type ChannelId = Id<ChannelMarker>;
@@ -53,6 +56,10 @@ pub(super) struct Unreads {
     default_unreads: HashMap<GuildId, UnreadSetting>,
     guild_unreads: HashMap<GuildId, UnreadSetting>,
     channel_unreads: HashMap<GuildId, HashMap<ChannelId, UnreadSetting>>,
+    /// The guild's own default, for where the user hasn't picked a level.
+    default_notifications: HashMap<GuildId, NotifyLevel>,
+    guild_notifications: HashMap<GuildId, NotifyLevel>,
+    channel_notifications: HashMap<GuildId, HashMap<ChannelId, NotifyLevel>>,
     /// A channel with none has no entry.
     mentions: HashMap<ChannelId, u32>,
     suppress_everyone: HashSet<GuildId>,
@@ -132,6 +139,14 @@ impl Unreads {
                 };
                 self.channel_unreads
                     .insert(guild_id, settings.channel_unreads.into_iter().collect());
+                match settings.notifications {
+                    Some(level) => self.guild_notifications.insert(guild_id, level),
+                    None => self.guild_notifications.remove(&guild_id),
+                };
+                self.channel_notifications.insert(
+                    guild_id,
+                    settings.channel_notifications.into_iter().collect(),
+                );
             }
             self.muted_channels.insert(
                 settings.guild_id,
@@ -140,9 +155,11 @@ impl Unreads {
         }
     }
 
-    pub(super) fn set_default_unreads(&mut self, guild_id: GuildId, unreads: UnreadSetting) {
+    pub(super) fn set_default_notifications(&mut self, guild_id: GuildId, level: NotifyLevel) {
         self.marks.get_mut().remove(&guild_id);
-        self.default_unreads.insert(guild_id, unreads);
+        self.default_notifications.insert(guild_id, level);
+        self.default_unreads
+            .insert(guild_id, UnreadSetting::from_notifications(level));
     }
 
     pub(super) fn note_latest(&mut self, channel_id: ChannelId, message_id: MessageId) {
@@ -285,6 +302,42 @@ impl Unreads {
             .unwrap_or(UnreadSetting::AllMessages)
     }
 
+    /// Which messages notify, as Discord's client works it out: the channel's
+    /// own level, else its category's, else the user's for the guild, else the
+    /// guild's default. A mute lets only pings through. DMs notify on every
+    /// message unless muted. `guild_id` is passed rather than looked up, since
+    /// voice channels' chats and threads aren't among the unread channels.
+    pub(super) fn notify_level(
+        &self,
+        guild_id: Option<GuildId>,
+        channel_id: ChannelId,
+        parent_id: Option<ChannelId>,
+    ) -> NotifyLevel {
+        let muted = self.muted_channels.get(&guild_id).is_some_and(|muted| {
+            muted.contains(&channel_id) || parent_id.is_some_and(|parent| muted.contains(&parent))
+        }) || guild_id.is_some_and(|guild_id| self.muted_guilds.contains(&guild_id));
+        let level = match guild_id {
+            None => NotifyLevel::AllMessages,
+            Some(guild_id) => self
+                .channel_notifications
+                .get(&guild_id)
+                .and_then(|channels| {
+                    channels
+                        .get(&channel_id)
+                        .or_else(|| channels.get(&parent_id?))
+                })
+                .or_else(|| self.guild_notifications.get(&guild_id))
+                .or_else(|| self.default_notifications.get(&guild_id))
+                .copied()
+                .unwrap_or(NotifyLevel::AllMessages),
+        };
+        if muted && level == NotifyLevel::AllMessages {
+            NotifyLevel::OnlyMentions
+        } else {
+            level
+        }
+    }
+
     pub(super) fn shows_unread(&self, channel_id: ChannelId, parent_id: Option<ChannelId>) -> bool {
         self.is_unread(channel_id)
             && !self.is_muted(channel_id, parent_id)
@@ -379,6 +432,8 @@ mod tests {
             muted_channels: Vec::new(),
             unreads: None,
             channel_unreads: Vec::new(),
+            notifications: None,
+            channel_notifications: Vec::new(),
             suppress_everyone: false,
             suppress_roles: false,
         }]);
@@ -413,6 +468,8 @@ mod tests {
             muted_channels: vec![Id::new(5)],
             unreads: None,
             channel_unreads: Vec::new(),
+            notifications: None,
+            channel_notifications: Vec::new(),
             suppress_everyone: false,
             suppress_roles: false,
         }]);
@@ -428,7 +485,7 @@ mod tests {
             Some(1),
             &[(10, Some(5), Some(50)), (11, None, Some(50))],
         ));
-        unreads.set_default_unreads(Id::new(1), UnreadSetting::OnlyMentions);
+        unreads.set_default_notifications(Id::new(1), NotifyLevel::OnlyMentions);
         assert!(!unreads.is_guild_unread(Id::new(1)));
 
         unreads.set_mutes(vec![MuteSettings {
@@ -437,6 +494,8 @@ mod tests {
             muted_channels: Vec::new(),
             unreads: None,
             channel_unreads: vec![(Id::new(5), UnreadSetting::AllMessages)],
+            notifications: None,
+            channel_notifications: Vec::new(),
             suppress_everyone: false,
             suppress_roles: false,
         }]);
@@ -470,10 +529,52 @@ mod tests {
             muted_channels: vec![Id::new(10)],
             unreads: None,
             channel_unreads: Vec::new(),
+            notifications: None,
+            channel_notifications: Vec::new(),
             suppress_everyone: false,
             suppress_roles: false,
         }]);
         assert!(unreads.is_muted(Id::new(10), None));
         assert_eq!(unreads.dm_mentions(Id::new(10)), 0);
+    }
+
+    #[test]
+    fn notify_levels_fall_back_from_channel_to_guild_default() {
+        let mut unreads = Unreads::default();
+        let guild = Some(Id::new(1));
+        unreads.set_default_notifications(Id::new(1), NotifyLevel::OnlyMentions);
+        assert_eq!(
+            unreads.notify_level(guild, Id::new(10), None),
+            NotifyLevel::OnlyMentions
+        );
+        assert_eq!(
+            unreads.notify_level(None, Id::new(10), None),
+            NotifyLevel::AllMessages
+        );
+
+        unreads.set_mutes(vec![MuteSettings {
+            guild_id: guild,
+            muted: false,
+            muted_channels: vec![Id::new(12)],
+            unreads: None,
+            channel_unreads: Vec::new(),
+            notifications: Some(NotifyLevel::AllMessages),
+            channel_notifications: vec![(Id::new(5), NotifyLevel::Nothing)],
+            suppress_everyone: false,
+            suppress_roles: false,
+        }]);
+        assert_eq!(
+            unreads.notify_level(guild, Id::new(10), None),
+            NotifyLevel::AllMessages
+        );
+        assert_eq!(
+            unreads.notify_level(guild, Id::new(11), Some(Id::new(5))),
+            NotifyLevel::Nothing
+        );
+        // A mute still lets pings through.
+        assert_eq!(
+            unreads.notify_level(guild, Id::new(12), None),
+            NotifyLevel::OnlyMentions
+        );
     }
 }

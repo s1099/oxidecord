@@ -51,8 +51,9 @@ older than the installed Visual Studio, build through Ninja: `CMAKE_GENERATOR=Ni
   conversations, drawn at once and merged with the newest page when it lands.
 - `src/platform/` — runtime, http client, prefs, updater, `tray.rs` and `instance.rs`
   (Windows: closing hides to a notification-area icon; a second launch shows the running
-  instance instead), `video/` (inline video
-  playback, decoded by the OS), `capture/` (screen capture and H.264 encoding for
+  instance instead), `notify/` (desktop notifications as WinRT toasts; which messages
+  notify is decided in `screens/home/data/notifications.rs`, by Discord's client rules,
+  since the gateway doesn't say), `video/` (inline video playback, decoded by the OS), `capture/` (screen capture and H.264 encoding for
   Go Live, also by the OS), and `h264/` (decoding a watched stream, also by the OS).
 - `platform/prefs.rs` — user preferences persisted to `prefs.json` in the config dir (theme,
   input and output devices, collapsed channel categories per guild). Reads/writes never fail — a bad file

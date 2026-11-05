@@ -15,6 +15,7 @@ pub(super) mod image_viewer;
 pub(super) mod member_list;
 pub(super) mod members;
 pub(super) mod messages;
+pub(super) mod notifications;
 pub(super) mod pins;
 pub(super) mod presence;
 pub(super) mod profile;

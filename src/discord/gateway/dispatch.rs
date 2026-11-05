@@ -7,7 +7,9 @@ use twilight_model::id::{
 };
 use twilight_model::util::Timestamp;
 
-use crate::discord::UnreadSetting;
+use twilight_model::channel::message::MessageFlags;
+
+use crate::discord::NotifyLevel;
 use crate::discord::model::{
     RawEmoji, RawGuildChannel, RawGuildSettings, RawMember, RawMemberListUpdate, RawRole,
     RawVoiceServer, RawVoiceState, StreamServerInfo, author_member, boost_upload_limit,
@@ -59,7 +61,7 @@ pub(super) fn dispatch(
                     let merged = merged.next().unwrap_or_default();
                     let owner_id = guild.owner_id();
                     unreads.extend(guild_upload_limit(&guild));
-                    unreads.extend(guild_default_unreads(&guild));
+                    unreads.extend(guild_default_notifications(&guild));
                     unreads.extend(guild_appearance(&guild));
                     unreads.extend(guild_owner(&guild));
                     unreads.extend(guild_channels(
@@ -82,12 +84,21 @@ pub(super) fn dispatch(
                 }
                 // `Ready` goes first: the member roles that follow are only
                 // kept for the signed-in user, whom it names.
+                let blocked = GatewayEvent::BlockedUsers(
+                    ready
+                        .relationships
+                        .iter()
+                        .filter(|relationship| relationship.is_block())
+                        .map(|relationship| relationship.id)
+                        .collect(),
+                );
                 let ready = GatewayEvent::Ready {
                     user_id: ready.user.id,
                     voice_states,
                 };
                 let presences = GatewayEvent::Presences(convert_presences(presences));
                 std::iter::once(ready)
+                    .chain(std::iter::once(blocked))
                     .chain(unreads)
                     .chain(std::iter::once(presences))
                     .chain(roles)
@@ -101,11 +112,15 @@ pub(super) fn dispatch(
                     .ok()
                     .and_then(|payload| payload.nonce);
                 let roles = author_roles(&message);
+                let silent = message
+                    .flags
+                    .is_some_and(|flags| flags.contains(MessageFlags::SUPPRESS_NOTIFICATIONS));
                 std::iter::once(GatewayEvent::Message(IncomingMessage {
                     channel_id: message.channel_id,
                     guild_id: message.guild_id,
                     message: convert_message(message),
                     nonce,
+                    silent,
                 }))
                 .chain(roles)
                 .collect()
@@ -121,6 +136,7 @@ pub(super) fn dispatch(
                     guild_id: message.guild_id,
                     message: convert_message(message),
                     nonce: None,
+                    silent: false,
                 }))
                 .chain(roles)
                 .collect()
@@ -248,7 +264,7 @@ pub(super) fn dispatch(
             .map(|guild| {
                 let owner_id = guild.owner_id();
                 let upload_limit = guild_upload_limit(&guild);
-                let default_unreads = guild_default_unreads(&guild);
+                let default_notifications = guild_default_notifications(&guild);
                 let appearance = guild_appearance(&guild);
                 let owner = guild_owner(&guild);
                 let channels = match *self_id {
@@ -275,7 +291,7 @@ pub(super) fn dispatch(
                 std::iter::once(voice)
                     .chain(std::iter::once(presences))
                     .chain(upload_limit)
-                    .chain(default_unreads)
+                    .chain(default_notifications)
                     .chain(appearance)
                     .chain(owner)
                     .chain(channels)
@@ -298,7 +314,7 @@ pub(super) fn dispatch(
             .map(|guild| {
                 guild_upload_limit(&guild)
                     .into_iter()
-                    .chain(guild_default_unreads(&guild))
+                    .chain(guild_default_notifications(&guild))
                     .chain(guild_appearance(&guild))
                     .chain(guild_owner(&guild))
                     .collect()
@@ -407,6 +423,24 @@ pub(super) fn dispatch(
                 .map(|channels| vec![GatewayEvent::LatestMessages(channels)])
                 .unwrap_or_default()
         }
+        // A friend request or friendship replaces a block, so any add says
+        // whether the user is blocked now.
+        "RELATIONSHIP_ADD" | "RELATIONSHIP_UPDATE" => serde_json::from_str::<RawRelationship>(data)
+            .map(|relationship| {
+                vec![GatewayEvent::Blocked {
+                    user_id: relationship.id,
+                    blocked: relationship.is_block(),
+                }]
+            })
+            .unwrap_or_default(),
+        "RELATIONSHIP_REMOVE" => serde_json::from_str::<RawRelationship>(data)
+            .map(|relationship| {
+                vec![GatewayEvent::Blocked {
+                    user_id: relationship.id,
+                    blocked: false,
+                }]
+            })
+            .unwrap_or_default(),
         "USER_GUILD_SETTINGS_UPDATE" => serde_json::from_str::<RawGuildSettings>(data)
             .map(|settings| {
                 vec![GatewayEvent::MuteSettings(vec![convert_mute_settings(
@@ -458,10 +492,13 @@ fn guild_upload_limit(guild: &GatewayGuild) -> Option<GatewayEvent> {
     })
 }
 
-fn guild_default_unreads(guild: &GatewayGuild) -> Option<GatewayEvent> {
-    Some(GatewayEvent::GuildDefaultUnreads {
+fn guild_default_notifications(guild: &GatewayGuild) -> Option<GatewayEvent> {
+    Some(GatewayEvent::GuildDefaultNotifications {
         guild_id: guild.id,
-        unreads: UnreadSetting::guild_default(guild.default_message_notifications()?),
+        // Only a channel or the user's own settings can inherit; a guild's
+        // default that says otherwise means all messages.
+        level: NotifyLevel::from_raw(guild.default_message_notifications()?)
+            .unwrap_or(NotifyLevel::AllMessages),
     })
 }
 

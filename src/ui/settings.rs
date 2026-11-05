@@ -1,6 +1,7 @@
 //! The settings popup: gpui-component's [`Settings`] hosted in a dialog.
 //!
-//! Pages: themes, and updates (drives [`crate::platform::updater`]). Typing
+//! Pages: notifications, themes, and updates (drives
+//! [`crate::platform::updater`]). Typing
 //! [`DEBUG_CODE`] into the search adds [`gallery`] for the session.
 
 use std::rc::Rc;
@@ -20,6 +21,7 @@ use gpui_kit::*;
 use twilight_model::id::{Id, marker::UserMarker};
 
 use crate::discord;
+use crate::platform::prefs;
 use crate::platform::updater::{self, Status};
 use crate::ui::accounts::{AccountCard, account_avatar, account_label};
 use crate::ui::button::Button;
@@ -89,6 +91,7 @@ pub fn open(window: &mut Window, cx: &mut App, session: SessionHandlers) {
                             .with_group_variant(GroupBoxVariant::Outline)
                             .sidebar_width(px(SIDEBAR_WIDTH))
                             .sidebar_style(&StyleRefinement::default().rounded_l(inner_radius))
+                            .page(notifications_page())
                             .page(themes_page())
                             .page(updates_page(cx))
                             .when(debug, |this| this.page(gallery::page())),
@@ -283,16 +286,13 @@ fn add_account_button(session: Rc<SessionHandlers>) -> Button {
 }
 
 fn themes_page() -> SettingPage {
-    SettingPage::new("Themes")
-        .default_open(true)
-        .resettable(false)
-        .group(
-            SettingGroup::new()
-                .title("Preset themes")
-                .item(SettingItem::render(|_: &RenderOptions, _window, cx| {
-                    theme_grid(cx)
-                })),
-        )
+    SettingPage::new("Themes").resettable(false).group(
+        SettingGroup::new()
+            .title("Preset themes")
+            .item(SettingItem::render(|_: &RenderOptions, _window, cx| {
+                theme_grid(cx)
+            })),
+    )
 }
 
 fn theme_grid(cx: &mut App) -> Div {
@@ -416,6 +416,21 @@ fn color(value: &Option<SharedString>, fallback: Hsla) -> Hsla {
         .and_then(|value| Rgba::try_from(value.as_ref()).ok())
         .map(Hsla::from)
         .unwrap_or(fallback)
+}
+
+fn notifications_page() -> SettingPage {
+    let enabled = SettingField::switch(
+        |_| !prefs::with(|prefs| prefs.notifications_off),
+        |enabled, _| prefs::update(|prefs| prefs.notifications_off = !enabled),
+    );
+    SettingPage::new("Notifications")
+        .default_open(true)
+        .resettable(false)
+        .group(
+            SettingGroup::new()
+                .title("Desktop notifications")
+                .item(SettingItem::new("Enable desktop notifications", enabled)),
+        )
 }
 
 fn updates_page(cx: &App) -> SettingPage {

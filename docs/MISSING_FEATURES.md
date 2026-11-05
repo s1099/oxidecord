@@ -118,11 +118,9 @@
 
 | Feature | Status | Notes |
 |---|---|---|
-| Desktop notifications for mentions and DMs | Missing | |
-| Notification sounds | Missing | |
+| Notification sounds | Partial | Toasts play Windows' message sound; Discord's own sounds aren't played |
 | Taskbar and dock badge counts, flashing the window | Missing | |
 | Inbox (mentions tab, unreads tab, For You) | Missing | |
-| Do-not-disturb suppression | Missing | |
 
 ## App, settings and platform
 

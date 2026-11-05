@@ -206,6 +206,10 @@ pub struct HomeScreen {
     pub(super) gateway: Option<discord::GatewaySender>,
     /// From whichever of `READY` or `GET /users/@me` lands first; voice needs it to identify.
     pub(super) self_user_id: Option<Id<UserMarker>>,
+    /// Their messages raise no notification.
+    pub(super) blocked_users: HashSet<Id<UserMarker>>,
+    /// Started with the gateway, whose messages it announces.
+    pub(super) notifier: Option<crate::platform::notify::Notifier>,
     /// Expands the message toolbar's hidden actions inline, as in Discord.
     pub(super) shift_held: bool,
     /// Tracked apart because the toolbar overhangs the row above: moving onto it
@@ -425,6 +429,8 @@ impl HomeScreen {
             voice_chat_open: false,
             gateway: None,
             self_user_id: None,
+            blocked_users: HashSet::new(),
+            notifier: None,
             shift_held: false,
             hovered_message: None,
             hovered_toolbar: None,
