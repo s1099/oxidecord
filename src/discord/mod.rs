@@ -19,14 +19,14 @@ pub use model::{
     EmbedAuthor, EmbedField, EmbedFooter, EmbedLayout, EmbedMedia, EmbedVideo, FileAttachment,
     ForwardedMessage, FrecencyItem, Guild, GuildAppearance, GuildEmoji, GuildFolders, GuildMember,
     GuildUnreads, ImageAttachment, Inline, List, ListMember, MAX_UPLOAD_TOTAL, Markdown,
-    MemberGroupKind, MemberListGroup, MemberListItem, MemberListOp, MemberListUpdate, Mention,
-    MentionedUser, Message, MessageLink, MessageReference, MuteSettings, NotifyLevel, OptionKind,
-    PresenceStatus, Reaction, ReactionEmoji, Reactor, ReadState, Reply, Role, SEARCH_MAX_OFFSET,
-    SEARCH_PAGE_SIZE, SPOILER_PREFIX, SearchFilters, SearchHas, SearchHit, SearchResponse,
-    SearchScope, SearchSort, SlashCommand, SpoilerCover, StreamServerInfo, SystemEvent,
-    UnreadChannel, UnreadSetting, Upload, UploadProgress, UserProfile, VideoAttachment,
-    VoiceServerInfo, VoiceUserState, WELCOMES, animated_webp, call_duration, scaled_url,
-    stream_key,
+    MemberGroupKind, MemberListGroup, MemberListItem, MemberListOp, MemberListUpdate, Membership,
+    Mention, MentionedUser, Message, MessageLink, MessageReference, MuteSettings, NotifyLevel,
+    OptionKind, PresenceStatus, Reaction, ReactionEmoji, Reactor, ReadState, Reply, Role,
+    SEARCH_MAX_OFFSET, SEARCH_PAGE_SIZE, SPOILER_PREFIX, SearchFilters, SearchHas, SearchHit,
+    SearchResponse, SearchScope, SearchSort, SlashCommand, SpoilerCover, StreamServerInfo,
+    SystemEvent, Thread, UnreadChannel, UnreadSetting, Upload, UploadProgress, UserProfile,
+    VideoAttachment, VoiceServerInfo, VoiceUserState, WELCOMES, animated_webp, call_duration,
+    scaled_url, stream_key,
 };
 pub use rest::{
     ActivityLaunch, CommandArgument, CommandIndexScope, CommandInvocation, MESSAGE_PAGE_SIZE,
@@ -38,6 +38,10 @@ pub use rest::{
     preview_authorization, remove_account, request_autocomplete, ring_call, run_command,
     save_frecency, save_status, search_messages, send_message, start_activity, stop_ringing,
     toggle_reaction, trigger_typing,
+};
+pub use rest::{
+    ThreadSearch, fetch_thread, search_threads, set_thread_archived, set_thread_joined,
+    start_thread, start_thread_from_message,
 };
 pub use token::{
     Account, accounts, active_account, load_token, remember_profile, save_token, switch_account,

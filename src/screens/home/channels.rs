@@ -61,5 +61,6 @@ pub(in crate::screens::home) fn channel_icon_path(kind: ChannelKind) -> &'static
         ChannelKind::Voice | ChannelKind::Stage => "icons/volume-2.svg",
         ChannelKind::Forum => "icons/messages-square.svg",
         ChannelKind::Category => "icons/chevron-down.svg",
+        ChannelKind::Thread => "icons/threads.svg",
     }
 }

@@ -21,6 +21,7 @@ mod quick_switcher;
 mod search;
 mod selection;
 mod state;
+mod threads;
 mod unread;
 mod view;
 mod voice;
@@ -54,7 +55,7 @@ pub const COMPOSER_CONTEXT: &str = "MessageComposer";
 pub const SEARCH_CONTEXT: &str = "MessageSearch";
 
 use composer::{Autocomplete, EditingMessage, ReplyTarget};
-use popups::{EmojiPicker, EmojiTarget, ImageViewer, PinsPopup, ProfilePopup};
+use popups::{EmojiPicker, EmojiTarget, ImageViewer, PinsPopup, ProfilePopup, ThreadsPopup};
 use state::View;
 
 actions!(

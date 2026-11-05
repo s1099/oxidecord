@@ -34,6 +34,22 @@ Entry format:
   opens the option list, and Enter then takes the option instead of sending.
   `src/screens/home/commands.rs:207`
 
+## Threads
+
+- **Full view only** — a thread replaces its channel as the conversation, as Discord's "Open in
+  Full View" does; the split view beside the channel would need a second message list and
+  composer. `src/screens/home/data/threads.rs:162`
+- **Previews only for threads heard from** — the threads list and the card under a starter
+  message show the newest message only for threads a sync or a live message brought one for;
+  others show their age. `src/screens/home/view/threads.rs:354`
+- **New threads always archive after three days** — Discord's duration picker isn't offered.
+  `src/discord/rest/thread.rs:26`
+- **No thread in the quick switcher** — Ctrl+K lists channels and DMs only.
+  `src/screens/home/data/quick_switcher.rs:1`
+- **The first message bypasses the composer** — the "New Thread" panel's message is sent as
+  typed, without mention or emoji resolution, attachments, or a pending copy.
+  `src/screens/home/data/threads.rs:562`
+
 ## Activities
 
 - **Loaded top-level, not framed** — the activity's page is the webview's document, with a shim

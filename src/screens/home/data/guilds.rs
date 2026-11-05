@@ -200,6 +200,7 @@ impl HomeScreen {
         cx: &mut Context<Self>,
     ) {
         self.guild_data.stale_channels.remove(&guild_id);
+        self.threads.refresh_permissions(guild_id, &channels);
         let open = self.view == View::Guild && self.selected_guild == Some(guild_id);
         if open {
             self.set_channel_groups(build_channel_groups(channels.clone()));
@@ -297,9 +298,17 @@ impl HomeScreen {
         self.channel_info(self.selected_channel?)
     }
 
+    /// One of the open guild's channels, or a thread in it.
     pub(in crate::screens::home) fn channel_info(&self, id: Id<ChannelMarker>) -> Option<&Channel> {
-        let &(group, channel) = self.channel_index.get(&id)?;
-        self.channel_groups.get(group)?.channels.get(channel)
+        if let Some(&(group, channel)) = self.channel_index.get(&id) {
+            return self.channel_groups.get(group)?.channels.get(channel);
+        }
+        self.threads
+            .get(id)
+            .filter(|known| {
+                known.thread.guild_id.is_some() && known.thread.guild_id == self.selected_guild
+            })
+            .map(|known| &known.channel)
     }
 
     fn set_channel_groups(&mut self, groups: Vec<ChannelGroup>) {

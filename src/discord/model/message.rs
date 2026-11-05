@@ -18,6 +18,7 @@ use super::embed::{Embed, EmbedLayout, convert_embeds};
 use super::guild::GuildMember;
 use super::markdown::{self, Inline, Markdown};
 use super::system::{SystemEvent, convert_system};
+use super::thread::{Thread, convert_thread};
 use super::time::{
     format_local_day, format_local_full, format_message_clock, format_message_time, local_day,
 };
@@ -56,6 +57,9 @@ pub struct Message {
     pub reactions: Vec<Reaction>,
     /// Drawn as a one-line notice instead of the author's message.
     pub system: Option<SystemEvent>,
+    /// The thread started from this message, as it stood when the message was sent
+    /// or fetched.
+    pub thread: Option<Thread>,
     /// An app's reply only the user can see; it lives in this session alone.
     pub ephemeral: bool,
     /// An app deferred its reply, which an edit fills in.
@@ -113,6 +117,7 @@ impl Message {
             forward: None,
             reactions: Vec::new(),
             system: None,
+            thread: None,
             ephemeral: false,
             loading: false,
             delivery: Delivery::Sending { upload },
@@ -158,6 +163,10 @@ impl Message {
         self.videos = edited.videos;
         self.files = edited.files;
         self.embeds = edited.embeds;
+        // Starting a thread is announced as an edit carrying it; others leave it out.
+        if edited.thread.is_some() {
+            self.thread = edited.thread;
+        }
     }
 
     pub fn timestamp_label(&self) -> String {
@@ -278,7 +287,7 @@ pub struct MessageReference {
 }
 
 impl MessageReference {
-    fn quoting(message: &Message) -> Self {
+    pub fn quoting(message: &Message) -> Self {
         let content = match &message.forward {
             Some(forward) if message.content.is_empty() => forward.content.as_str(),
             _ => message.content.as_str(),
@@ -414,7 +423,20 @@ pub(in crate::discord) fn author_member(
     })
 }
 
-pub(in crate::discord) fn convert_message(message: twilight_model::channel::Message) -> Message {
+pub(in crate::discord) fn convert_message(
+    mut message: twilight_model::channel::Message,
+) -> Message {
+    // A thread opens with a stand-in for the message it was started from, which
+    // Discord's client draws as that message.
+    if message.kind == MessageType::ThreadStarterMessage
+        && let Some(original) = message.referenced_message.take()
+    {
+        let mut starter = convert_message(*original);
+        starter.id = message.id;
+        starter.thread = None;
+        starter.reply = None;
+        return starter;
+    }
     let author_avatar_url = small_avatar_url(&message.author);
     let system = convert_system(&message);
     let command = convert_command_use(&message);
@@ -475,6 +497,7 @@ pub(in crate::discord) fn convert_message(message: twilight_model::channel::Mess
             })
             .collect(),
         system,
+        thread: message.thread.and_then(convert_thread),
         ephemeral: flags.contains(MessageFlags::EPHEMERAL),
         loading: flags.contains(MessageFlags::LOADING),
         delivery: Delivery::Sent,

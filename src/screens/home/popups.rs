@@ -43,6 +43,30 @@ pub(super) struct PinsPopup {
     pub error: Option<String>,
 }
 
+/// The threads list, opened from the header's threads button: a channel's
+/// active threads from what the gateway synced, and its older ones a page at a
+/// time from search.
+pub(super) struct ThreadsPopup {
+    /// The parent channel, also while one of its threads is open.
+    pub channel_id: Id<ChannelMarker>,
+    /// Window coordinates the popout hangs below.
+    pub position: Point<Pixels>,
+    pub search: Entity<InputState>,
+    /// What `results` and `archived` were fetched for; empty lists by activity.
+    pub query: String,
+    /// Search results for `query`, in Discord's order, while it isn't empty.
+    pub results: Vec<Id<ChannelMarker>>,
+    /// Archived threads, most recently active first.
+    pub archived: Vec<Id<ChannelMarker>>,
+    pub loading: bool,
+    pub has_more: bool,
+    pub error: Option<String>,
+    pub scroll: ScrollHandle,
+    /// Held so a newer query's fetch replaces, and cancels, an older one's.
+    pub _task: Option<Task<()>>,
+    pub _search_changed: Subscription,
+}
+
 pub(super) struct ImageViewer {
     /// Already on screen; drawn stretched while the larger copy loads.
     pub preview_url: SharedString,

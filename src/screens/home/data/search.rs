@@ -628,9 +628,7 @@ impl HomeScreen {
             channel_id: hit.channel_id,
             message_id: hit.message.id,
         };
-        // Threads aren't in the sidebar to open; the browser can show them.
-        let listed = guild_id.is_none() || self.channel_info(hit.channel_id).is_some();
-        if !listed || !self.open_message_link(link, window, cx) {
+        if !self.open_message_link(link, window, cx) {
             let guild = guild_id.map_or("@me".to_string(), |id| id.to_string());
             cx.open_url(&format!(
                 "https://discord.com/channels/{guild}/{}/{}",

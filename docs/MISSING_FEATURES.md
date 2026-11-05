@@ -22,7 +22,7 @@
 | Drag and drop of files onto the chat | Missing | Picker and paste only |
 | Attachment alt text and descriptions | Missing | |
 | Pinning and unpinning messages, and the pinned-messages panel | Partial | The header's pin button opens the pinned-messages popout; pinning, unpinning, and jumping to a pin aren't done yet |
-| Jump to a message (from a reply, a link, or search) | Partial | Reply quotes, the composer's "Replying to" strip, discord.com message links and search results jump there; a forward's source doesn't yet, and a search hit in a thread opens in the browser |
+| Jump to a message (from a reply, a link, or search) | Partial | Reply quotes, the composer's "Replying to" strip, discord.com message links and search results jump there; a forward's source doesn't yet |
 | "Jump to present" and the new-messages bar | Missing | |
 | Copy message ID and other developer-mode context-menu items | Missing | "Copy Text" and "Copy Message Link" are there |
 | Saving images | Missing | The image viewer's right-click menu copies the image or its link, but can't save it |
@@ -40,7 +40,7 @@
 
 | Feature | Status | Notes |
 |---|---|---|
-| Threads (browsing, creating, joining, thread sidebar) | Missing | Thread channel types are filtered out in `convert_channel` |
+| Threads (browsing, creating, joining, thread sidebar) | Partial | The header's threads popout lists joined, active and older threads with search; threads are created from a message or the popout, joined, left, closed and reopened, nest under their channel in the sidebar, and show under the message that started them. A thread opens in full view only, not Discord's split view beside its channel, and its member list, notification settings, renaming, locking and adding people to a private thread aren't done |
 | Forum channels (post list, tags, creating posts) | Partial | Listed with an icon, but selecting one tries to load messages like a text channel |
 | Media channels | Missing | |
 | Stage channels (speakers, audience, raising a hand) | Partial | Joined as a plain voice channel |

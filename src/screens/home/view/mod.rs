@@ -11,6 +11,7 @@ mod quick_switcher;
 mod rail;
 mod search;
 mod sidebar;
+mod threads;
 mod user_panel;
 mod voice;
 
@@ -165,6 +166,7 @@ impl Render for HomeScreen {
             .child(inset(self.render_content(cx), cx))
             .children(self.render_profile_popup(cx))
             .children(self.render_pins_popup(cx))
+            .children(self.render_threads_popup(cx))
             .children(self.render_emoji_picker(cx))
             .children(image_viewer)
     }

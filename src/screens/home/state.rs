@@ -29,10 +29,11 @@ use super::folders::RailEntry;
 use super::history_cache::HistoryCache;
 use super::media::VideoPlayback;
 use super::member_list_cache::MemberListCache;
-use super::popups::{EmojiPicker, ImageViewer, PinsPopup, ProfilePopup, Reactors};
+use super::popups::{EmojiPicker, ImageViewer, PinsPopup, ProfilePopup, Reactors, ThreadsPopup};
 use super::quick_switcher::Frecency;
 use super::search::{SearchNames, SearchPanel, SearchSuggestions};
 use super::selection::{Selection, TextCopies, TextRegions};
+use super::threads::{ThreadDraft, Threads};
 use super::unread::Unreads;
 use super::voice::{PendingVoice, ScreenShare, StreamWatch, VoiceCall, VoiceSettings};
 use crate::voice::VoiceEngine;
@@ -238,6 +239,10 @@ pub struct HomeScreen {
     pub(super) reactors: HashMap<(Id<MessageMarker>, discord::ReactionEmoji), Reactors>,
     pub(super) emoji_picker: Option<EmojiPicker>,
     pub(super) pins_popup: Option<PinsPopup>,
+    pub(super) threads: Threads,
+    pub(super) threads_popup: Option<ThreadsPopup>,
+    /// Open in place of the member list, like the search results.
+    pub(super) thread_draft: Option<ThreadDraft>,
     pub(super) image_viewer: Option<ImageViewer>,
     pub(super) member_list: Option<MemberList>,
     pub(super) member_list_cache: MemberListCache,
@@ -463,6 +468,9 @@ impl HomeScreen {
             reactors: HashMap::new(),
             emoji_picker: None,
             pins_popup: None,
+            threads: Threads::default(),
+            threads_popup: None,
+            thread_draft: None,
             image_viewer: None,
             member_list: None,
             member_list_cache: MemberListCache::default(),

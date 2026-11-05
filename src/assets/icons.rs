@@ -2,6 +2,11 @@
 
 /// Lucide icons gpui-kit-assets doesn't bundle. `currentColor` strokes, so they tint with text.
 pub(super) const EXTRA_ICONS: &[(&str, &str)] = &[
+    // Not Lucide: Discord's threads glyph, a hash with a speech bubble at its corner.
+    (
+        "icons/threads.svg",
+        r#"<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8h13"/><path d="M2 15h7"/><path d="M9 2 6.5 21"/><path d="M15.5 2 14.6 9"/><path d="M14 13h7a1 1 0 0 1 1 1v5a1 1 0 0 1-1 1h-2.5L16 22v-2h-2a1 1 0 0 1-1-1v-5a1 1 0 0 1 1-1z"/></svg>"#,
+    ),
     (
         "icons/crown.svg",
         r#"<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11.562 3.266a.5.5 0 0 1 .876 0L15.39 8.87a1 1 0 0 0 1.516.294L21.183 5.5a.5.5 0 0 1 .798.519l-2.834 10.246a1 1 0 0 1-.956.734H5.81a1 1 0 0 1-.957-.734L2.02 6.02a.5.5 0 0 1 .798-.519l4.276 3.664a1 1 0 0 0 1.516-.294z"/><path d="M5 21h14"/></svg>"#,

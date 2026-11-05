@@ -109,6 +109,24 @@ impl HomeScreen {
     }
 }
 
+impl HomeScreen {
+    /// Lists the channel's threads, anchored to the header's bottom like the pins.
+    pub(super) fn render_threads_button(&self, cx: &Context<Self>) -> impl IntoElement {
+        let open = self.threads_popup.is_some();
+        Button::new("toggle-threads")
+            .icon(Icon::default().path("icons/threads.svg"))
+            .ghost()
+            .small()
+            .selected(open)
+            .tooltip("Threads")
+            .on_click(cx.listener(|this, event: &ClickEvent, window, cx| {
+                let below_header = px(super::INSET + HEADER_HEIGHT + 4.);
+                let position = point(event.position().x + px(16.), below_header);
+                this.toggle_threads(position, window, cx);
+            }))
+    }
+}
+
 /// A pane whose header names nothing (loading, error, no selection). The window controls
 /// live in that header, so it is drawn regardless.
 pub(super) fn pane(body: AnyElement, cx: &App) -> AnyElement {

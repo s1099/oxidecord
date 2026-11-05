@@ -171,6 +171,9 @@ impl<'a> Renderer<'a> {
                             if this.view == View::Guild && is_text {
                                 this.select_channel(*id, window, cx);
                                 cx.notify();
+                            } else if this.view == View::Guild && this.channel_info(*id).is_none() {
+                                // Likely a thread the client hasn't been sent.
+                                this.open_thread(*id, window, cx);
                             }
                         });
                     }

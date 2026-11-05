@@ -8,7 +8,7 @@ use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 use twilight_model::id::{
     Id,
-    marker::{MessageMarker, UserMarker},
+    marker::{ChannelMarker, MessageMarker, UserMarker},
 };
 
 use crate::discord::{self, SystemEvent};
@@ -23,6 +23,8 @@ const LINE_HEIGHT: f32 = 22.;
 enum Click {
     User(Id<UserMarker>),
     Message(Id<MessageMarker>),
+    Thread(Id<ChannelMarker>),
+    AllThreads,
 }
 
 /// The line's text and how each stretch of it is drawn.
@@ -100,6 +102,12 @@ impl HomeScreen {
                 };
                 screen.update(cx, |this, cx| match clicks[ix] {
                     Click::Message(id) => this.jump_to_message(id, window, cx),
+                    Click::Thread(id) => this.open_thread(id, window, cx),
+                    Click::AllThreads => {
+                        if this.threads_popup.is_none() {
+                            this.toggle_threads(window.mouse_position(), window, cx);
+                        }
+                    }
                     Click::User(user_id) => {
                         let mention = mentions.iter().find(|user| user.id == user_id);
                         let avatar = match mention {
@@ -225,17 +233,29 @@ impl HomeScreen {
                 author(&mut line);
                 line.push(" added ");
                 user(&mut line, *target);
-                line.push(" to the group.");
+                line.push(if self.view == View::Guild {
+                    " to the thread."
+                } else {
+                    " to the group."
+                });
             }
             SystemEvent::RecipientRemove { target } if *target == message.author_id => {
                 author(&mut line);
-                line.push(" left the group.");
+                line.push(if self.view == View::Guild {
+                    " left the thread."
+                } else {
+                    " left the group."
+                });
             }
             SystemEvent::RecipientRemove { target } => {
                 author(&mut line);
                 line.push(" removed ");
                 user(&mut line, *target);
-                line.push(" from the group.");
+                line.push(if self.view == View::Guild {
+                    " from the thread."
+                } else {
+                    " from the group."
+                });
             }
             SystemEvent::Call { ended, .. } => {
                 let lasted = ended.map(|ended| discord::call_duration(ended - message.timestamp));
@@ -306,10 +326,16 @@ impl HomeScreen {
                 line.styled(channel, strong);
                 line.push(" to this channel. Its most important updates will show up here.");
             }
-            SystemEvent::ThreadCreated { name } => {
+            SystemEvent::ThreadCreated { name, thread } => {
                 author(&mut line);
                 line.push(" started a thread: ");
-                line.styled(name, strong);
+                let range = line.styled(name, strong);
+                if let Some(thread) = thread {
+                    line.clicks.push((range, Click::Thread(*thread)));
+                }
+                line.push(". ");
+                let range = line.styled("See all threads", link);
+                line.clicks.push((range, Click::AllThreads));
                 line.push(".");
             }
             SystemEvent::StageStart { topic } => {

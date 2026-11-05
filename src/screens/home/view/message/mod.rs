@@ -288,6 +288,9 @@ impl HomeScreen {
             .when(!message.reactions.is_empty(), |this| {
                 this.child(self.render_reactions(message, cx))
             })
+            .when_some(self.started_thread(message), |this, thread| {
+                this.child(self.render_thread_summary(thread, cx))
+            })
             .when_some(command, |this, command| {
                 this.child(
                     div()

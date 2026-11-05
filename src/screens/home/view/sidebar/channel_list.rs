@@ -8,7 +8,7 @@ use gpui_kit::*;
 
 use twilight_model::id::{Id, marker::ChannelMarker};
 
-use crate::discord::Channel;
+use crate::discord::{Channel, Thread};
 use crate::screens::home::HomeScreen;
 use crate::screens::home::channels::{ChannelGroup, channel_icon_path};
 use crate::screens::home::view::{avatar, mention_badge, unread_pill};
@@ -16,19 +16,135 @@ use crate::ui::button::Button;
 use crate::ui::depth::{Finish, Level, Lit as _, radius};
 use crate::ui::theme;
 
+/// Where a thread's name starts, past the spine.
+const THREAD_INDENT: f32 = 34.;
+/// The spine's x, under the middle of the parent channel's icon.
+const SPINE_X: f32 = 15.;
+
 impl HomeScreen {
     pub(super) fn render_channel_row(
         &self,
         channel: &Channel,
         cx: &Context<Self>,
     ) -> impl IntoElement {
-        // Occupants nest under a voice channel, as in Discord.
+        self.render_channel_rows(channel, false, cx)
+    }
+
+    /// Occupants nest under a voice channel, and threads the user is in under a
+    /// text channel, as in Discord. `collapsed` keeps only the threads a
+    /// collapsed category still shows.
+    fn render_channel_rows(
+        &self,
+        channel: &Channel,
+        collapsed: bool,
+        cx: &Context<Self>,
+    ) -> impl IntoElement {
+        let threads = self.sidebar_threads(channel.id, collapsed);
+        let count = threads.len();
         v_flex()
             .gap(px(2.))
             .child(self.channel_row(channel, cx))
             .when(channel.kind.is_voice(), |this| {
                 this.children(self.voice_members(channel.id, cx))
             })
+            .children(
+                threads
+                    .into_iter()
+                    .enumerate()
+                    .map(|(ix, thread)| self.thread_row(thread, ix + 1 == count, cx)),
+            )
+    }
+
+    /// The active threads the user is in, and the open one even if not.
+    fn sidebar_threads(&self, channel_id: Id<ChannelMarker>, collapsed: bool) -> Vec<&Thread> {
+        let mut threads = self.threads.joined_in(channel_id);
+        if let Some(open) = self.selected_thread()
+            && open.parent_id == Some(channel_id)
+            && !threads.iter().any(|thread| thread.id == open.id)
+        {
+            threads.push(open);
+        }
+        if collapsed {
+            threads.retain(|thread| {
+                Some(thread.id) == self.selected_channel
+                    || self.unreads.shows_unread(thread.id, thread.parent_id)
+                    || self.unreads.mentions(thread.id) > 0
+            });
+        }
+        threads
+    }
+
+    /// Hangs off the channel above by a curved spine, as Discord draws it.
+    fn thread_row(&self, thread: &Thread, last: bool, cx: &Context<Self>) -> impl IntoElement {
+        let theme = cx.theme();
+        let thread_id = thread.id;
+        let selected = self.selected_channel == Some(thread_id);
+        let unread = self.unreads.shows_unread(thread_id, thread.parent_id);
+        let muted = self.unreads.is_muted(thread_id, thread.parent_id);
+        let mentions = self.unreads.mentions(thread_id);
+        let spine = theme.border;
+
+        h_flex()
+            .id(("thread", thread_id.get()))
+            .relative()
+            .pl(px(THREAD_INDENT))
+            .pr_2()
+            .py(px(4.))
+            .gap_2()
+            .items_center()
+            .rounded(radius::ITEM)
+            .cursor_pointer()
+            .text_sm()
+            .text_color(if selected || unread {
+                theme.sidebar_accent_foreground
+            } else if muted {
+                theme.muted_foreground.opacity(0.6)
+            } else {
+                theme::secondary_text(cx)
+            })
+            .hover(|this| {
+                this.bg(theme.sidebar_accent)
+                    .text_color(theme.sidebar_accent_foreground)
+            })
+            .when(selected, |this| {
+                this.bg(theme.sidebar_accent)
+                    .font_weight(FontWeight::MEDIUM)
+                    .lit(Level::Raised, Finish::Subtle, px(26.), radius::ITEM, cx)
+            })
+            .when(unread, |this| {
+                this.font_weight(FontWeight::SEMIBOLD)
+                    .child(unread_pill(px(8.), cx))
+            })
+            // The corner into this row, from the row above.
+            .child(
+                div()
+                    .absolute()
+                    .left(px(SPINE_X))
+                    .top(px(-4.))
+                    .h(px(18.))
+                    .w(px(10.))
+                    .border_l_2()
+                    .border_b_2()
+                    .rounded_bl(px(8.))
+                    .border_color(spine),
+            )
+            // On down to the rows below.
+            .when(!last, |this| {
+                this.child(
+                    div()
+                        .absolute()
+                        .left(px(SPINE_X))
+                        .top(px(10.))
+                        .bottom(px(-4.))
+                        .border_l_2()
+                        .border_color(spine),
+                )
+            })
+            .child(div().flex_1().truncate().child(thread.name.clone()))
+            .children(mention_badge(mentions, cx))
+            .on_click(cx.listener(move |this, _, window, cx| {
+                this.open_thread(thread_id, window, cx);
+            }))
     }
 
     fn channel_row(&self, channel: &Channel, cx: &Context<Self>) -> impl IntoElement {
@@ -252,14 +368,15 @@ impl HomeScreen {
 
         // Like Discord, keep the selected channel and the unread ones visible
         // when their category is collapsed, and any that pinged the user even
-        // if muted.
+        // if muted. Likewise their threads, which keep their channel shown.
         if collapsed {
             for channel in group.channels.iter().filter(|channel| {
                 Some(channel.id) == self.selected_channel
                     || self.shows_unread(channel)
                     || self.unreads.mentions(channel.id) > 0
+                    || !self.sidebar_threads(channel.id, true).is_empty()
             }) {
-                collapsible = collapsible.child(self.render_channel_row(channel, cx));
+                collapsible = collapsible.child(self.render_channel_rows(channel, true, cx));
             }
         }
 

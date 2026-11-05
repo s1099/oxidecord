@@ -9,6 +9,7 @@ use twilight_model::id::{
 
 use super::cdn;
 use super::markdown::{self, Inline};
+use super::thread::Thread;
 use super::user::small_avatar_url;
 
 /// The subset of Discord channel types the app knows how to display.
@@ -20,11 +21,18 @@ pub enum ChannelKind {
     Stage,
     Forum,
     Category,
+    /// Never in a guild's channel list; built from a [`Thread`] for the open one.
+    Thread,
 }
 
 impl ChannelKind {
     pub fn is_voice(self) -> bool {
         matches!(self, Self::Voice | Self::Stage)
+    }
+
+    /// Where the header's threads button and the message toolbar's "Create Thread" apply.
+    pub fn has_threads(self) -> bool {
+        matches!(self, Self::Text | Self::Announcement)
     }
 }
 
@@ -47,7 +55,40 @@ pub struct Channel {
     pub can_add_reactions: bool,
     /// `MENTION_EVERYONE`; without it `@everyone`/`@here` notify no one.
     pub can_mention_everyone: bool,
+    pub can_create_public_threads: bool,
+    pub can_create_private_threads: bool,
+    /// Threads take `SEND_MESSAGES_IN_THREADS`, not `SEND_MESSAGES`.
+    pub can_send_in_threads: bool,
+    /// Sending in locked threads, seeing every private one, archiving any.
+    pub can_manage_threads: bool,
     pub last_message_id: Option<Id<MessageMarker>>,
+}
+
+impl Thread {
+    /// The thread as a conversation, with its parent's permissions; a thread has no
+    /// overwrites of its own.
+    pub fn channel(&self, parent: Option<&Channel>) -> Channel {
+        let allowed = |permission: fn(&Channel) -> bool| parent.is_some_and(permission);
+        let manage = allowed(|parent| parent.can_manage_threads);
+        Channel {
+            id: self.id,
+            name: self.name.clone(),
+            kind: ChannelKind::Thread,
+            parent_id: self.parent_id,
+            position: 0,
+            topic: None,
+            can_send: allowed(|parent| parent.can_send_in_threads) && (!self.locked || manage),
+            can_manage_messages: allowed(|parent| parent.can_manage_messages),
+            can_use_external_emoji: allowed(|parent| parent.can_use_external_emoji),
+            can_add_reactions: allowed(|parent| parent.can_add_reactions),
+            can_mention_everyone: allowed(|parent| parent.can_mention_everyone),
+            can_create_public_threads: false,
+            can_create_private_threads: false,
+            can_send_in_threads: allowed(|parent| parent.can_send_in_threads),
+            can_manage_threads: manage,
+            last_message_id: self.last_message_id,
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -140,6 +181,10 @@ pub(super) fn guild_channel(fields: GuildChannelFields) -> Option<Channel> {
         can_use_external_emoji: permissions.contains(Permissions::USE_EXTERNAL_EMOJIS),
         can_add_reactions: permissions.contains(Permissions::ADD_REACTIONS),
         can_mention_everyone: permissions.contains(Permissions::MENTION_EVERYONE),
+        can_create_public_threads: permissions.contains(Permissions::CREATE_PUBLIC_THREADS),
+        can_create_private_threads: permissions.contains(Permissions::CREATE_PRIVATE_THREADS),
+        can_send_in_threads: permissions.contains(Permissions::SEND_MESSAGES_IN_THREADS),
+        can_manage_threads: permissions.contains(Permissions::MANAGE_THREADS),
         last_message_id: fields.last_message_id,
     })
 }

@@ -174,6 +174,7 @@ impl HomeScreen {
                     self.note_dm_activity(incoming.channel_id, incoming.message.id, cx);
                 }
                 self.notify_message(&incoming, window);
+                self.note_thread_message(incoming.channel_id, &incoming.message);
                 self.stop_typing(incoming.channel_id, incoming.message.author_id, cx);
                 self.history_cache
                     .push(incoming.channel_id, &incoming.message);
@@ -189,6 +190,7 @@ impl HomeScreen {
                 message_ids,
             } => {
                 self.history_cache.delete(channel_id, &message_ids);
+                self.threads.forget_latest(channel_id, &message_ids);
                 self.handle_message_delete(channel_id, &message_ids, cx)
             }
             discord::GatewayEvent::Typing {
@@ -324,6 +326,21 @@ impl HomeScreen {
             discord::GatewayEvent::GuildChannelsChanged { guild_id } => {
                 self.invalidate_guild_channels(guild_id, window, cx);
             }
+            discord::GatewayEvent::ThreadList {
+                guild_id,
+                channels,
+                threads,
+                latest,
+            } => self.handle_thread_list(guild_id, channels, threads, latest, cx),
+            discord::GatewayEvent::Thread(thread) => self.handle_thread_update(thread, cx),
+            discord::GatewayEvent::ThreadDelete(thread_id) => {
+                self.handle_thread_delete(thread_id, window, cx)
+            }
+            discord::GatewayEvent::ThreadMembers {
+                thread_id,
+                member_count,
+                membership,
+            } => self.handle_thread_members(thread_id, member_count, membership, cx),
             discord::GatewayEvent::LatestMessages(channels) => {
                 self.unreads.set_latest(channels);
                 cx.notify();

@@ -186,6 +186,10 @@ pub(super) struct GatewayGuild {
     pub(super) emojis: Option<Vec<RawEmoji>>,
     #[serde(default, deserialize_with = "skip_invalid")]
     pub(super) channels: Vec<RawGuildChannel>,
+    /// Only those the user is in, for a user session; the rest come with a
+    /// subscription's `THREAD_LIST_SYNC`. `None` for an unavailable guild.
+    #[serde(default, deserialize_with = "skip_invalid_opt")]
+    pub(super) threads: Option<Vec<twilight_model::channel::Channel>>,
     #[serde(default, deserialize_with = "skip_invalid")]
     pub(super) presences: Vec<RawPresence>,
     #[serde(default)]
@@ -289,6 +293,55 @@ pub(super) struct EmojisUpdatePayload {
 pub(super) struct ChannelChangePayload {
     #[serde(default)]
     pub(super) guild_id: Option<Id<GuildMarker>>,
+}
+
+/// `THREAD_LIST_SYNC`: the active threads in `channel_ids`, or in the whole guild
+/// when it's left out, and which of them the user is in.
+#[derive(Deserialize)]
+pub(super) struct ThreadListSyncPayload {
+    pub(super) guild_id: Id<GuildMarker>,
+    #[serde(default)]
+    pub(super) channel_ids: Option<Vec<Id<ChannelMarker>>>,
+    #[serde(default, deserialize_with = "skip_invalid")]
+    pub(super) threads: Vec<twilight_model::channel::Channel>,
+    #[serde(default, deserialize_with = "skip_invalid")]
+    pub(super) members: Vec<RawThreadMember>,
+    #[serde(default, deserialize_with = "skip_invalid")]
+    pub(super) most_recent_messages: Vec<twilight_model::channel::Message>,
+}
+
+/// A thread member as `THREAD_LIST_SYNC`, `THREAD_MEMBER_UPDATE` and
+/// `THREAD_MEMBERS_UPDATE` send it; `id` is the thread's.
+#[derive(Deserialize)]
+pub(super) struct RawThreadMember {
+    #[serde(default)]
+    pub(super) id: Option<Id<ChannelMarker>>,
+    #[serde(default)]
+    pub(super) user_id: Option<Id<UserMarker>>,
+    #[serde(default)]
+    pub(super) join_timestamp: Option<Timestamp>,
+}
+
+#[derive(Deserialize)]
+pub(super) struct ThreadMemberUpdatePayload {
+    #[serde(flatten)]
+    pub(super) member: RawThreadMember,
+}
+
+#[derive(Deserialize)]
+pub(super) struct ThreadMembersUpdatePayload {
+    pub(super) id: Id<ChannelMarker>,
+    #[serde(default)]
+    pub(super) member_count: Option<u32>,
+    #[serde(default, deserialize_with = "skip_invalid")]
+    pub(super) added_members: Vec<RawThreadMember>,
+    #[serde(default)]
+    pub(super) removed_member_ids: Vec<Id<UserMarker>>,
+}
+
+#[derive(Deserialize)]
+pub(super) struct ThreadDeletePayload {
+    pub(super) id: Id<ChannelMarker>,
 }
 
 #[derive(Deserialize)]

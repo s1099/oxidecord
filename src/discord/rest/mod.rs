@@ -10,6 +10,7 @@ mod command;
 mod guild;
 mod message;
 mod settings;
+mod thread;
 mod user;
 
 use std::sync::Arc;
@@ -37,6 +38,10 @@ pub use message::{
     trigger_typing,
 };
 pub use settings::{fetch_frecency, fetch_user_settings, save_frecency, save_status};
+pub use thread::{
+    ThreadSearch, fetch_thread, search_threads, set_thread_archived, set_thread_joined,
+    start_thread, start_thread_from_message,
+};
 pub use user::{fetch_current_user, fetch_user_profile};
 
 /// Runs a request against the shared client on the runtime, flattening its

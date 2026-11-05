@@ -24,8 +24,8 @@ use crate::platform::runtime;
 
 use super::model::{
     ActivityInstance, Channel, ChannelLatest, CommandChoice, DmMember, GuildAppearance, GuildEmoji,
-    GuildMember, GuildUnreads, MemberListUpdate, Message, MuteSettings, NotifyLevel,
-    PresenceStatus, ReactionEmoji, ReadState, Role, StreamServerInfo, VoiceServerInfo,
+    GuildMember, GuildUnreads, MemberListUpdate, Membership, Message, MuteSettings, NotifyLevel,
+    PresenceStatus, ReactionEmoji, ReadState, Role, StreamServerInfo, Thread, VoiceServerInfo,
     VoiceUserState,
 };
 
@@ -179,6 +179,24 @@ pub enum GatewayEvent {
     },
     GuildChannelsChanged {
         guild_id: Id<GuildMarker>,
+    },
+    /// Replaces the active threads known in `channels`, or in the whole guild when
+    /// `None`. With a guild these are only the threads the user is in.
+    ThreadList {
+        guild_id: Id<GuildMarker>,
+        channels: Option<Vec<Id<ChannelMarker>>>,
+        threads: Vec<Thread>,
+        /// Some threads' newest message, by thread, which the threads list previews.
+        latest: Vec<(Id<ChannelMarker>, Message)>,
+    },
+    /// Created, changed, or the user was added to it.
+    Thread(Thread),
+    ThreadDelete(Id<ChannelMarker>),
+    /// Who's in a thread changed; `membership` says whether that's the user.
+    ThreadMembers {
+        thread_id: Id<ChannelMarker>,
+        member_count: Option<u32>,
+        membership: Membership,
     },
     LatestMessages(Vec<ChannelLatest>),
     MuteSettings(Vec<MuteSettings>),

@@ -19,6 +19,7 @@ pub(super) struct MessageMenu {
     pub can_edit: bool,
     pub can_reply: bool,
     pub can_delete: bool,
+    pub can_start_thread: bool,
     pub has_reactions: bool,
     /// The raw content, so a link hidden behind its GIF still copies.
     pub text: Option<SharedString>,
@@ -44,6 +45,7 @@ impl MessageMenu {
                     .is_none_or(|editing| editing.message_id != message.id),
             can_reply: message.system.is_none(),
             can_delete: screen.can_delete_message(message),
+            can_start_thread: screen.can_start_thread(message),
             has_reactions: !message.reactions.is_empty(),
             text: (message.system.is_none() && !message.content.trim().is_empty())
                 .then(|| message.content.clone().into()),
@@ -117,6 +119,17 @@ impl MessageMenu {
                         }
                     },
                 ))
+            })
+            .when(self.can_start_thread, |menu| {
+                menu.item(
+                    PopupMenuItem::new("Create Thread")
+                        .icon(Icon::default().path("icons/threads.svg"))
+                        .on_click(action(|this, message_id, window, cx| {
+                            if let Some(parent_id) = this.selected_channel {
+                                this.open_thread_draft(parent_id, Some(message_id), window, cx);
+                            }
+                        })),
+                )
             })
             .when_some(self.text.clone(), |menu, text| {
                 menu.item(

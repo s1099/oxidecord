@@ -45,6 +45,20 @@ impl HomeScreen {
                 if !self.guilds.iter().any(|guild| guild.id == guild_id) {
                     return false;
                 }
+                // Not one of the guild's channels, it's a thread, which may need fetching.
+                let listed = self
+                    .guild_data
+                    .channels
+                    .get(&guild_id)
+                    .is_none_or(|channels| channels.iter().any(|c| c.id == channel_id));
+                if !listed {
+                    self.pending_jump = Some((channel_id, message_id));
+                    let url = format!(
+                        "https://discord.com/channels/{guild_id}/{channel_id}/{message_id}"
+                    );
+                    self.open_thread_or(channel_id, Some(url), window, cx);
+                    return true;
+                }
                 // Opening the guild reopens its last channel, so the link's
                 // is opened even when the gateway has yet to send the list.
                 self.last_guild_channel.insert(guild_id, channel_id);

@@ -5,7 +5,7 @@
 use twilight_model::channel::message::MessageType;
 use twilight_model::id::{
     Id,
-    marker::{MessageMarker, UserMarker},
+    marker::{ChannelMarker, MessageMarker, UserMarker},
 };
 
 #[derive(Clone)]
@@ -44,6 +44,8 @@ pub enum SystemEvent {
     },
     ThreadCreated {
         name: String,
+        /// `None` if Discord left out the reference; the name is then all there is.
+        thread: Option<Id<ChannelMarker>>,
     },
     StageStart {
         topic: String,
@@ -129,7 +131,17 @@ pub(super) fn convert_system(message: &twilight_model::channel::Message) -> Opti
         MessageType::GuildBoostTier2 => boost(message, Some(2)),
         MessageType::GuildBoostTier3 => boost(message, Some(3)),
         MessageType::ChannelFollowAdd => SystemEvent::ChannelFollow { channel: content() },
-        MessageType::ThreadCreated => SystemEvent::ThreadCreated { name: content() },
+        // Only reached without the original, which is drawn in its place otherwise.
+        MessageType::ThreadStarterMessage => {
+            SystemEvent::Notice("Sorry, we couldn't load the first message in this thread.")
+        }
+        MessageType::ThreadCreated => SystemEvent::ThreadCreated {
+            name: content(),
+            thread: message
+                .reference
+                .as_ref()
+                .and_then(|reference| reference.channel_id),
+        },
         MessageType::StageStart => SystemEvent::StageStart { topic: content() },
         MessageType::StageEnd => SystemEvent::StageEnd { topic: content() },
         MessageType::StageSpeaker => SystemEvent::StageSpeaker,

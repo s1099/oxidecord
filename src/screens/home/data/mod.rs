@@ -28,6 +28,7 @@ pub(super) mod selection;
 pub(super) mod stream;
 #[cfg(windows)]
 pub(super) mod taskbar;
+pub(super) mod threads;
 pub(super) mod type_to_compose;
 pub(super) mod video;
 pub(super) mod voice;

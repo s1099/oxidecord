@@ -38,6 +38,7 @@ impl HomeScreen {
         let menu = MessageMenu::new(self, message);
         let can_delete = menu.can_delete;
         let can_edit = menu.can_edit;
+        let can_start_thread = menu.can_start_thread;
         let expanded = self.shift_held;
         let reacting = self.reacting_to(message_id);
         let can_react = self.can_add_reactions();
@@ -117,6 +118,25 @@ impl HomeScreen {
                         )
                     })
                     .child(self.reply_button(message, cx))
+                    .when(can_start_thread, |this| {
+                        this.child(
+                            Button::new(("message-thread", message_id.get()))
+                                .icon(Icon::default().path("icons/threads.svg"))
+                                .ghost()
+                                .small()
+                                .tooltip("Create Thread")
+                                .on_click(cx.listener(move |this, _, window, cx| {
+                                    if let Some(parent_id) = this.selected_channel {
+                                        this.open_thread_draft(
+                                            parent_id,
+                                            Some(message_id),
+                                            window,
+                                            cx,
+                                        );
+                                    }
+                                })),
+                        )
+                    })
                     .when(expanded && can_delete, |this| {
                         this.child(
                             Button::new(("message-delete", message_id.get()))

@@ -62,6 +62,10 @@ pub(super) struct Unreads {
     channel_notifications: HashMap<GuildId, HashMap<ChannelId, NotifyLevel>>,
     /// A channel with none has no entry.
     mentions: HashMap<ChannelId, u32>,
+    /// Threads the user is in count toward their guild's mark, each with its parent.
+    threads: HashMap<GuildId, HashMap<ChannelId, ChannelId>>,
+    /// A thread never opened counts as read up to when the user joined it.
+    thread_joined: HashMap<ChannelId, MessageId>,
     suppress_everyone: HashSet<GuildId>,
     suppress_roles: HashSet<GuildId>,
     /// The rail asks for every guild's mark each frame and computing one walks
@@ -110,6 +114,39 @@ impl Unreads {
                 channels,
             },
         );
+    }
+
+    /// A thread the user is in, counted toward its guild's mark; `joined` is
+    /// when, as a snowflake.
+    pub(super) fn set_thread(
+        &mut self,
+        guild_id: GuildId,
+        thread_id: ChannelId,
+        parent_id: ChannelId,
+        joined: Option<MessageId>,
+    ) {
+        self.channel_guild.insert(thread_id, guild_id);
+        if let Some(joined) = joined {
+            self.thread_joined.insert(thread_id, joined);
+        }
+        self.threads
+            .entry(guild_id)
+            .or_default()
+            .insert(thread_id, parent_id);
+        self.marks.get_mut().remove(&guild_id);
+    }
+
+    /// Left, archived or deleted: it no longer counts toward the guild's mark.
+    pub(super) fn forget_thread(&mut self, thread_id: ChannelId) {
+        self.thread_joined.remove(&thread_id);
+        let Some(guild_id) = self.channel_guild.get(&thread_id).copied() else {
+            return;
+        };
+        if let Some(threads) = self.threads.get_mut(&guild_id)
+            && threads.remove(&thread_id).is_some()
+        {
+            self.marks.get_mut().remove(&guild_id);
+        }
     }
 
     pub(super) fn set_latest(&mut self, channels: Vec<ChannelLatest>) {
@@ -194,10 +231,14 @@ impl Unreads {
     /// A never-opened guild channel counts as read up to the join; anything else
     /// with no read state is `None` and counts as read.
     pub(super) fn acked(&self, channel_id: ChannelId) -> Option<MessageId> {
-        self.acked.get(&channel_id).copied().or_else(|| {
-            let guild_id = self.channel_guild.get(&channel_id)?;
-            self.guilds.get(guild_id)?.joined
-        })
+        self.acked
+            .get(&channel_id)
+            .or_else(|| self.thread_joined.get(&channel_id))
+            .copied()
+            .or_else(|| {
+                let guild_id = self.channel_guild.get(&channel_id)?;
+                self.guilds.get(guild_id)?.joined
+            })
     }
 
     pub(super) fn latest(&self, channel_id: ChannelId) -> Option<MessageId> {
@@ -277,11 +318,25 @@ impl Unreads {
         }
     }
 
+    /// A thread's parent channel passes its own category's mute down too.
     pub(super) fn is_muted(&self, channel_id: ChannelId, parent_id: Option<ChannelId>) -> bool {
         let guild_id = self.channel_guild.get(&channel_id).copied();
+        let category = parent_id.and_then(|parent| self.category_of(guild_id?, parent));
         self.muted_channels.get(&guild_id).is_some_and(|muted| {
-            muted.contains(&channel_id) || parent_id.is_some_and(|parent| muted.contains(&parent))
+            [Some(channel_id), parent_id, category]
+                .into_iter()
+                .flatten()
+                .any(|id| muted.contains(&id))
         })
+    }
+
+    fn category_of(&self, guild_id: GuildId, channel_id: ChannelId) -> Option<ChannelId> {
+        self.guilds
+            .get(&guild_id)?
+            .channels
+            .iter()
+            .find(|&&(id, _)| id == channel_id)?
+            .1
     }
 
     /// Own setting, else category's, else guild's. DMs mark every message.
@@ -358,15 +413,17 @@ impl Unreads {
             .guilds
             .get(&guild_id)
             .map_or(&[][..], |guild| &guild.channels);
+        let threads = self
+            .threads
+            .get(&guild_id)
+            .into_iter()
+            .flatten()
+            .map(|(&thread, &parent)| (thread, Some(parent)));
+        let all = || channels.iter().copied().chain(threads.clone());
         let mark = GuildMark {
             unread: !self.muted_guilds.contains(&guild_id)
-                && channels
-                    .iter()
-                    .any(|&(channel_id, parent_id)| self.shows_unread(channel_id, parent_id)),
-            mentions: channels
-                .iter()
-                .map(|&(channel_id, _)| self.mentions(channel_id))
-                .sum(),
+                && all().any(|(channel_id, parent_id)| self.shows_unread(channel_id, parent_id)),
+            mentions: all().map(|(channel_id, _)| self.mentions(channel_id)).sum(),
         };
         self.marks.borrow_mut().insert(guild_id, mark);
         mark

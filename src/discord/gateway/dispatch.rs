@@ -1,5 +1,7 @@
 //! Turning dispatches into [`GatewayEvent`]s.
 
+use std::collections::HashMap;
+
 use serde_json::value::RawValue;
 use twilight_model::id::{
     Id,
@@ -9,7 +11,6 @@ use twilight_model::util::Timestamp;
 
 use twilight_model::channel::message::MessageFlags;
 
-use crate::discord::NotifyLevel;
 use crate::discord::model::{
     RawActivityInstance, RawEmoji, RawGuildChannel, RawGuildSettings, RawMember,
     RawMemberListUpdate, RawRole, RawVoiceServer, RawVoiceState, StreamServerInfo, author_member,
@@ -17,8 +18,9 @@ use crate::discord::model::{
     convert_channel_unreads, convert_guild_appearance, convert_guild_channels, convert_guild_emoji,
     convert_guild_voice_states, convert_member_list_update, convert_message, convert_mute_settings,
     convert_reaction_emoji, convert_read_states, convert_role, convert_stream_server,
-    convert_voice_server, convert_voice_state, parse_user_settings,
+    convert_thread, convert_voice_server, convert_voice_state, parse_user_settings,
 };
+use crate::discord::{Membership, NotifyLevel};
 
 use super::payloads::*;
 use super::{GatewayEvent, IncomingMessage, ReactionChange};
@@ -73,6 +75,7 @@ pub(super) fn dispatch(
                         guild.members.iter().chain(&merged),
                         guild.channels,
                     ));
+                    unreads.extend(joined_threads(guild.id, guild.threads));
                     voice_states.extend(convert_guild_voice_states(
                         guild.id,
                         guild.voice_states,
@@ -291,6 +294,7 @@ pub(super) fn dispatch(
                 };
                 let presences = GatewayEvent::Presences(convert_presences(guild.presences));
                 let activities = guild_activities(guild.id, guild.activity_instances);
+                let threads = joined_threads(guild.id, guild.threads);
                 std::iter::once(voice)
                     .chain(std::iter::once(presences))
                     .chain(activities)
@@ -299,6 +303,7 @@ pub(super) fn dispatch(
                     .chain(appearance)
                     .chain(owner)
                     .chain(channels)
+                    .chain(threads)
                     .chain(guild_emojis(guild.id, guild.emojis))
                     .chain(guild_roles(guild.id, guild.roles, guild.members))
                     .collect()
@@ -314,6 +319,85 @@ pub(super) fn dispatch(
                 .map(|guild_id| vec![GatewayEvent::GuildChannelsChanged { guild_id }])
                 .unwrap_or_default()
         }
+        "THREAD_CREATE" | "THREAD_UPDATE" => {
+            serde_json::from_str::<twilight_model::channel::Channel>(data)
+                .ok()
+                .and_then(convert_thread)
+                .map(|thread| vec![GatewayEvent::Thread(thread)])
+                .unwrap_or_default()
+        }
+        "THREAD_DELETE" => serde_json::from_str::<ThreadDeletePayload>(data)
+            .map(|delete| vec![GatewayEvent::ThreadDelete(delete.id)])
+            .unwrap_or_default(),
+        "THREAD_LIST_SYNC" => serde_json::from_str::<ThreadListSyncPayload>(data)
+            .map(|sync| {
+                let joined: HashMap<_, _> = sync
+                    .members
+                    .iter()
+                    .filter_map(|member| Some((member.id?, member.join_timestamp?.as_secs())))
+                    .collect();
+                let threads = sync
+                    .threads
+                    .into_iter()
+                    .filter_map(convert_thread)
+                    .map(|mut thread| {
+                        thread.guild_id.get_or_insert(sync.guild_id);
+                        thread.membership = match joined.get(&thread.id) {
+                            Some(&at) => Membership::Joined(at),
+                            None => Membership::NotJoined,
+                        };
+                        thread
+                    })
+                    .collect();
+                vec![GatewayEvent::ThreadList {
+                    guild_id: sync.guild_id,
+                    channels: sync.channel_ids,
+                    threads,
+                    latest: sync
+                        .most_recent_messages
+                        .into_iter()
+                        .map(|message| (message.channel_id, convert_message(message)))
+                        .collect(),
+                }]
+            })
+            .unwrap_or_default(),
+        "THREAD_MEMBER_UPDATE" => serde_json::from_str::<ThreadMemberUpdatePayload>(data)
+            .ok()
+            .and_then(|update| {
+                Some(vec![GatewayEvent::ThreadMembers {
+                    thread_id: update.member.id?,
+                    member_count: None,
+                    membership: Membership::Joined(update.member.join_timestamp?.as_secs()),
+                }])
+            })
+            .unwrap_or_default(),
+        "THREAD_MEMBERS_UPDATE" => serde_json::from_str::<ThreadMembersUpdatePayload>(data)
+            .map(|update| {
+                let me = *self_id;
+                let added = me.and_then(|me| {
+                    update
+                        .added_members
+                        .iter()
+                        .find(|member| member.user_id == Some(me))
+                });
+                let membership = match added {
+                    Some(member) => Membership::Joined(
+                        member
+                            .join_timestamp
+                            .map_or_else(now_secs, |joined| joined.as_secs()),
+                    ),
+                    None if me.is_some_and(|me| update.removed_member_ids.contains(&me)) => {
+                        Membership::NotJoined
+                    }
+                    None => Membership::Unknown,
+                };
+                vec![GatewayEvent::ThreadMembers {
+                    thread_id: update.id,
+                    member_count: update.member_count,
+                    membership,
+                }]
+            })
+            .unwrap_or_default(),
         "GUILD_UPDATE" => serde_json::from_str::<GatewayGuild>(data)
             .map(|guild| {
                 guild_upload_limit(&guild)
@@ -551,6 +635,38 @@ fn guild_channels<'a>(
         GatewayEvent::GuildUnreads(unreads),
         GatewayEvent::GuildChannels { guild_id, channels },
     ]
+}
+
+/// A user session is only sent the threads it's in with a guild, so they're
+/// all joined even where the member object is left out. `None` for an
+/// unavailable guild, which says nothing about its threads.
+fn joined_threads(
+    guild_id: Id<GuildMarker>,
+    threads: Option<Vec<twilight_model::channel::Channel>>,
+) -> Option<GatewayEvent> {
+    let threads = threads?
+        .into_iter()
+        .filter_map(convert_thread)
+        .map(|mut thread| {
+            thread.guild_id.get_or_insert(guild_id);
+            if thread.membership == Membership::Unknown {
+                thread.membership = Membership::Joined(thread.created_at());
+            }
+            thread
+        })
+        .collect();
+    Some(GatewayEvent::ThreadList {
+        guild_id,
+        channels: None,
+        threads,
+        latest: Vec::new(),
+    })
+}
+
+fn now_secs() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |since| since.as_secs() as i64)
 }
 
 fn guild_upload_limit(guild: &GatewayGuild) -> Option<GatewayEvent> {

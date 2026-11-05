@@ -20,6 +20,7 @@ mod read_state;
 mod search;
 mod settings;
 mod system;
+mod thread;
 mod time;
 mod upload;
 mod user;
@@ -55,6 +56,7 @@ pub use search::{
 };
 pub use settings::{GuildFolders, PresenceStatus, UserSettings};
 pub use system::{SystemEvent, WELCOMES, call_duration};
+pub use thread::{Membership, Thread};
 pub use upload::{DEFAULT_UPLOAD_LIMIT, MAX_UPLOAD_TOTAL, Upload, UploadProgress};
 pub use user::{CurrentUser, Reactor, UserProfile};
 pub use voice::{StreamServerInfo, VoiceServerInfo, VoiceUserState, stream_key};
@@ -75,6 +77,7 @@ pub(super) use read_state::{
 };
 pub(super) use search::{RawSearch, convert_search};
 pub(super) use settings::{RawSettingsProto, encode_status_settings, parse_user_settings};
+pub(super) use thread::convert_thread;
 pub(super) use upload::boost_upload_limit;
 pub(super) use user::{RawProfile, convert_current_user, convert_reactor, convert_user_profile};
 pub(super) use voice::{

@@ -49,7 +49,13 @@ impl HomeScreen {
                             .input_text_size(Size::Medium)
                             .h(COMPOSER_LINE_HEIGHT)
                             .text_color(theme.muted_foreground)
-                            .child("You do not have permission to send messages in this channel."),
+                            .child(
+                                if self.selected_thread().is_some_and(|thread| thread.locked) {
+                                    "This thread is locked."
+                                } else {
+                                    "You do not have permission to send messages in this channel."
+                                },
+                            ),
                     ),
                 )
                 .into_any_element();

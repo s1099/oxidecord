@@ -62,7 +62,7 @@ impl HomeScreen {
                 .map(|dm| format!("Message @{}", dm.name)),
             // A voice channel's chat goes without the hash, as in Discord.
             View::Guild => self.selected_channel_info().map(|channel| {
-                if channel.kind.is_voice() {
+                if channel.kind.is_voice() || channel.kind == discord::ChannelKind::Thread {
                     format!("Message {}", channel.name)
                 } else {
                     format!("Message #{}", channel.name)
@@ -298,6 +298,8 @@ impl HomeScreen {
         self.replying_to = None;
         self.editing = None;
         self.pins_popup = None;
+        self.threads_popup = None;
+        self.thread_draft = None;
         self.revealed_spoilers.clear();
         self.text_selection = None;
         self.text_copies.get_mut().clear();
