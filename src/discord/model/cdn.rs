@@ -62,6 +62,10 @@ pub(super) fn guild_banner_url(guild_id: Id<GuildMarker>, hash: &str) -> String 
     format!("https://cdn.discordapp.com/banners/{guild_id}/{hash}.webp?size=480")
 }
 
+pub(super) fn app_icon_url(app_id: impl std::fmt::Display, hash: &str) -> String {
+    format!("https://cdn.discordapp.com/app-icons/{app_id}/{hash}.webp?size=80")
+}
+
 pub(super) fn group_dm_icon_url(channel_id: Id<ChannelMarker>, hash: &str) -> String {
     format!("https://cdn.discordapp.com/channel-icons/{channel_id}/{hash}.webp?size=80")
 }

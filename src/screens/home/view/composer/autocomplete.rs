@@ -1,5 +1,5 @@
-//! The suggestions hung above the composer while an `@`, `#` or `:` word is
-//! being typed.
+//! The suggestions hung above the composer while an `@`, `#` or `:` word, or
+//! a slash command, is being typed.
 
 use gpui_kit::component::{ActiveTheme as _, Icon, StyledExt as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
@@ -22,9 +22,12 @@ impl HomeScreen {
         let theme = cx.theme();
 
         let (kind, trigger) = match autocomplete.trigger {
-            Trigger::User => ("MEMBERS", '@'),
-            Trigger::Channel => ("CHANNELS", '#'),
-            Trigger::Emoji => ("EMOJI", ':'),
+            Trigger::User => ("MEMBERS", "@"),
+            Trigger::Channel => ("CHANNELS", "#"),
+            Trigger::Emoji => ("EMOJI", ":"),
+            Trigger::Command => ("COMMANDS", "/"),
+            Trigger::CommandOption => ("OPTIONS", ""),
+            Trigger::CommandValue => ("CHOICES", ""),
         };
         let title = h_flex()
             .px_2()
@@ -136,6 +139,45 @@ impl HomeScreen {
                 broadcast.text().to_string(),
                 Some(broadcast.description().to_string()),
             ),
+            Suggestion::Command(command) => {
+                let glyph = match command.app() {
+                    Some(app) => {
+                        avatar(app.name.clone(), app.icon_url.clone(), px(22.)).into_any_element()
+                    }
+                    None => Icon::default()
+                        .path("icons/slash.svg")
+                        .text_color(theme.muted_foreground)
+                        .into_any_element(),
+                };
+                let source = command.app().map_or("Built-in", |app| app.name.as_str());
+                let detail = if command.description.is_empty() {
+                    source.to_string()
+                } else {
+                    format!("{} · {source}", command.description)
+                };
+                (
+                    Some(glyph),
+                    format!("/{}", command.display_name),
+                    Some(detail),
+                )
+            }
+            Suggestion::CommandOption {
+                name,
+                description,
+                required,
+                kind,
+            } => {
+                let mut detail = if description.is_empty() {
+                    kind.label().to_string()
+                } else {
+                    description.clone()
+                };
+                if !required {
+                    detail.push_str(" · optional");
+                }
+                (None, format!("{name}:"), Some(detail))
+            }
+            Suggestion::Choice { name } => (None, name.clone(), None),
         };
 
         h_flex()

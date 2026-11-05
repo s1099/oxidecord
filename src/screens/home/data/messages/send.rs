@@ -11,6 +11,7 @@ use twilight_model::id::{Id, marker::MessageMarker};
 
 use crate::discord;
 use crate::screens::home::autocomplete::resolve_mentions;
+use crate::screens::home::data::commands::CommandSend;
 use crate::screens::home::{HomeScreen, View};
 
 /// How often an uploading message's progress bar is redrawn.
@@ -21,7 +22,7 @@ const DISCORD_EPOCH_MS: u64 = 1_420_070_400_000;
 
 /// A snowflake for now, used as the nonce and pending id as Discord's client
 /// does; the low bits count up so same-millisecond sends differ.
-fn next_nonce() -> (u64, i64) {
+pub(in crate::screens::home) fn next_nonce() -> (u64, i64) {
     static INCREMENT: AtomicU64 = AtomicU64::new(0);
 
     let now = SystemTime::now()
@@ -52,11 +53,17 @@ impl HomeScreen {
             return;
         }
 
-        let content = resolve_mentions(
-            self.message_input.read(cx).value().trim(),
-            &self.composer_mentions,
-        );
-        let content = self.resolve_emoji_names(&content);
+        let content = match self.try_command(window, cx) {
+            CommandSend::Handled => return,
+            CommandSend::Text(content) => content,
+            CommandSend::NotCommand => {
+                let content = resolve_mentions(
+                    self.message_input.read(cx).value().trim(),
+                    &self.composer_mentions,
+                );
+                self.resolve_emoji_names(&content)
+            }
+        };
         if content.is_empty() && self.pending_attachments.is_empty() {
             return;
         }
@@ -239,7 +246,7 @@ impl HomeScreen {
             .any(|message| message.id == pending_id && message.delivery != discord::Delivery::Sent)
     }
 
-    fn pending_message_mut(
+    pub(in crate::screens::home) fn pending_message_mut(
         &mut self,
         pending_id: Id<MessageMarker>,
     ) -> Option<&mut discord::Message> {

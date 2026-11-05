@@ -1,8 +1,10 @@
 //! The composer's autocomplete: spotting the `@`, `#` or `:` word at the cursor,
 //! ranking candidates (gathered by the caller), and turning chosen mentions
-//! back into Discord's markup on send.
+//! back into Discord's markup on send. Slash commands feed it too; see
+//! [`super::commands`].
 
 use std::ops::Range;
+use std::sync::Arc;
 
 use twilight_model::id::{
     Id,
@@ -10,6 +12,7 @@ use twilight_model::id::{
 };
 
 use super::emoji::PickerEmoji;
+use crate::discord::{OptionKind, SlashCommand};
 
 pub(in crate::screens::home) const LIMIT: usize = 10;
 
@@ -21,6 +24,9 @@ pub(in crate::screens::home) enum Trigger {
     User,
     Channel,
     Emoji,
+    Command,
+    CommandOption,
+    CommandValue,
 }
 
 #[derive(PartialEq, Eq, Debug)]
@@ -55,6 +61,17 @@ pub(in crate::screens::home) enum Suggestion {
         emoji: PickerEmoji,
         guild: Option<String>,
     },
+    Command(Arc<SlashCommand>),
+    CommandOption {
+        name: String,
+        description: String,
+        required: bool,
+        kind: OptionKind,
+    },
+    /// One of an option's choices, or `True`/`False`; written in as named.
+    Choice {
+        name: String,
+    },
 }
 
 impl Suggestion {
@@ -66,6 +83,9 @@ impl Suggestion {
             Self::Channel { id, .. } => format!("channel-{id}"),
             Self::Broadcast(broadcast) => broadcast.text().to_string(),
             Self::Emoji { emoji, .. } => format!("emoji-{:?}", emoji.recent_key()),
+            Self::Command(command) => format!("command-{}", command.key()),
+            Self::CommandOption { name, .. } => format!("option-{name}"),
+            Self::Choice { name } => format!("choice-{name}"),
         }
     }
 }

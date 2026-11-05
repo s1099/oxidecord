@@ -94,6 +94,7 @@ pub(super) fn dispatch(
                 );
                 let ready = GatewayEvent::Ready {
                     user_id: ready.user.id,
+                    session_id: ready.session_id,
                     voice_states,
                 };
                 let presences = GatewayEvent::Presences(convert_presences(presences));
@@ -448,6 +449,41 @@ pub(super) fn dispatch(
                 )])]
             })
             .unwrap_or_default(),
+        "INTERACTION_CREATE" | "INTERACTION_SUCCESS" | "INTERACTION_FAILURE" => {
+            serde_json::from_str::<InteractionPayload>(data)
+                .ok()
+                .and_then(|payload| {
+                    let nonce = payload.nonce?;
+                    Some(vec![match name {
+                        "INTERACTION_CREATE" => GatewayEvent::InteractionCreated { nonce },
+                        "INTERACTION_SUCCESS" => GatewayEvent::InteractionSucceeded { nonce },
+                        _ => GatewayEvent::InteractionFailed {
+                            nonce,
+                            timed_out: payload.reason_code == Some(2),
+                        },
+                    }])
+                })
+                .unwrap_or_default()
+        }
+        "APPLICATION_COMMAND_AUTOCOMPLETE_RESPONSE" => {
+            serde_json::from_str::<AutocompletePayload>(data)
+                .ok()
+                .and_then(|payload| {
+                    Some(vec![GatewayEvent::CommandChoices {
+                        nonce: payload.nonce?,
+                        choices: payload.choices.into_iter().map(|c| c.convert()).collect(),
+                    }])
+                })
+                .unwrap_or_default()
+        }
+        "GUILD_APPLICATION_COMMAND_INDEX_UPDATE" => {
+            serde_json::from_str::<CommandIndexUpdatePayload>(data)
+                .map(|update| vec![GatewayEvent::CommandIndexChanged(Some(update.guild_id))])
+                .unwrap_or_default()
+        }
+        "USER_APPLICATION_UPDATE" | "USER_APPLICATION_REMOVE" => {
+            vec![GatewayEvent::CommandIndexChanged(None)]
+        }
         _ => Vec::new(),
     }
 }

@@ -31,24 +31,46 @@ impl HomeScreen {
             let input = self.message_input.read(cx);
             (input.value(), input.cursor())
         };
-        let Some(word) = word_at(&text, cursor) else {
+        let found = match word_at(&text, cursor) {
+            Some(word) => Some((word.trigger, word.range, word.query.to_string())),
+            // A command's suggestions come with their items, which depend on
+            // where in it the cursor is.
+            None => match self.command_suggestions(&text, cursor, cx) {
+                Some((trigger, range, query, items)) => {
+                    return self.show_suggestions(trigger, range, query, items, cx);
+                }
+                None => None,
+            },
+        };
+        let Some((trigger, range, query)) = found else {
             self.autocomplete_dismissed = None;
             return self.close_autocomplete(cx);
         };
-        if self.autocomplete_dismissed == Some(word.range.start) {
+        let lowered = query.to_lowercase();
+        let items = match trigger {
+            Trigger::User => {
+                self.search_guild_members(&lowered);
+                self.user_suggestions(&lowered)
+            }
+            Trigger::Channel => self.channel_suggestions(&lowered),
+            Trigger::Emoji => self.emoji_suggestions(&lowered),
+            Trigger::Command | Trigger::CommandOption | Trigger::CommandValue => Vec::new(),
+        };
+        self.show_suggestions(trigger, range, query, items, cx);
+    }
+
+    fn show_suggestions(
+        &mut self,
+        trigger: Trigger,
+        range: std::ops::Range<usize>,
+        query: String,
+        items: Vec<Suggestion>,
+        cx: &mut Context<Self>,
+    ) {
+        if self.autocomplete_dismissed == Some(range.start) {
             return self.close_autocomplete(cx);
         }
         self.autocomplete_dismissed = None;
-
-        let query = word.query.to_lowercase();
-        let items = match word.trigger {
-            Trigger::User => {
-                self.search_guild_members(&query);
-                self.user_suggestions(&query)
-            }
-            Trigger::Channel => self.channel_suggestions(&query),
-            Trigger::Emoji => self.emoji_suggestions(&query),
-        };
         if items.is_empty() {
             return self.close_autocomplete(cx);
         }
@@ -57,14 +79,14 @@ impl HomeScreen {
         let selected = self
             .autocomplete
             .as_ref()
-            .filter(|old| old.trigger == word.trigger && old.range.start == word.range.start)
+            .filter(|old| old.trigger == trigger && old.range.start == range.start)
             .and_then(|old| old.items.get(old.selected))
             .and_then(|old| items.iter().position(|item| item.key() == old.key()))
             .unwrap_or(0);
         self.autocomplete = Some(Autocomplete {
-            trigger: word.trigger,
-            range: word.range,
-            query: word.query.to_string(),
+            trigger,
+            range,
+            query,
             items,
             selected,
         });
@@ -170,7 +192,15 @@ impl HomeScreen {
         };
         // Mentions go in readable and are swapped for markup on send, as Discord's
         // composer does.
+        // Naming an option leads straight into its value.
+        let suffix = match suggestion {
+            Suggestion::CommandOption { .. } => "",
+            _ => " ",
+        };
         let text = match suggestion {
+            Suggestion::Command(command) => format!("/{}", command.display_name),
+            Suggestion::CommandOption { name, .. } => format!("{name}:"),
+            Suggestion::Choice { name } => name.clone(),
             Suggestion::User { id, name, .. } => {
                 self.remember_mention(format!("@{name}"), format!("<@{id}>"))
             }
@@ -199,7 +229,7 @@ impl HomeScreen {
             // The input takes ranges in UTF-16, as platform text input does.
             let start = before.encode_utf16().count();
             let end = start + word.encode_utf16().count();
-            input.replace_text_in_range(Some(start..end), &format!("{text} "), window, cx);
+            input.replace_text_in_range(Some(start..end), &format!("{text}{suffix}"), window, cx);
             input.focus(window, cx);
         });
         cx.notify();

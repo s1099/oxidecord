@@ -20,6 +20,7 @@ use crate::platform::prefs;
 use crate::ui::smooth_scroll::SmoothScroll;
 
 use super::channels::ChannelGroup;
+use super::commands::{CommandChoices, IndexState, PendingCommands};
 use super::composer::{Autocomplete, EditingMessage, ReplyTarget, Typist};
 use super::data::attachments::PendingAttachment;
 use super::data::gif::LoadedGifs;
@@ -264,6 +265,12 @@ pub struct HomeScreen {
     /// (shown text, sent markup).
     pub(super) composer_mentions: Vec<(String, String)>,
     pub(super) _composer_changed: Subscription,
+    /// From `READY`; commands run under it so their ephemeral replies come here.
+    pub(super) gateway_session: Option<String>,
+    pub(super) command_indexes: HashMap<discord::CommandIndexScope, IndexState>,
+    /// By the id of the message standing in for the app's reply.
+    pub(super) pending_commands: PendingCommands,
+    pub(super) command_choices: CommandChoices,
     /// Refocuses the screen when a menu or edit box closes so typing reaches the composer.
     pub(super) _focus_lost: Subscription,
     /// The taskbar thumbnail's call buttons, and what keeps them current.
@@ -468,6 +475,10 @@ impl HomeScreen {
             autocomplete_dismissed: None,
             composer_mentions: Vec::new(),
             _composer_changed: composer_changed,
+            gateway_session: None,
+            command_indexes: HashMap::new(),
+            pending_commands: HashMap::new(),
+            command_choices: CommandChoices::default(),
             _focus_lost: focus_lost,
             #[cfg(windows)]
             thumb_bar: None,

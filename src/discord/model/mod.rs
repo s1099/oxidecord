@@ -6,6 +6,7 @@
 
 mod cdn;
 mod channel;
+mod command;
 mod embed;
 mod emoji;
 mod frecency;
@@ -25,6 +26,10 @@ mod voice;
 
 pub use cdn::{animated_webp, scaled_url};
 pub use channel::{Channel, ChannelKind, DirectMessage, DmMember};
+pub use command::{
+    AppCommand, CommandChoice, CommandContext, CommandIndex, CommandOption, CommandSource,
+    OptionKind, SlashCommand,
+};
 pub use embed::{Embed, EmbedAuthor, EmbedField, EmbedFooter, EmbedLayout, EmbedMedia, EmbedVideo};
 pub use emoji::GuildEmoji;
 pub use frecency::FrecencyItem;
@@ -35,8 +40,8 @@ pub use member_list::{
     ListMember, MemberGroupKind, MemberListGroup, MemberListItem, MemberListOp, MemberListUpdate,
 };
 pub use message::{
-    Delivery, FileAttachment, ForwardedMessage, ImageAttachment, MentionedUser, Message,
-    MessageReference, Reaction, ReactionEmoji, Reply, SPOILER_PREFIX, SpoilerCover,
+    CommandUse, Delivery, FileAttachment, ForwardedMessage, ImageAttachment, MentionedUser,
+    Message, MessageReference, Reaction, ReactionEmoji, Reply, SPOILER_PREFIX, SpoilerCover,
     VideoAttachment,
 };
 pub use read_state::{
@@ -53,6 +58,7 @@ pub use user::{CurrentUser, Reactor, UserProfile};
 pub use voice::{StreamServerInfo, VoiceServerInfo, VoiceUserState, stream_key};
 
 pub(super) use channel::{convert_channel, convert_dms};
+pub(super) use command::{RawChoice, RawCommandIndex, convert_command_index};
 pub(super) use emoji::{RawEmoji, convert_guild_emoji};
 pub(super) use frecency::{encode_frecency_settings, parse_frecency_settings};
 pub(super) use guild::{RawMember, RawRole, convert_guild, convert_guild_appearance, convert_role};

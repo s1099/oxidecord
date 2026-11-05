@@ -5,6 +5,7 @@
 
 mod auth;
 mod channel;
+mod command;
 mod guild;
 mod message;
 mod settings;
@@ -19,6 +20,10 @@ use crate::platform::runtime;
 
 pub use auth::{log_out, remove_account};
 pub use channel::{fetch_dms, ring_call, stop_ringing};
+pub use command::{
+    CommandArgument, CommandIndexScope, CommandInvocation, fetch_command_index,
+    request_autocomplete, run_command,
+};
 pub use guild::{fetch_channels, fetch_guilds};
 pub use message::{
     MESSAGE_PAGE_SIZE, MessagePage, REACTORS_PAGE_SIZE, ack_message, delete_message, edit_message,

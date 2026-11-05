@@ -4,13 +4,16 @@ use std::sync::Arc;
 
 use serde::Deserialize;
 use twilight_model::channel::AttachmentFlags;
-use twilight_model::channel::message::{MessageReferenceType, MessageSnapshot, MessageType};
+use twilight_model::channel::message::{
+    MessageFlags, MessageReferenceType, MessageSnapshot, MessageType,
+};
 use twilight_model::id::{
     Id,
     marker::{EmojiMarker, GuildMarker, MessageMarker, RoleMarker, UserMarker},
 };
 
 use super::cdn;
+use super::command::CommandApp;
 use super::embed::{Embed, EmbedLayout, convert_embeds};
 use super::guild::GuildMember;
 use super::markdown::{self, Inline, Markdown};
@@ -53,6 +56,10 @@ pub struct Message {
     pub reactions: Vec<Reaction>,
     /// Drawn as a one-line notice instead of the author's message.
     pub system: Option<SystemEvent>,
+    /// An app's reply only the user can see; it lives in this session alone.
+    pub ephemeral: bool,
+    /// An app deferred its reply, which an edit fills in.
+    pub loading: bool,
     pub delivery: Delivery,
 }
 
@@ -106,8 +113,33 @@ impl Message {
             forward: None,
             reactions: Vec::new(),
             system: None,
+            ephemeral: false,
+            loading: false,
             delivery: Delivery::Sending { upload },
         }
+    }
+
+    /// Stands in for an app's reply while a command runs, drawn as its bot
+    /// as Discord's client does; the reply carries the same nonce as `id`.
+    pub fn pending_command(
+        id: Id<MessageMarker>,
+        app: &CommandApp,
+        invoker: &CurrentUser,
+        command: String,
+        timestamp: i64,
+    ) -> Self {
+        let mut message = Self::pending(id, invoker, String::new(), timestamp, None, None);
+        message.author_id = app.bot_id.unwrap_or_else(|| app.id.cast());
+        message.author_name = app.name.clone();
+        message.author_avatar_url = app.icon_url.clone();
+        message.author_bot = true;
+        message.reply = Some(Reply::Command(CommandUse {
+            user_id: invoker.id,
+            user_name: invoker.name.clone(),
+            avatar_url: invoker.avatar_url.clone(),
+            command,
+        }));
+        message
     }
 
     /// Copies only what an edit can change: an update doesn't reliably carry the
@@ -120,6 +152,7 @@ impl Message {
         self.mention_everyone = edited.mention_everyone;
         self.mention_roles = edited.mention_roles;
         self.edited = edited.edited;
+        self.loading = edited.loading;
         // Edits can remove attachments and add or remove embeds.
         self.images = edited.images;
         self.videos = edited.videos;
@@ -216,6 +249,17 @@ pub enum Reply {
     Quote(MessageReference),
     /// The original is gone; Discord sends the reply without it.
     Deleted,
+    /// An app's answer to a command, headed by who used it.
+    Command(CommandUse),
+}
+
+#[derive(Clone)]
+pub struct CommandUse {
+    pub user_id: Id<UserMarker>,
+    pub user_name: String,
+    pub avatar_url: Option<String>,
+    /// Subcommands included, without the slash. Empty if Discord didn't say.
+    pub command: String,
 }
 
 /// The quoted preview above a reply.
@@ -373,6 +417,7 @@ pub(in crate::discord) fn author_member(
 pub(in crate::discord) fn convert_message(message: twilight_model::channel::Message) -> Message {
     let author_avatar_url = small_avatar_url(&message.author);
     let system = convert_system(&message);
+    let command = convert_command_use(&message);
     // Nickname, then global name, then username. Only gateway dispatches carry
     // `member`; fetched history and send responses don't, so the view names
     // authors by the guild's members where it can.
@@ -383,6 +428,7 @@ pub(in crate::discord) fn convert_message(message: twilight_model::channel::Mess
         .or(message.author.global_name)
         .unwrap_or_else(|| message.author.name.clone());
     let (images, videos, files) = convert_attachments(&message.attachments);
+    let flags = message.flags.unwrap_or(MessageFlags::empty());
     // A forward uses the same reference as a reply, so check its type.
     let is_forward = message
         .reference
@@ -413,6 +459,7 @@ pub(in crate::discord) fn convert_message(message: twilight_model::channel::Mess
         embeds: convert_embeds(message.embeds),
         reply: match message.referenced_message {
             _ if is_forward => None,
+            _ if command.is_some() => command.map(Reply::Command),
             Some(referenced) => Some(Reply::Quote(convert_reference(*referenced))),
             None if message.kind == MessageType::Reply => Some(Reply::Deleted),
             None => None,
@@ -428,8 +475,30 @@ pub(in crate::discord) fn convert_message(message: twilight_model::channel::Mess
             })
             .collect(),
         system,
+        ephemeral: flags.contains(MessageFlags::EPHEMERAL),
+        loading: flags.contains(MessageFlags::LOADING),
         delivery: Delivery::Sent,
     }
+}
+
+/// From the deprecated `interaction`, the one that still names the command;
+/// `interaction_metadata` only says who used it.
+fn convert_command_use(message: &twilight_model::channel::Message) -> Option<CommandUse> {
+    #[allow(deprecated)]
+    let (user, command) = match (&message.interaction, &message.interaction_metadata) {
+        (Some(interaction), _) => (&interaction.user, interaction.name.clone()),
+        (None, Some(metadata)) => (&metadata.user, String::new()),
+        (None, None) => return None,
+    };
+    Some(CommandUse {
+        user_id: user.id,
+        user_name: user
+            .global_name
+            .clone()
+            .unwrap_or_else(|| user.name.clone()),
+        avatar_url: small_avatar_url(user),
+        command,
+    })
 }
 
 fn convert_attachments(

@@ -12,6 +12,8 @@ mod typing;
 
 use std::ops::Range;
 
+pub(in crate::screens::home) use send::next_nonce;
+
 use crate::screens::home::HomeScreen;
 
 impl HomeScreen {

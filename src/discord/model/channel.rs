@@ -57,6 +57,8 @@ pub struct DirectMessage {
     pub avatar_url: Option<String>,
     /// `None` for a group DM.
     pub recipient_id: Option<Id<UserMarker>>,
+    /// A bot's DM serves its commands.
+    pub recipient_bot: bool,
     /// A group DM's members other than the current user; empty for a one-on-one DM.
     pub members: Vec<DmMember>,
     pub owner_id: Option<Id<UserMarker>>,
@@ -160,6 +162,7 @@ fn convert_dm(channel: twilight_model::channel::Channel) -> Option<DirectMessage
                 id: channel.id,
                 avatar_url: small_avatar_url(&user),
                 recipient_id: Some(user.id),
+                recipient_bot: user.bot,
                 name: user.global_name.unwrap_or(user.name),
                 members: Vec::new(),
                 owner_id: None,
@@ -173,6 +176,7 @@ fn convert_dm(channel: twilight_model::channel::Channel) -> Option<DirectMessage
                 .map(|hash| cdn::group_dm_icon_url(channel.id, &hash.to_string())),
             name: group_dm_name(channel.name, channel.recipients.as_deref()),
             recipient_id: None,
+            recipient_bot: false,
             members: channel
                 .recipients
                 .unwrap_or_default()

@@ -219,6 +219,30 @@ impl HomeScreen {
             _ => None,
         };
         let failed = message.delivery == discord::Delivery::Failed;
+        let command = self.pending_commands.get(&message.id);
+        let thinking = message.loading && message.content.is_empty();
+        let message_id = message.id;
+        let dismiss =
+            (message.ephemeral || command.is_some_and(|c| c.error.is_some())).then(|| {
+                h_flex()
+                    .gap_1()
+                    .text_xs()
+                    .text_color(theme.muted_foreground)
+                    .when(message.ephemeral, |this| {
+                        this.child("Only you can see this").child("·")
+                    })
+                    .child(
+                        div()
+                            .id(("dismiss-message", message_id.get()))
+                            .text_color(theme.link)
+                            .cursor_pointer()
+                            .hover(|this| this.underline())
+                            .child("Dismiss message")
+                            .on_click(cx.listener(move |this, _, _, cx| {
+                                this.dismiss_message(message_id, cx);
+                            })),
+                    )
+            });
         let content: AnyElement = v_flex()
             .w_full()
             .min_w_0()
@@ -244,6 +268,8 @@ impl HomeScreen {
             .when(
                 editing.is_none()
                     && message.content.is_empty()
+                    && !thinking
+                    && command.is_none()
                     && upload.is_none()
                     && message.forward.is_none()
                     && media.is_empty(),
@@ -262,7 +288,30 @@ impl HomeScreen {
             .when(!message.reactions.is_empty(), |this| {
                 this.child(self.render_reactions(message, cx))
             })
-            .when(failed, |this| {
+            .when_some(command, |this, command| {
+                this.child(
+                    div()
+                        .italic()
+                        .text_color(if command.error.is_some() {
+                            theme.danger
+                        } else {
+                            theme.muted_foreground
+                        })
+                        .child(command.status()),
+                )
+            })
+            .when(thinking, |this| {
+                this.child(
+                    div()
+                        .italic()
+                        .text_color(theme.muted_foreground)
+                        .child(format!(
+                            "{} is thinking…",
+                            self.author_name(message.author_id, &message.author_name)
+                        )),
+                )
+            })
+            .when(failed && command.is_none(), |this| {
                 this.child(
                     div()
                         .text_xs()
@@ -270,6 +319,7 @@ impl HomeScreen {
                         .child("Message failed to send."),
                 )
             })
+            .children(dismiss)
             .when(
                 matches!(message.delivery, discord::Delivery::Sending { .. }),
                 |this| this.opacity(0.5),
@@ -435,6 +485,9 @@ impl HomeScreen {
                     this.child(self.render_reply_preview(message.id.get(), reference, cx))
                 }
                 Some(discord::Reply::Deleted) => this.child(render_deleted_reply(cx)),
+                Some(discord::Reply::Command(used)) => {
+                    this.child(self.render_command_use(message.id.get(), used, cx))
+                }
                 None => this,
             })
             .child(header_row)

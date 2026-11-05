@@ -7,6 +7,7 @@
 
 mod autocomplete;
 mod channels;
+mod commands;
 mod composer;
 mod data;
 mod emoji;

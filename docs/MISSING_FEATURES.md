@@ -9,7 +9,7 @@
 | Global display names in mentions | Partial | twilight's `Mention` model drops `global_name`, so a mention shows the nickname or username |
 | Super reactions (burst) | Missing | |
 | Skin tones, favorite and frequently used emoji in the picker | Missing | |
-| Slash commands and app commands | Missing | |
+| Slash commands and app commands | Partial | Typed as `/name option:value`, with suggestions for commands, options, choices and app autocomplete, and the built-in `/shrug`, `/tableflip`, `/unflip`, `/me` and `/spoiler`. Not yet: user and message commands in context menus, file options, the option pills Discord's composer uses, and the `/nick`, `/tts`, `/gif` and moderation built-ins |
 | Message components (buttons, select menus, modals) | Missing | Bot messages only show their embeds |
 | Stickers (sending and rendering) | Missing | |
 | GIF picker (Tenor) | Missing | |

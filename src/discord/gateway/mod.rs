@@ -23,9 +23,9 @@ use twilight_model::id::{
 use crate::platform::runtime;
 
 use super::model::{
-    Channel, ChannelLatest, DmMember, GuildAppearance, GuildEmoji, GuildMember, GuildUnreads,
-    MemberListUpdate, Message, MuteSettings, NotifyLevel, PresenceStatus, ReactionEmoji, ReadState,
-    Role, StreamServerInfo, VoiceServerInfo, VoiceUserState,
+    Channel, ChannelLatest, CommandChoice, DmMember, GuildAppearance, GuildEmoji, GuildMember,
+    GuildUnreads, MemberListUpdate, Message, MuteSettings, NotifyLevel, PresenceStatus,
+    ReactionEmoji, ReadState, Role, StreamServerInfo, VoiceServerInfo, VoiceUserState,
 };
 
 pub use sender::GatewaySender;
@@ -46,6 +46,7 @@ pub enum GatewayEvent {
     /// left while disconnected. Carries the signed-in user, which voice connections identify with.
     Ready {
         user_id: Id<UserMarker>,
+        session_id: String,
         voice_states: Vec<VoiceUserState>,
     },
     Message(IncomingMessage),
@@ -179,6 +180,25 @@ pub enum GatewayEvent {
     },
     LatestMessages(Vec<ChannelLatest>),
     MuteSettings(Vec<MuteSettings>),
+    /// Discord accepted a command run from here and handed it to the app.
+    InteractionCreated {
+        nonce: u64,
+    },
+    /// The app answered; its reply, if any, arrives as a message with the nonce.
+    InteractionSucceeded {
+        nonce: u64,
+    },
+    InteractionFailed {
+        nonce: u64,
+        /// The app didn't answer in time, rather than failing some other way.
+        timed_out: bool,
+    },
+    CommandChoices {
+        nonce: u64,
+        choices: Vec<CommandChoice>,
+    },
+    /// A guild's commands changed, or with `None` the user's own apps did.
+    CommandIndexChanged(Option<Id<GuildMarker>>),
 }
 
 pub enum ReactionChange {

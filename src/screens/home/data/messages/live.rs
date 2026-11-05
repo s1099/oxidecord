@@ -100,9 +100,11 @@ impl HomeScreen {
         match event {
             discord::GatewayEvent::Ready {
                 user_id,
+                session_id,
                 voice_states,
             } => {
                 self.self_user_id = Some(user_id);
+                self.reset_commands(session_id);
                 // A new session starts online whatever was picked; resumes don't come through
                 // here, so this covers the first connect and every reconnect.
                 if let (Some(status), Some(gateway)) = (self.presence_status, &self.gateway) {
@@ -330,6 +332,21 @@ impl HomeScreen {
                 self.unreads.set_mutes(settings);
                 cx.notify();
             }
+            discord::GatewayEvent::InteractionCreated { nonce } => {
+                self.interaction_created(nonce, cx);
+            }
+            discord::GatewayEvent::InteractionSucceeded { nonce } => {
+                self.interaction_succeeded(nonce, cx);
+            }
+            discord::GatewayEvent::InteractionFailed { nonce, timed_out } => {
+                self.interaction_failed(nonce, timed_out, cx);
+            }
+            discord::GatewayEvent::CommandChoices { nonce, choices } => {
+                self.receive_command_choices(nonce, choices, cx);
+            }
+            discord::GatewayEvent::CommandIndexChanged(guild_id) => {
+                self.forget_command_index(guild_id);
+            }
             discord::GatewayEvent::MemberList(update) => {
                 self.apply_member_list_update(update, cx);
             }
@@ -388,7 +405,15 @@ impl HomeScreen {
         if let Some(nonce) = incoming.nonce.and_then(Id::new_checked)
             && self.has_pending_message(nonce)
         {
+            self.pending_commands.remove(&nonce);
             self.confirm_pending_message(nonce, incoming.message);
+            cx.notify();
+            return;
+        }
+        // An app's reply to a command run from here, without the nonce.
+        if let Some(pending) = self.pending_command_answered_by(&incoming.message) {
+            self.pending_commands.remove(&pending);
+            self.confirm_pending_message(pending, incoming.message);
             cx.notify();
             return;
         }

@@ -90,6 +90,55 @@ impl HomeScreen {
     }
 }
 
+impl HomeScreen {
+    /// Heads an app's reply with who ran the command, where a reply's quote goes.
+    pub(super) fn render_command_use(
+        &self,
+        message_id: u64,
+        used: &discord::CommandUse,
+        cx: &Context<Self>,
+    ) -> impl IntoElement {
+        let theme = cx.theme();
+        let name = self.author_name(used.user_id, &used.user_name).to_owned();
+        h_flex()
+            .id(("command-use", message_id))
+            .relative()
+            .w_full()
+            .min_w_0()
+            .h(px(LINE_HEIGHT))
+            .pl(px(CONTENT_INDENT))
+            .gap_1()
+            .items_center()
+            .text_xs()
+            .text_color(theme.muted_foreground)
+            .child(spine(cx))
+            .child(avatar(
+                name.clone(),
+                used.avatar_url.clone(),
+                px(QUOTE_AVATAR_SIZE),
+            ))
+            .child(
+                div()
+                    .flex_shrink_0()
+                    .font_weight(FontWeight::SEMIBOLD)
+                    .when_some(self.role_color(used.user_id), |this, color| {
+                        this.text_color(rgb(color))
+                    })
+                    .child(name),
+            )
+            .child(div().flex_shrink_0().child("used"))
+            .child(if used.command.is_empty() {
+                div().child("a command")
+            } else {
+                div()
+                    .min_w_0()
+                    .truncate()
+                    .text_color(theme.link)
+                    .child(format!("/{}", used.command))
+            })
+    }
+}
+
 /// Stands where the quote would, once the original has been deleted.
 pub(super) fn render_deleted_reply(cx: &App) -> impl IntoElement + use<> {
     let theme = cx.theme();

@@ -11,8 +11,8 @@ use twilight_model::id::{
 use twilight_model::util::Timestamp;
 
 use crate::discord::model::{
-    PresenceStatus, RawChannelUnread, RawEmoji, RawGuildChannel, RawGuildSettings, RawMember,
-    RawReadState, RawRole, RawVoiceState, versioned_list,
+    PresenceStatus, RawChannelUnread, RawChoice, RawEmoji, RawGuildChannel, RawGuildSettings,
+    RawMember, RawReadState, RawRole, RawVoiceState, versioned_list,
 };
 
 /// `STREAM_CREATE`, of which only what a connection needs is read.
@@ -63,6 +63,9 @@ pub(super) struct SettingsProtoUpdate {
 #[derive(Deserialize)]
 pub(super) struct ReadyPayload {
     pub(super) user: ReadyUser,
+    /// Named when running a command, so its ephemeral replies come here.
+    #[serde(default)]
+    pub(super) session_id: String,
     /// A user session's guilds arrive whole in `READY`; a bot's only as ids,
     /// with the rest following in `GUILD_CREATE`.
     #[serde(default)]
@@ -416,4 +419,28 @@ mod tests {
             serde_json::from_str(r#"{"id": "1", "unavailable": true}"#).unwrap();
         assert!(unavailable.banner_and_features().is_none());
     }
+}
+
+/// `INTERACTION_CREATE`, `INTERACTION_SUCCESS` and `INTERACTION_FAILURE`: how a
+/// command run from this session is getting on, by the nonce it was sent with.
+#[derive(Deserialize)]
+pub(super) struct InteractionPayload {
+    #[serde(default, deserialize_with = "deserialize_nonce")]
+    pub(super) nonce: Option<u64>,
+    /// 2 is the app not answering in time.
+    #[serde(default)]
+    pub(super) reason_code: Option<u8>,
+}
+
+#[derive(Deserialize)]
+pub(super) struct AutocompletePayload {
+    #[serde(default, deserialize_with = "deserialize_nonce")]
+    pub(super) nonce: Option<u64>,
+    #[serde(default, deserialize_with = "skip_invalid")]
+    pub(super) choices: Vec<RawChoice>,
+}
+
+#[derive(Deserialize)]
+pub(super) struct CommandIndexUpdatePayload {
+    pub(super) guild_id: Id<GuildMarker>,
 }

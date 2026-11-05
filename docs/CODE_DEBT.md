@@ -13,6 +13,27 @@ Entry format:
 - **<Short gap title>** — what's missing or wrong, and why it was left. `src/path.rs:123`
 ```
 
+## Slash commands
+
+- **Permissions are simplified** — commands are filtered by `contexts`, `default_member_permissions`
+  against guild-wide permissions, and channel overwrites that deny; per-role and per-user
+  overwrites are left to Discord, which omits most of them from the index already.
+  `src/discord/model/command.rs:242`
+- **Age-restricted commands are always hidden** — channels' NSFW flag isn't tracked.
+  `src/screens/home/data/commands.rs:120`
+- **File options can't be filled** — a command with an attachment option is refused before
+  it's sent. `src/screens/home/commands.rs:322`
+- **A bot DM's index isn't refreshed** — `GUILD_APPLICATION_COMMAND_INDEX_UPDATE` drops only
+  that guild's index, not the DMs of bots in it. `src/discord/gateway/dispatch.rs:479`
+- **Replies without a nonce are matched loosely** — an app's reply that doesn't echo the nonce
+  takes the place of the newest command still waiting on the same bot, which could be the wrong
+  one if two run at once. `src/screens/home/data/commands.rs:673`
+- **Ephemeral messages keep the full toolbar** — replying, reacting and pinning fail on them,
+  since Discord only knows them in this session. `src/screens/home/view/message/toolbar.rs:31`
+- **Plain-text options are ambiguous** — a later word of a value that starts an option's name
+  opens the option list, and Enter then takes the option instead of sending.
+  `src/screens/home/commands.rs:207`
+
 ## Close to tray
 
 - **No setting to quit on close** — closing the main window always hides it to the tray;
