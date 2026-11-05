@@ -1,9 +1,11 @@
-//! Date formatting for the timestamps the UI shows. A message's own times are
-//! local, as Discord shows them, which takes chrono for the time zone; the
-//! rest is UTC and done by hand.
+//! Date formatting for the timestamps the UI shows. Message times and `<t:…>`
+//! markup are local, as Discord shows them, which takes chrono for the time
+//! zone; the rest is UTC and done by hand.
 
-use chrono::{DateTime, Local};
+use chrono::{DateTime, Local, TimeZone};
 use twilight_model::util::Timestamp;
+
+use super::markdown::TimestampStyle;
 
 /// Milliseconds from the Unix epoch to Discord's (2015-01-01).
 const DISCORD_EPOCH_MS: u64 = 1_420_070_400_000;
@@ -103,81 +105,26 @@ fn civil_from_days(days: i64) -> (i64, u32, u32) {
     (year, month, day)
 }
 
-const MONTH_NAMES: [&str; 12] = [
-    "January",
-    "February",
-    "March",
-    "April",
-    "May",
-    "June",
-    "July",
-    "August",
-    "September",
-    "October",
-    "November",
-    "December",
-];
-
-const WEEKDAYS: [&str; 7] = [
-    "Sunday",
-    "Monday",
-    "Tuesday",
-    "Wednesday",
-    "Thursday",
-    "Friday",
-    "Saturday",
-];
-
-/// Splits Unix seconds into a civil date and the seconds into that day (UTC).
-fn split_unix(unix: i64) -> ((i64, u32, u32), i64) {
-    let days = unix.div_euclid(86_400);
-    (civil_from_days(days), unix.rem_euclid(86_400))
+/// `<t:…>` markup in the reader's time zone, in Discord's en-US wording.
+pub(super) fn format_markup_timestamp(unix: i64, style: TimestampStyle) -> String {
+    local(unix).map_or_else(|| unix.to_string(), |time| format_stamp(&time, style))
 }
 
-/// `4:20 PM`, or `4:20:30 PM` with seconds (UTC).
-pub(super) fn format_unix_time(unix: i64, seconds: bool) -> String {
-    let (_, secs) = split_unix(unix);
-    let (hour, minute, second) = (secs / 3600, secs / 60 % 60, secs % 60);
-    let (hour12, meridiem) = match hour {
-        0 => (12, "AM"),
-        1..=11 => (hour, "AM"),
-        12 => (12, "PM"),
-        _ => (hour - 12, "PM"),
+fn format_stamp<Tz: TimeZone>(time: &DateTime<Tz>, style: TimestampStyle) -> String
+where
+    Tz::Offset: std::fmt::Display,
+{
+    let pattern = match style {
+        TimestampStyle::ShortTime => "%-I:%M %p",
+        TimestampStyle::LongTime => "%-I:%M:%S %p",
+        TimestampStyle::ShortDate => "%-m/%-d/%Y",
+        TimestampStyle::LongDate => "%B %-d, %Y",
+        TimestampStyle::ShortDateTime => "%B %-d, %Y at %-I:%M %p",
+        TimestampStyle::LongDateTime | TimestampStyle::Relative => "%A, %B %-d, %Y at %-I:%M %p",
+        TimestampStyle::ShortDateShortTime => "%-m/%-d/%Y, %-I:%M %p",
+        TimestampStyle::ShortDateLongTime => "%-m/%-d/%Y, %-I:%M:%S %p",
     };
-    if seconds {
-        format!("{hour12}:{minute:02}:{second:02} {meridiem}")
-    } else {
-        format!("{hour12}:{minute:02} {meridiem}")
-    }
-}
-
-/// `09/26/2026` (UTC).
-pub(super) fn format_unix_short_date(unix: i64) -> String {
-    let ((year, month, day), _) = split_unix(unix);
-    format!("{month:02}/{day:02}/{year}")
-}
-
-/// `September 26, 2026`, or `Saturday, September 26, 2026` with the weekday
-/// (UTC).
-pub(super) fn format_unix_date(unix: i64, weekday: bool) -> String {
-    let ((year, month, day), _) = split_unix(unix);
-    let date = format!("{} {day}, {year}", MONTH_NAMES[(month - 1) as usize]);
-    if weekday {
-        // 1970-01-01 was a Thursday.
-        let index = (unix.div_euclid(86_400) + 4).rem_euclid(7) as usize;
-        format!("{}, {date}", WEEKDAYS[index])
-    } else {
-        date
-    }
-}
-
-/// `Saturday, September 26, 2026 4:20 PM` (UTC).
-pub(super) fn format_unix_full(unix: i64) -> String {
-    format!(
-        "{} {}",
-        format_unix_date(unix, true),
-        format_unix_time(unix, false)
-    )
+    time.format(pattern).to_string()
 }
 
 /// `in 2 hours`, `3 days ago`; both arguments are Unix seconds.
@@ -197,5 +144,34 @@ pub(super) fn format_relative(unix: i64, now: i64) -> String {
         format!("in {amount} {unit}{plural}")
     } else {
         format!("{amount} {unit}{plural} ago")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use chrono::Utc;
+
+    use super::*;
+
+    #[test]
+    fn markup_styles() {
+        // Tuesday, April 20, 2021 16:20:30 UTC.
+        let time = Utc.timestamp_opt(1_618_935_630, 0).unwrap();
+        let cases = [
+            (TimestampStyle::ShortTime, "4:20 PM"),
+            (TimestampStyle::LongTime, "4:20:30 PM"),
+            (TimestampStyle::ShortDate, "4/20/2021"),
+            (TimestampStyle::LongDate, "April 20, 2021"),
+            (TimestampStyle::ShortDateTime, "April 20, 2021 at 4:20 PM"),
+            (
+                TimestampStyle::LongDateTime,
+                "Tuesday, April 20, 2021 at 4:20 PM",
+            ),
+            (TimestampStyle::ShortDateShortTime, "4/20/2021, 4:20 PM"),
+            (TimestampStyle::ShortDateLongTime, "4/20/2021, 4:20:30 PM"),
+        ];
+        for (style, expected) in cases {
+            assert_eq!(format_stamp(&time, style), expected);
+        }
     }
 }

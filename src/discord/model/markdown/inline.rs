@@ -18,7 +18,7 @@ static ROLE_MENTION: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^<@&(\d+)>"
 static CHANNEL_MENTION: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^<#(\d+)>").unwrap());
 static EMOJI: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^<(a?):(\w+):(\d+)>").unwrap());
 static TIMESTAMP: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^<t:(-?\d{1,17})(?::([tTdDfFR]))?>").unwrap());
+    LazyLock::new(|| Regex::new(r"^<t:(-?\d{1,17})(?::([tTdDfFsSR]))?>").unwrap());
 static COMMAND: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^</([^:<>/][^:<>]*):(\d+)>").unwrap());
 static GUILD_NAVIGATION: LazyLock<Regex> =
@@ -188,6 +188,8 @@ impl Parser<'_> {
                 Some("d") => TimestampStyle::ShortDate,
                 Some("D") => TimestampStyle::LongDate,
                 Some("F") => TimestampStyle::LongDateTime,
+                Some("s") => TimestampStyle::ShortDateShortTime,
+                Some("S") => TimestampStyle::ShortDateLongTime,
                 Some("R") => TimestampStyle::Relative,
                 _ => TimestampStyle::ShortDateTime,
             };

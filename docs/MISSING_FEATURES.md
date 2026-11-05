@@ -5,7 +5,7 @@
 | Feature | Status | Notes |
 |---|---|---|
 | Syntax highlighting in code blocks | Missing | Code blocks and inline code render as plain monospace; the language tag is parsed but unused |
-| Local time zone for timestamps | Partial | Message times are local; `<t:…>` markup, embed footers and snowflake dates (member since) are still UTC |
+| Local time zone for timestamps | Partial | Message times and `<t:…>` markup are local; embed footers and snowflake dates (member since) are still UTC |
 | Global display names in mentions | Partial | twilight's `Mention` model drops `global_name`, so a mention shows the nickname or username |
 | Super reactions (burst) | Missing | |
 | Skin tones, favorite and frequently used emoji in the picker | Missing | |

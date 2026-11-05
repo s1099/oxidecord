@@ -135,20 +135,25 @@ pub struct Timestamp {
     pub style: TimestampStyle,
 }
 
+/// Examples are en-US, in the reader's time zone, as Discord shows them.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TimestampStyle {
     /// `t`: 4:20 PM
     ShortTime,
     /// `T`: 4:20:30 PM
     LongTime,
-    /// `d`: 09/26/2026
+    /// `d`: 4/20/2021
     ShortDate,
-    /// `D`: September 26, 2026
+    /// `D`: April 20, 2021
     LongDate,
-    /// `f`, and the default: September 26, 2026 4:20 PM
+    /// `f`, and the default: April 20, 2021 at 4:20 PM
     ShortDateTime,
-    /// `F`: Saturday, September 26, 2026 4:20 PM
+    /// `F`: Tuesday, April 20, 2021 at 4:20 PM
     LongDateTime,
+    /// `s`: 4/20/2021, 4:20 PM
+    ShortDateShortTime,
+    /// `S`: 4/20/2021, 4:20:30 PM
+    ShortDateLongTime,
     /// `R`: in 2 hours, 3 days ago
     Relative,
 }
@@ -157,22 +162,14 @@ impl Timestamp {
     /// A relative style is measured from `now` (Unix seconds).
     pub fn display(&self, now: i64) -> String {
         match self.style {
-            TimestampStyle::ShortTime => time::format_unix_time(self.unix, false),
-            TimestampStyle::LongTime => time::format_unix_time(self.unix, true),
-            TimestampStyle::ShortDate => time::format_unix_short_date(self.unix),
-            TimestampStyle::LongDate => time::format_unix_date(self.unix, false),
-            TimestampStyle::ShortDateTime => format!(
-                "{} {}",
-                time::format_unix_date(self.unix, false),
-                time::format_unix_time(self.unix, false)
-            ),
-            TimestampStyle::LongDateTime => self.full(),
             TimestampStyle::Relative => time::format_relative(self.unix, now),
+            style => time::format_markup_timestamp(self.unix, style),
         }
     }
 
+    /// What hovering any style shows.
     pub fn full(&self) -> String {
-        time::format_unix_full(self.unix)
+        time::format_markup_timestamp(self.unix, TimestampStyle::LongDateTime)
     }
 }
 

@@ -309,11 +309,19 @@ fn jumbo() {
 
 #[test]
 fn timestamps() {
-    let stamp = Timestamp {
-        unix: 1_790_000_000,
-        style: TimestampStyle::LongDateTime,
-    };
-    assert_eq!(stamp.display(0), "Monday, September 21, 2026 2:13 PM");
+    assert_eq!(
+        inline("<t:5:s><t:5:S>"),
+        [
+            Inline::Timestamp(Timestamp {
+                unix: 5,
+                style: TimestampStyle::ShortDateShortTime
+            }),
+            Inline::Timestamp(Timestamp {
+                unix: 5,
+                style: TimestampStyle::ShortDateLongTime
+            }),
+        ]
+    );
     let relative = Timestamp {
         unix: 1_000,
         style: TimestampStyle::Relative,
