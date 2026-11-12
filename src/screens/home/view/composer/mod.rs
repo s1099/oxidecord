@@ -6,6 +6,7 @@ mod attachments;
 mod autocomplete;
 mod emoji_picker;
 mod reply_banner;
+mod sticker_picker;
 mod typing_indicator;
 
 use gpui_kit::component::{
@@ -139,6 +140,23 @@ impl HomeScreen {
                                     .flex_shrink_0()
                                     .items_center()
                                     .pr_1()
+                                    .child(
+                                        Button::new("sticker-picker")
+                                            .icon(Icon::default().path("icons/sticker.svg"))
+                                            .ghost()
+                                            .small()
+                                            .selected(self.sticker_picker.is_some())
+                                            .tooltip("Select sticker")
+                                            .on_click(cx.listener(
+                                                |this, event: &ClickEvent, window, cx| {
+                                                    this.toggle_sticker_picker(
+                                                        event.position(),
+                                                        window,
+                                                        cx,
+                                                    );
+                                                },
+                                            )),
+                                    )
                                     .child(
                                         Button::new("emoji-picker")
                                             .icon(Icon::default().path("icons/smile.svg"))

@@ -11,7 +11,6 @@
 | Skin tones, favorite and frequently used emoji in the picker | Missing | |
 | Slash commands and app commands | Partial | Typed as `/name option:value`, with suggestions for commands, options, choices and app autocomplete, and the built-in `/shrug`, `/tableflip`, `/unflip`, `/me` and `/spoiler`. Not yet: user and message commands in context menus, file options, the option pills Discord's composer uses, and the `/nick`, `/tts`, `/gif` and moderation built-ins |
 | Message components (buttons, select menus, modals) | Missing | Bot messages only show their embeds |
-| Stickers (sending and rendering) | Missing | |
 | GIF picker (Tenor) | Missing | |
 | Forwarding messages | Missing | Forwards from others are shown; there is no way to send one |
 | Message length limit and counter | Missing | Messages over 2,000 characters (4,000 with Nitro) are only refused by Discord when sent |
@@ -136,7 +135,7 @@
 | Custom themes and theme editor | Missing | Only built-in presets; listed on the README TODO |
 | Appearance settings (compact mode, font scaling, message spacing, zoom level) | Missing | |
 | Accessibility (reduced motion, saturation, role colors, text-to-speech, screen-reader support) | Missing | |
-| Chat settings (display images, embeds, link previews, emoji autoconvert, sticker suggestions) | Missing | |
+| Chat settings (display images, embeds, link previews, emoji autoconvert) | Missing | |
 | Keybinds settings and global shortcuts (Alt+Up/Down channel nav) | Missing | Only paste, send, save edit, edit-last-message, Esc mark-as-read and Ctrl+K quick switcher are bound |
 | Language and localization | Missing | |
 | Streamer mode | Missing | |

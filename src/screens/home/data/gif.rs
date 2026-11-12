@@ -1,8 +1,10 @@
-//! GIFs that Discord serves as video, loaded into an animation gpui plays by itself.
+//! GIFs that Discord serves as video, and Lottie stickers, loaded into an animation
+//! gpui plays by itself.
 //!
-//! A `gifv` clip is decoded whole into one multi-frame [`RenderImage`], the shape
-//! gpui decodes a real GIF into, so `img()` loops it with no player or decoder
-//! left running and the asset cache shares one decode between every place it's drawn.
+//! A `gifv` clip or a sticker is decoded whole into one multi-frame [`RenderImage`],
+//! the shape gpui decodes a real GIF into, so `img()` loops it with no player or
+//! decoder left running and the asset cache shares one decode between every place
+//! it's drawn.
 //!
 //! A clip can be tens of megabytes of frames, so ones scrolled out of view are released
 //! rather than held until the conversation is left.
@@ -16,6 +18,7 @@ use std::time::{Duration, Instant};
 use gpui_kit::*;
 use image::{Delay, Frame, ImageBuffer};
 
+use crate::platform::lottie;
 use crate::platform::video::{self, LoopingClip};
 use crate::screens::home::HomeScreen;
 
@@ -35,6 +38,15 @@ pub(in crate::screens::home) struct GifSource {
     url: String,
     /// Physical pixels the frames are scaled to fit.
     target: (u32, u32),
+    kind: ClipKind,
+}
+
+#[derive(Clone, Copy, Hash, PartialEq, Eq)]
+pub(in crate::screens::home) enum ClipKind {
+    /// A `gifv` video, decoded by the OS.
+    Video,
+    /// A Lottie sticker; a still is its first frame alone.
+    Lottie { animated: bool },
 }
 
 /// Each clip loaded, with when it was last drawn, so they can be released once off
@@ -56,9 +68,14 @@ impl Asset for GifLoader {
         _cx: &mut App,
     ) -> impl Future<Output = Self::Output> + Send + 'static {
         async move {
-            let clip = video::decode_loop(source.url, source.target)
-                .await
-                .map_err(|reason| ImageCacheError::Asset(reason.into()))?;
+            let clip = match source.kind {
+                ClipKind::Video => video::decode_loop(source.url, source.target).await,
+                ClipKind::Lottie { animated } => {
+                    let (width, height) = source.target;
+                    lottie::render(source.url, width.max(height), animated).await
+                }
+            }
+            .map_err(|reason| ImageCacheError::Asset(reason.into()))?;
             to_animation(clip)
                 .ok_or_else(|| ImageCacheError::Asset("The clip's frames were malformed.".into()))
         }
@@ -70,6 +87,7 @@ impl Asset for GifLoader {
 pub(in crate::screens::home) fn gif_source(
     url: String,
     size: (f32, f32),
+    kind: ClipKind,
     loaded: LoadedGifs,
 ) -> ImageSource {
     // gpui's custom loader is an `Arc` it only ever calls on the foreground,
@@ -83,6 +101,7 @@ pub(in crate::screens::home) fn gif_source(
                 (size.0 * scale).round().max(1.) as u32,
                 (size.1 * scale).round().max(1.) as u32,
             ),
+            kind,
         };
         let image = window.use_asset::<GifLoader>(&source, cx);
         let now = Instant::now();

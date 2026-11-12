@@ -25,6 +25,7 @@ pub(super) mod quick_switcher;
 pub(super) mod read_state;
 pub(super) mod search;
 pub(super) mod selection;
+pub(super) mod stickers;
 pub(super) mod stream;
 #[cfg(windows)]
 pub(super) mod taskbar;

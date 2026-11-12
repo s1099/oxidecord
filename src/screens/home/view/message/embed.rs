@@ -9,7 +9,7 @@ use gpui_kit::*;
 
 use crate::discord;
 use crate::screens::home::HomeScreen;
-use crate::screens::home::data::gif::gif_source;
+use crate::screens::home::data::gif::{ClipKind, gif_source};
 use crate::screens::home::data::image_viewer::ViewerImage;
 use crate::screens::home::media::MediaKey;
 use crate::screens::home::selection::{EmbedPiece, TextPart};
@@ -328,6 +328,7 @@ impl HomeScreen {
                     img(gif_source(
                         gif.url.clone(),
                         (width, height),
+                        ClipKind::Video,
                         self.gifs.clone(),
                     ))
                     .id(id.element_id("embed-gif"))

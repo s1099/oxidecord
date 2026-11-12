@@ -40,6 +40,17 @@ impl HomeScreen {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        self.send_composed(Vec::new(), window, cx);
+    }
+
+    /// What's in the composer, plus `stickers`: a picked sticker carries the typed
+    /// text with it, as in Discord's client.
+    pub(in crate::screens::home) fn send_composed(
+        &mut self,
+        stickers: Vec<discord::StickerItem>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let Some(channel_id) = self.selected_channel else {
             return;
         };
@@ -53,7 +64,13 @@ impl HomeScreen {
             return;
         }
 
-        let content = match self.try_command(window, cx) {
+        // A sticker goes with the text as typed, never as a command's arguments.
+        let command = if stickers.is_empty() {
+            self.try_command(window, cx)
+        } else {
+            CommandSend::NotCommand
+        };
+        let content = match command {
             CommandSend::Handled => return,
             CommandSend::Text(content) => content,
             CommandSend::NotCommand => {
@@ -64,7 +81,7 @@ impl HomeScreen {
                 self.resolve_emoji_names(&content)
             }
         };
-        if content.is_empty() && self.pending_attachments.is_empty() {
+        if content.is_empty() && self.pending_attachments.is_empty() && stickers.is_empty() {
             return;
         }
 
@@ -133,6 +150,7 @@ impl HomeScreen {
                 timestamp,
                 replied,
                 upload.clone(),
+                stickers.clone(),
             );
             let ix = self.messages.len();
             self.messages.push(pending);
@@ -150,9 +168,12 @@ impl HomeScreen {
             let send = discord::send_message(
                 channel_id,
                 nonce,
-                content,
-                reply_to,
-                mention_author,
+                discord::MessageDraft {
+                    content,
+                    reply_to,
+                    mention_author,
+                    stickers: stickers.iter().map(|sticker| sticker.id).collect(),
+                },
                 attachments,
                 progress.clone(),
             )

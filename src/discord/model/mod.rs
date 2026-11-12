@@ -19,6 +19,7 @@ mod message;
 mod read_state;
 mod search;
 mod settings;
+mod sticker;
 mod system;
 mod thread;
 mod time;
@@ -55,6 +56,9 @@ pub use search::{
     SearchResponse, SearchScope, SearchSort,
 };
 pub use settings::{GuildFolders, PresenceStatus, UserSettings};
+#[cfg(test)]
+pub use sticker::StickerFormat;
+pub use sticker::{Sticker, StickerItem, StickerPack};
 pub use system::{SystemEvent, WELCOMES, call_duration};
 pub use thread::{Membership, Thread};
 pub use upload::{DEFAULT_UPLOAD_LIMIT, MAX_UPLOAD_TOTAL, Upload, UploadProgress};
@@ -77,6 +81,7 @@ pub(super) use read_state::{
 };
 pub(super) use search::{RawSearch, convert_search};
 pub(super) use settings::{RawSettingsProto, encode_status_settings, parse_user_settings};
+pub(super) use sticker::{RawSticker, RawStickerPacks, convert_sticker, convert_sticker_packs};
 pub(super) use thread::convert_thread;
 pub(super) use upload::boost_upload_limit;
 pub(super) use user::{RawProfile, convert_current_user, convert_reactor, convert_user_profile};

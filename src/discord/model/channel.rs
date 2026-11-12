@@ -51,6 +51,8 @@ pub struct Channel {
     pub can_manage_messages: bool,
     /// `USE_EXTERNAL_EMOJIS`; sending another guild's emoji also needs Nitro.
     pub can_use_external_emoji: bool,
+    /// `USE_EXTERNAL_STICKERS`; sending another guild's sticker also needs Nitro.
+    pub can_use_external_stickers: bool,
     /// `ADD_REACTIONS`; reacting with an emoji already on a message doesn't need it.
     pub can_add_reactions: bool,
     /// `MENTION_EVERYONE`; without it `@everyone`/`@here` notify no one.
@@ -80,6 +82,7 @@ impl Thread {
             can_send: allowed(|parent| parent.can_send_in_threads) && (!self.locked || manage),
             can_manage_messages: allowed(|parent| parent.can_manage_messages),
             can_use_external_emoji: allowed(|parent| parent.can_use_external_emoji),
+            can_use_external_stickers: allowed(|parent| parent.can_use_external_stickers),
             can_add_reactions: allowed(|parent| parent.can_add_reactions),
             can_mention_everyone: allowed(|parent| parent.can_mention_everyone),
             can_create_public_threads: false,
@@ -179,6 +182,7 @@ pub(super) fn guild_channel(fields: GuildChannelFields) -> Option<Channel> {
         can_send: permissions.contains(Permissions::SEND_MESSAGES),
         can_manage_messages: permissions.contains(Permissions::MANAGE_MESSAGES),
         can_use_external_emoji: permissions.contains(Permissions::USE_EXTERNAL_EMOJIS),
+        can_use_external_stickers: permissions.contains(Permissions::USE_EXTERNAL_STICKERS),
         can_add_reactions: permissions.contains(Permissions::ADD_REACTIONS),
         can_mention_everyone: permissions.contains(Permissions::MENTION_EVERYONE),
         can_create_public_threads: permissions.contains(Permissions::CREATE_PUBLIC_THREADS),

@@ -153,6 +153,41 @@ fn guild_emojis_arrive_with_the_guild_and_their_updates() {
 }
 
 #[test]
+fn guild_stickers_arrive_with_the_guild_and_their_updates() {
+    let events = dispatch_json(
+        "GUILD_CREATE",
+        r#"{
+            "id": "10",
+            "stickers": [
+                {"id": "5", "name": "hug", "format_type": 2, "type": 2, "tags": "hug", "guild_id": "10", "available": false},
+                {"id": "6", "name": "broken"}
+            ]
+        }"#,
+    );
+    let stickers = events.iter().find_map(|event| match event {
+        GatewayEvent::GuildStickers { stickers, .. } => Some(stickers),
+        _ => None,
+    });
+    let [sticker] = stickers
+        .expect("GUILD_CREATE should carry its stickers")
+        .as_slice()
+    else {
+        panic!("the malformed sticker should be skipped");
+    };
+    assert_eq!(sticker.item.format, crate::discord::StickerFormat::Apng);
+    assert!(!sticker.available);
+
+    let events = dispatch_json(
+        "GUILD_STICKERS_UPDATE",
+        r#"{"guild_id": "10", "stickers": []}"#,
+    );
+    assert!(matches!(
+        events.as_slice(),
+        [GatewayEvent::GuildStickers { stickers, .. }] if stickers.is_empty()
+    ));
+}
+
+#[test]
 fn guild_delete_clears_the_guilds_voice_states_and_activities() {
     let events = dispatch_json("GUILD_DELETE", r#"{"id": "10", "unavailable": true}"#);
 

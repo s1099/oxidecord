@@ -166,6 +166,9 @@ impl HomeScreen {
         if attachments > 1 {
             return format!("Sent {attachments} attachments");
         }
+        if let Some(sticker) = message.stickers.first() {
+            return format!("Sent a sticker: {}", sticker.name);
+        }
         if message.forward.is_some() {
             return "Forwarded a message".into();
         }

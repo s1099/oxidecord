@@ -14,7 +14,7 @@ use twilight_model::channel::Message as RawMessage;
 use twilight_model::channel::message::{AllowedMentions, MentionType};
 use twilight_model::id::{
     Id,
-    marker::{ChannelMarker, MessageMarker, UserMarker},
+    marker::{ChannelMarker, MessageMarker, StickerMarker, UserMarker},
 };
 
 use super::request;
@@ -216,6 +216,26 @@ pub async fn ack_message(
     .await
 }
 
+/// What a sent message carries besides its files.
+pub struct MessageDraft {
+    pub content: String,
+    pub reply_to: Option<Id<MessageMarker>>,
+    /// Whether a reply pings the replied-to author.
+    pub mention_author: bool,
+    pub stickers: Vec<Id<StickerMarker>>,
+}
+
+impl MessageDraft {
+    pub fn text(content: String) -> Self {
+        Self {
+            content,
+            reply_to: None,
+            mention_author: true,
+            stickers: Vec::new(),
+        }
+    }
+}
+
 /// Sends a message. `nonce` comes back on the gateway's `MESSAGE_CREATE` for
 /// it, which is how the optimistic copy shown meanwhile is matched up.
 ///
@@ -226,12 +246,16 @@ pub async fn ack_message(
 pub async fn send_message(
     channel_id: Id<ChannelMarker>,
     nonce: u64,
-    content: String,
-    reply_to: Option<Id<MessageMarker>>,
-    mention_author: bool,
+    draft: MessageDraft,
     attachments: Vec<(String, Vec<u8>)>,
     progress: Arc<UploadProgress>,
 ) -> Result<Message, String> {
+    let MessageDraft {
+        content,
+        reply_to,
+        mention_author,
+        stickers,
+    } = draft;
     // Left out, Discord pings the replied-to author; otherwise everything else
     // still mentions, as Discord's client sends it.
     let allowed_mentions = (!mention_author).then(|| AllowedMentions {
@@ -248,6 +272,9 @@ pub async fn send_message(
                 .create_message(channel_id)
                 .nonce(nonce)
                 .content(&content);
+            if !stickers.is_empty() {
+                request = request.sticker_ids(&stickers);
+            }
             if let Some(message_id) = reply_to {
                 request = request.reply(message_id);
             }
@@ -278,6 +305,9 @@ pub async fn send_message(
                 "nonce": nonce.to_string(),
                 "attachments": attachments,
             });
+            if !stickers.is_empty() {
+                body["sticker_ids"] = serde_json::to_value(&stickers)?;
+            }
             if let Some(message_id) = reply_to {
                 body["message_reference"] =
                     serde_json::json!({ "message_id": message_id, "channel_id": channel_id });

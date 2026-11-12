@@ -281,6 +281,9 @@ impl HomeScreen {
             discord::GatewayEvent::GuildEmojis { guild_id, emojis } => {
                 self.guild_data.emojis.insert(guild_id, emojis);
             }
+            discord::GatewayEvent::GuildStickers { guild_id, stickers } => {
+                self.guild_data.stickers.insert(guild_id, stickers);
+            }
             discord::GatewayEvent::ReadStates(states) => {
                 self.unreads.set_read_states(states);
                 // Acks made before the session came up are newer than what

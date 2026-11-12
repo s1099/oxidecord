@@ -1,5 +1,5 @@
 //! The state behind the screen's popouts and overlays: profile cards, pins,
-//! the image viewer, the emoji picker, and who reacted.
+//! the image viewer, the emoji and sticker pickers, and who reacted.
 
 use std::collections::HashSet;
 use std::rc::Rc;
@@ -15,6 +15,7 @@ use crate::discord;
 use crate::ui::smooth_scroll::SmoothScroll;
 
 use super::emoji::{PickerEmoji, PickerLayout, SectionKind};
+use super::stickers::PickerLayout as StickerLayout;
 
 pub(super) struct ProfilePopup {
     pub user_id: Id<UserMarker>,
@@ -105,6 +106,21 @@ pub(super) struct EmojiPicker {
     pub layout: Rc<PickerLayout>,
     pub collapsed: HashSet<SectionKind>,
     pub hovered: Option<PickerEmoji>,
+    pub scroll: SmoothScroll,
+    pub rail_scroll: ScrollHandle,
+    pub _search_changed: Subscription,
+}
+
+pub(super) struct StickerPicker {
+    /// Window coordinates of the opening click.
+    pub position: Point<Pixels>,
+    pub search: Entity<InputState>,
+    /// Rebuilt on search change and when Discord's packs arrive, not per frame.
+    pub layout: Rc<StickerLayout>,
+    /// Named in the footer, and the one sticker that moves.
+    pub hovered: Option<discord::Sticker>,
+    /// A list rather than a uniform one: headers are shorter than sticker rows.
+    pub list: ListState,
     pub scroll: SmoothScroll,
     pub rail_scroll: ScrollHandle,
     pub _search_changed: Subscription,

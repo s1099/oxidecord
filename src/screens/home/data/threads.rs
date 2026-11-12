@@ -562,9 +562,7 @@ impl HomeScreen {
                     discord::send_message(
                         thread.id,
                         nonce,
-                        text,
-                        None,
-                        true,
+                        discord::MessageDraft::text(text),
                         Vec::new(),
                         discord::UploadProgress::new(0),
                     )

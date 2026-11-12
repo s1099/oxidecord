@@ -9,10 +9,12 @@ mod pins;
 mod reactions;
 mod reactors;
 mod reply;
+mod sticker;
 mod system;
 mod toolbar;
 
 pub(super) use pins::{CARD_LIST_WIDTH, LIST_GAP};
+pub(super) use sticker::Motion;
 
 use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
@@ -71,6 +73,7 @@ pub(super) struct Media<'a> {
     videos: &'a [discord::VideoAttachment],
     files: &'a [discord::FileAttachment],
     embeds: &'a [discord::Embed],
+    stickers: &'a [discord::StickerItem],
     mentions: &'a [discord::MentionedUser],
 }
 
@@ -81,6 +84,7 @@ impl<'a> Media<'a> {
             videos: &message.videos,
             files: &message.files,
             embeds: &message.embeds,
+            stickers: &message.stickers,
             mentions: &message.mentions,
         }
     }
@@ -91,6 +95,7 @@ impl<'a> Media<'a> {
             videos: &forward.videos,
             files: &forward.files,
             embeds: &forward.embeds,
+            stickers: &forward.stickers,
             mentions: &forward.mentions,
         }
     }
@@ -100,6 +105,7 @@ impl<'a> Media<'a> {
             && self.videos.is_empty()
             && self.files.is_empty()
             && self.embeds.is_empty()
+            && self.stickers.is_empty()
     }
 }
 
@@ -341,7 +347,7 @@ impl HomeScreen {
         }
     }
 
-    /// A message's images, videos, files, and embeds, stacked under its text.
+    /// A message's stickers, images, videos, files, and embeds, stacked under its text.
     ///
     /// `message_id` keys the media's element ids and playback. A forward's media borrows its
     /// forwarding message's id: Discord sends a comment on a forward as a separate message, so
@@ -352,12 +358,16 @@ impl HomeScreen {
             videos,
             files,
             embeds,
+            stickers,
             mentions,
         } = media;
         v_flex()
             .w_full()
             .min_w_0()
             .gap_1()
+            .when(!stickers.is_empty(), |this| {
+                this.child(self.render_stickers(message_id, stickers, cx))
+            })
             .when(!images.is_empty(), |this| {
                 this.child(v_flex().gap_1().children(images.iter().enumerate().map(
                     |(index, image)| {

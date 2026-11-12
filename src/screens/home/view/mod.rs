@@ -42,6 +42,11 @@ impl HomeScreen {
         ]
         .into_iter()
         .chain(self.emoji_picker.as_mut().map(|picker| &mut picker.scroll))
+        .chain(
+            self.sticker_picker
+                .as_mut()
+                .map(|picker| &mut picker.scroll),
+        )
     }
 }
 
@@ -168,6 +173,7 @@ impl Render for HomeScreen {
             .children(self.render_pins_popup(cx))
             .children(self.render_threads_popup(cx))
             .children(self.render_emoji_picker(cx))
+            .children(self.render_sticker_picker(cx))
             .children(image_viewer)
     }
 }

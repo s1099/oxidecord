@@ -58,7 +58,8 @@ older than the installed Visual Studio, build through Ninja: `CMAKE_GENERATOR=Ni
   instance instead), `notify/` (desktop notifications as WinRT toasts; which messages
   notify is decided in `screens/home/data/notifications.rs`, by Discord's client rules,
   since the gateway doesn't say), `video/` (inline video playback, decoded by the OS), `capture/` (screen capture and H.264 encoding for
-  Go Live, also by the OS), and `h264/` (decoding a watched stream, also by the OS).
+  Go Live, also by the OS), `h264/` (decoding a watched stream, also by the OS), and
+  `lottie.rs` (Lottie stickers, rasterized on the CPU by rasterlottie and looped like a GIF).
 - `platform/prefs.rs` — user preferences persisted to `prefs.json` in the config dir (theme,
   input and output devices, collapsed channel categories and the last open channel per guild). Reads/writes never fail — a bad file
   reads as defaults. Use `prefs::update` to change one field without clobbering the rest; it

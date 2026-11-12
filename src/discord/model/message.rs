@@ -17,6 +17,7 @@ use super::command::CommandApp;
 use super::embed::{Embed, EmbedLayout, convert_embeds};
 use super::guild::GuildMember;
 use super::markdown::{self, Inline, Markdown};
+use super::sticker::{StickerItem, convert_sticker_items};
 use super::system::{SystemEvent, convert_system};
 use super::thread::{Thread, convert_thread};
 use super::time::{
@@ -51,6 +52,7 @@ pub struct Message {
     pub videos: Vec<VideoAttachment>,
     pub files: Vec<FileAttachment>,
     pub embeds: Vec<Embed>,
+    pub stickers: Vec<StickerItem>,
     pub reply: Option<Reply>,
     pub forward: Option<ForwardedMessage>,
     /// In Discord's order (first reacted first).
@@ -94,6 +96,7 @@ impl Message {
         timestamp: i64,
         reply_to: Option<&Message>,
         upload: Option<Upload>,
+        stickers: Vec<StickerItem>,
     ) -> Self {
         Self {
             id,
@@ -113,6 +116,7 @@ impl Message {
             videos: Vec::new(),
             files: Vec::new(),
             embeds: Vec::new(),
+            stickers,
             reply: reply_to.map(|message| Reply::Quote(MessageReference::quoting(message))),
             forward: None,
             reactions: Vec::new(),
@@ -133,7 +137,15 @@ impl Message {
         command: String,
         timestamp: i64,
     ) -> Self {
-        let mut message = Self::pending(id, invoker, String::new(), timestamp, None, None);
+        let mut message = Self::pending(
+            id,
+            invoker,
+            String::new(),
+            timestamp,
+            None,
+            None,
+            Vec::new(),
+        );
         message.author_id = app.bot_id.unwrap_or_else(|| app.id.cast());
         message.author_name = app.name.clone();
         message.author_avatar_url = app.icon_url.clone();
@@ -317,6 +329,7 @@ pub struct ForwardedMessage {
     pub videos: Vec<VideoAttachment>,
     pub files: Vec<FileAttachment>,
     pub embeds: Vec<Embed>,
+    pub stickers: Vec<StickerItem>,
     /// `None` for a direct message.
     pub guild_id: Option<Id<GuildMarker>>,
 }
@@ -479,6 +492,7 @@ pub(in crate::discord) fn convert_message(
         videos,
         files,
         embeds: convert_embeds(message.embeds),
+        stickers: convert_sticker_items(message.sticker_items),
         reply: match message.referenced_message {
             _ if is_forward => None,
             _ if command.is_some() => command.map(Reply::Command),
@@ -609,6 +623,7 @@ fn convert_snapshot(snapshot: MessageSnapshot) -> ForwardedMessage {
         videos,
         files,
         embeds: convert_embeds(message.embeds),
+        stickers: convert_sticker_items(message.sticker_items),
         guild_id: snapshot.guild_id,
     }
 }

@@ -29,7 +29,9 @@ use super::folders::RailEntry;
 use super::history_cache::HistoryCache;
 use super::media::VideoPlayback;
 use super::member_list_cache::MemberListCache;
-use super::popups::{EmojiPicker, ImageViewer, PinsPopup, ProfilePopup, Reactors, ThreadsPopup};
+use super::popups::{
+    EmojiPicker, ImageViewer, PinsPopup, ProfilePopup, Reactors, StickerPicker, ThreadsPopup,
+};
 use super::quick_switcher::Frecency;
 use super::search::{SearchNames, SearchPanel, SearchSuggestions};
 use super::selection::{Selection, TextCopies, TextRegions};
@@ -89,6 +91,7 @@ pub(super) struct GuildData {
     /// A guild missing here allows only the default.
     pub upload_limits: HashMap<Id<GuildMarker>, u64>,
     pub emojis: HashMap<Id<GuildMarker>, Vec<discord::GuildEmoji>>,
+    pub stickers: HashMap<Id<GuildMarker>, Vec<discord::Sticker>>,
     pub appearances: HashMap<Id<GuildMarker>, discord::GuildAppearance>,
     pub owners: HashMap<Id<GuildMarker>, Id<UserMarker>>,
     /// The signed-in user's decide whether a role mention pings them.
@@ -99,6 +102,15 @@ pub(super) struct GuildData {
     pub requested_members: HashSet<(Id<GuildMarker>, Id<UserMarker>)>,
     /// By guild and lowercased query, so retyping doesn't ask again.
     pub member_searches: HashSet<(Id<GuildMarker>, String)>,
+}
+
+/// Discord's own sticker packs, fetched the first time the picker opens.
+#[derive(Default)]
+pub(super) struct StickerPacks {
+    pub packs: Vec<discord::StickerPack>,
+    pub loading: bool,
+    /// Cleared by the next opening, which tries again.
+    pub error: Option<String>,
 }
 
 /// A view of its own so the window can replay it from the last frame instead
@@ -238,6 +250,8 @@ pub struct HomeScreen {
     /// Dropped when its reaction changes, then refetched by whatever still shows it.
     pub(super) reactors: HashMap<(Id<MessageMarker>, discord::ReactionEmoji), Reactors>,
     pub(super) emoji_picker: Option<EmojiPicker>,
+    pub(super) sticker_picker: Option<StickerPicker>,
+    pub(super) sticker_packs: StickerPacks,
     pub(super) pins_popup: Option<PinsPopup>,
     pub(super) threads: Threads,
     pub(super) threads_popup: Option<ThreadsPopup>,
@@ -473,6 +487,8 @@ impl HomeScreen {
             guild_data: GuildData::default(),
             reactors: HashMap::new(),
             emoji_picker: None,
+            sticker_picker: None,
+            sticker_packs: StickerPacks::default(),
             pins_popup: None,
             threads: Threads::default(),
             threads_popup: None,

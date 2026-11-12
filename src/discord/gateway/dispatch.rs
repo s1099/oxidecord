@@ -13,12 +13,13 @@ use twilight_model::channel::message::MessageFlags;
 
 use crate::discord::model::{
     RawActivityInstance, RawEmoji, RawGuildChannel, RawGuildSettings, RawMember,
-    RawMemberListUpdate, RawRole, RawVoiceServer, RawVoiceState, StreamServerInfo, author_member,
-    boost_upload_limit, convert_activity_instance, convert_call_voice_states,
+    RawMemberListUpdate, RawRole, RawSticker, RawVoiceServer, RawVoiceState, StreamServerInfo,
+    author_member, boost_upload_limit, convert_activity_instance, convert_call_voice_states,
     convert_channel_unreads, convert_guild_appearance, convert_guild_channels, convert_guild_emoji,
     convert_guild_voice_states, convert_member_list_update, convert_message, convert_mute_settings,
-    convert_reaction_emoji, convert_read_states, convert_role, convert_stream_server,
-    convert_thread, convert_voice_server, convert_voice_state, parse_user_settings,
+    convert_reaction_emoji, convert_read_states, convert_role, convert_sticker,
+    convert_stream_server, convert_thread, convert_voice_server, convert_voice_state,
+    parse_user_settings,
 };
 use crate::discord::{Membership, NotifyLevel};
 
@@ -84,6 +85,7 @@ pub(super) fn dispatch(
                     unreads.extend(guild_activities(guild.id, guild.activity_instances));
                     roles.extend(member_roles(guild.id, merged));
                     roles.extend(guild_emojis(guild.id, guild.emojis));
+                    roles.extend(guild_stickers(guild.id, guild.stickers));
                     roles.extend(guild_roles(guild.id, guild.roles, guild.members));
                 }
                 // `Ready` goes first: the member roles that follow are only
@@ -305,6 +307,7 @@ pub(super) fn dispatch(
                     .chain(channels)
                     .chain(threads)
                     .chain(guild_emojis(guild.id, guild.emojis))
+                    .chain(guild_stickers(guild.id, guild.stickers))
                     .chain(guild_roles(guild.id, guild.roles, guild.members))
                     .collect()
             })
@@ -443,6 +446,13 @@ pub(super) fn dispatch(
         "GUILD_EMOJIS_UPDATE" => serde_json::from_str::<EmojisUpdatePayload>(data)
             .map(|update| {
                 guild_emojis(update.guild_id, Some(update.emojis))
+                    .into_iter()
+                    .collect()
+            })
+            .unwrap_or_default(),
+        "GUILD_STICKERS_UPDATE" => serde_json::from_str::<StickersUpdatePayload>(data)
+            .map(|update| {
+                guild_stickers(update.guild_id, Some(update.stickers))
                     .into_iter()
                     .collect()
             })
@@ -705,6 +715,16 @@ fn guild_emojis(guild_id: Id<GuildMarker>, emojis: Option<Vec<RawEmoji>>) -> Opt
     Some(GatewayEvent::GuildEmojis {
         guild_id,
         emojis: emojis?.into_iter().map(convert_guild_emoji).collect(),
+    })
+}
+
+fn guild_stickers(
+    guild_id: Id<GuildMarker>,
+    stickers: Option<Vec<RawSticker>>,
+) -> Option<GatewayEvent> {
+    Some(GatewayEvent::GuildStickers {
+        guild_id,
+        stickers: stickers?.into_iter().map(convert_sticker).collect(),
     })
 }
 

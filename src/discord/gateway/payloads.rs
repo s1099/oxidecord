@@ -12,7 +12,7 @@ use twilight_model::util::Timestamp;
 
 use crate::discord::model::{
     PresenceStatus, RawActivityInstance, RawChannelUnread, RawChoice, RawEmoji, RawGuildChannel,
-    RawGuildSettings, RawMember, RawReadState, RawRole, RawVoiceState, versioned_list,
+    RawGuildSettings, RawMember, RawReadState, RawRole, RawSticker, RawVoiceState, versioned_list,
 };
 
 /// `STREAM_CREATE`, of which only what a connection needs is read.
@@ -184,6 +184,9 @@ pub(super) struct GatewayGuild {
     /// as opposed to a guild that has none.
     #[serde(default, deserialize_with = "skip_invalid_opt")]
     pub(super) emojis: Option<Vec<RawEmoji>>,
+    /// `None` for an unavailable guild, as with `emojis`.
+    #[serde(default, deserialize_with = "skip_invalid_opt")]
+    pub(super) stickers: Option<Vec<RawSticker>>,
     #[serde(default, deserialize_with = "skip_invalid")]
     pub(super) channels: Vec<RawGuildChannel>,
     /// Only those the user is in, for a user session; the rest come with a
@@ -285,6 +288,14 @@ pub(super) struct EmojisUpdatePayload {
     pub(super) guild_id: Id<GuildMarker>,
     #[serde(deserialize_with = "skip_invalid")]
     pub(super) emojis: Vec<RawEmoji>,
+}
+
+/// `GUILD_STICKERS_UPDATE`: the guild's whole sticker list as it now stands.
+#[derive(Deserialize)]
+pub(super) struct StickersUpdatePayload {
+    pub(super) guild_id: Id<GuildMarker>,
+    #[serde(deserialize_with = "skip_invalid")]
+    pub(super) stickers: Vec<RawSticker>,
 }
 
 /// `CHANNEL_CREATE`, `CHANNEL_UPDATE`, and `CHANNEL_DELETE`, of which only

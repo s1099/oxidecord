@@ -121,6 +121,7 @@ impl HomeScreen {
             && message.images.is_empty()
             && message.videos.is_empty()
             && message.files.is_empty()
+            && message.stickers.is_empty()
         {
             return self.confirm_delete_from_edit(message_id, window, cx);
         }

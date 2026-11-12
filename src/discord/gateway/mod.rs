@@ -25,8 +25,8 @@ use crate::platform::runtime;
 use super::model::{
     ActivityInstance, Channel, ChannelLatest, CommandChoice, DmMember, GuildAppearance, GuildEmoji,
     GuildMember, GuildUnreads, MemberListUpdate, Membership, Message, MuteSettings, NotifyLevel,
-    PresenceStatus, ReactionEmoji, ReadState, Role, StreamServerInfo, Thread, VoiceServerInfo,
-    VoiceUserState,
+    PresenceStatus, ReactionEmoji, ReadState, Role, Sticker, StreamServerInfo, Thread,
+    VoiceServerInfo, VoiceUserState,
 };
 
 pub use identify::system_locale;
@@ -139,6 +139,10 @@ pub enum GatewayEvent {
     GuildEmojis {
         guild_id: Id<GuildMarker>,
         emojis: Vec<GuildEmoji>,
+    },
+    GuildStickers {
+        guild_id: Id<GuildMarker>,
+        stickers: Vec<Sticker>,
     },
     /// Not only the signed-in user's: other members' roles colour their names.
     MemberRoles {

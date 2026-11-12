@@ -10,6 +10,7 @@ mod command;
 mod guild;
 mod message;
 mod settings;
+mod sticker;
 mod thread;
 mod user;
 
@@ -33,11 +34,12 @@ pub use command::{
 };
 pub use guild::{fetch_channels, fetch_guilds};
 pub use message::{
-    MESSAGE_PAGE_SIZE, MessagePage, REACTORS_PAGE_SIZE, ack_message, delete_message, edit_message,
-    fetch_messages, fetch_pins, fetch_reactors, search_messages, send_message, toggle_reaction,
-    trigger_typing,
+    MESSAGE_PAGE_SIZE, MessageDraft, MessagePage, REACTORS_PAGE_SIZE, ack_message, delete_message,
+    edit_message, fetch_messages, fetch_pins, fetch_reactors, search_messages, send_message,
+    toggle_reaction, trigger_typing,
 };
 pub use settings::{fetch_frecency, fetch_user_settings, save_frecency, save_status};
+pub use sticker::fetch_sticker_packs;
 pub use thread::{
     ThreadSearch, fetch_thread, search_threads, set_thread_archived, set_thread_joined,
     start_thread, start_thread_from_message,

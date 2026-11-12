@@ -35,6 +35,9 @@ pub struct Prefs {
     pub last_guild_channel: BTreeMap<u64, u64>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub recent_emojis: Vec<RecentEmoji>,
+    /// Sticker ids, most recently sent first.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub recent_stickers: Vec<u64>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub member_list_hidden: bool,
     /// `None` is the default width.

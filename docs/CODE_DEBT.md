@@ -34,6 +34,19 @@ Entry format:
   opens the option list, and Enter then takes the option instead of sending.
   `src/screens/home/commands.rs:207`
 
+## Stickers
+
+- **Recently used stickers are local** — kept in `prefs.json`, not synced through Discord's
+  frecency settings, so other clients' picks don't show and ours don't reach them.
+  `src/screens/home/data/stickers.rs:211`
+- **No sticker popout** — clicking a sticker in a message does nothing; Discord opens a card
+  naming its pack or guild. Hovering names it. `src/screens/home/view/message/sticker.rs:48`
+- **GIF stickers' still is unverified** — the picker asks the media proxy for a WebP of a GIF
+  sticker, which works for APNG but wasn't tried on a GIF one. `src/discord/model/sticker.rs:54`
+- **Unsupported Lottie falls back to the name** — rasterlottie rejects expressions, effects and
+  text animators; every Discord pack sticker renders, but a partner guild's could not.
+  `src/screens/home/view/message/sticker.rs:84`
+
 ## Threads
 
 - **Full view only** — a thread replaces its channel as the conversation, as Discord's "Open in
