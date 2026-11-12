@@ -1,6 +1,6 @@
 //! The sticker picker's contents: recently sent stickers, then the user's guilds'
 //! and Discord's own packs, narrowed by a search. The caller decides which
-//! stickers may be sent here.
+//! stickers may be sent here, and which are shown locked.
 
 use twilight_model::id::{
     Id,
@@ -34,6 +34,8 @@ pub(in crate::screens::home) struct PickerSection {
     pub title: String,
     pub icon: SectionIcon,
     pub stickers: Vec<Sticker>,
+    /// Why the whole section can't be sent here; a guild's stickers are locked together.
+    pub locked: Option<&'static str>,
 }
 
 pub(in crate::screens::home) struct SectionHeader {
@@ -44,7 +46,10 @@ pub(in crate::screens::home) struct SectionHeader {
 
 pub(in crate::screens::home) enum PickerRow {
     Header(usize),
-    Stickers(Vec<Sticker>),
+    Stickers {
+        stickers: Vec<Sticker>,
+        locked: Option<&'static str>,
+    },
 }
 
 #[derive(Default)]
@@ -88,7 +93,10 @@ pub(in crate::screens::home) fn picker_rows(
             section
                 .stickers
                 .chunks(COLUMNS)
-                .map(|chunk| PickerRow::Stickers(chunk.to_vec())),
+                .map(|chunk| PickerRow::Stickers {
+                    stickers: chunk.to_vec(),
+                    locked: section.locked,
+                }),
         );
     }
     layout
@@ -117,6 +125,7 @@ mod tests {
             title: String::new(),
             icon: SectionIcon::Recent,
             stickers,
+            locked: None,
         }
     }
 
@@ -125,8 +134,12 @@ mod tests {
         let stickers = (1..=5).map(|id| sticker(id, "s", "")).collect();
         let layout = picker_rows([section(SectionKind::Pack(Id::new(1)), stickers)], "");
         assert!(matches!(layout.rows[0], PickerRow::Header(0)));
-        assert!(matches!(&layout.rows[1], PickerRow::Stickers(row) if row.len() == COLUMNS));
-        assert!(matches!(&layout.rows[2], PickerRow::Stickers(row) if row.len() == 1));
+        assert!(
+            matches!(&layout.rows[1], PickerRow::Stickers { stickers, .. } if stickers.len() == COLUMNS)
+        );
+        assert!(
+            matches!(&layout.rows[2], PickerRow::Stickers { stickers, .. } if stickers.len() == 1)
+        );
         assert_eq!(layout.section_at(2), Some(0));
     }
 
@@ -143,8 +156,22 @@ mod tests {
         let layout = picker_rows(sections, " 👍 ");
         assert_eq!(layout.sections.len(), 1);
         assert!(
-            matches!(&layout.rows[1], PickerRow::Stickers(row) if row[0].item.id == Id::new(3))
+            matches!(&layout.rows[1], PickerRow::Stickers { stickers, .. } if stickers[0].item.id == Id::new(3))
         );
         assert!(picker_rows([], "wave").rows.is_empty());
+    }
+
+    #[test]
+    fn a_locked_section_locks_its_rows() {
+        let mut locked = section(SectionKind::Guild(Id::new(1)), vec![sticker(1, "s", "")]);
+        locked.locked = Some("needs Nitro");
+        let layout = picker_rows([locked], "");
+        assert!(matches!(
+            &layout.rows[1],
+            PickerRow::Stickers {
+                locked: Some("needs Nitro"),
+                ..
+            }
+        ));
     }
 }

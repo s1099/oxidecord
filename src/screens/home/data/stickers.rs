@@ -3,7 +3,7 @@
 //!
 //! Discord's own stickers are free to everyone, as are a guild's in that guild.
 //! Another guild's need Nitro and, in a guild channel, `USE_EXTERNAL_STICKERS`;
-//! without them they're left out, as the emoji picker leaves out such emoji.
+//! without them they're shown locked, as Discord's client shows them.
 
 use std::rc::Rc;
 
@@ -138,19 +138,19 @@ impl HomeScreen {
         })
     }
 
-    fn can_send_sticker(&self, guild_id: Id<GuildMarker>, sticker: &Sticker) -> bool {
-        if !sticker.available {
-            return false;
-        }
+    /// Why `guild_id`'s stickers can't be sent here, if they can't.
+    fn sticker_lock(&self, guild_id: Id<GuildMarker>) -> Option<&'static str> {
         if Some(guild_id) == self.local_guild() {
-            return true;
+            return None;
         }
-        let premium = self.current_user.as_ref().is_some_and(|user| user.premium);
+        if !self.current_user.as_ref().is_some_and(|user| user.premium) {
+            return Some("Stickers from other servers require Nitro");
+        }
         let channel_allows = self.view == View::DirectMessages
             || self
                 .selected_channel_info()
                 .is_some_and(|channel| channel.can_use_external_stickers);
-        premium && channel_allows
+        (!channel_allows).then_some("Stickers from other servers aren't allowed here")
     }
 
     fn sticker_sections(&self) -> Vec<PickerSection> {
@@ -159,7 +159,8 @@ impl HomeScreen {
             .filter_map(|(guild_id, stickers)| {
                 let stickers: Vec<Sticker> = stickers
                     .iter()
-                    .filter(|sticker| self.can_send_sticker(guild_id, sticker))
+                    // An unavailable one lost its boost slot; Discord doesn't offer it at all.
+                    .filter(|sticker| sticker.available)
                     .cloned()
                     .collect();
                 let guild = self.guilds.iter().find(|guild| guild.id == guild_id)?;
@@ -168,6 +169,7 @@ impl HomeScreen {
                     title: guild.name.clone(),
                     icon: SectionIcon::Guild(guild.icon_url.clone()),
                     stickers,
+                    locked: self.sticker_lock(guild_id),
                 })
             })
             .collect();
@@ -177,6 +179,7 @@ impl HomeScreen {
                 title: pack.name.clone(),
                 icon: SectionIcon::Sticker(pack.cover.clone()?),
                 stickers: pack.stickers.clone(),
+                locked: None,
             })
         });
         let mut sections: Vec<PickerSection> = guilds.into_iter().chain(packs).collect();
@@ -188,6 +191,7 @@ impl HomeScreen {
             .filter_map(|id| {
                 sections
                     .iter()
+                    .filter(|section| section.locked.is_none())
                     .flat_map(|section| &section.stickers)
                     .find(|sticker| sticker.item.id.get() == *id)
                     .cloned()
@@ -201,6 +205,7 @@ impl HomeScreen {
                 title: "Recently Used".into(),
                 icon: SectionIcon::Recent,
                 stickers: recent,
+                locked: None,
             },
         );
         sections

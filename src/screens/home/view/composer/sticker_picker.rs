@@ -249,15 +249,16 @@ impl HomeScreen {
                     )
                     .into_any_element()
             }
-            PickerRow::Stickers(stickers) => h_flex()
+            PickerRow::Stickers { stickers, locked } => h_flex()
                 .h(px(CELL))
                 .children(stickers.iter().enumerate().map(|(column, sticker)| {
-                    let motion = if hovered == Some(sticker.item.id) {
+                    let motion = if hovered == Some(sticker.item.id) && locked.is_none() {
                         Motion::FromStill
                     } else {
                         Motion::Still
                     };
-                    self.render_sticker_cell(sticker, ix * COLUMNS + column, motion, &theme, cx)
+                    let index = ix * COLUMNS + column;
+                    self.render_sticker_cell(sticker, index, motion, *locked, &theme, cx)
                 }))
                 .into_any_element(),
         }
@@ -268,6 +269,7 @@ impl HomeScreen {
         sticker: &Sticker,
         index: usize,
         motion: Motion,
+        locked: Option<&'static str>,
         theme: &gpui_kit::component::Theme,
         cx: &mut Context<Self>,
     ) -> AnyElement {
@@ -281,8 +283,6 @@ impl HomeScreen {
             .items_center()
             .justify_center()
             .rounded(radius::ITEM)
-            .cursor_pointer()
-            .hover(|this| this.bg(theme.accent))
             .child(self.sticker_image(
                 &sticker.item,
                 STICKER_SIZE,
@@ -301,9 +301,18 @@ impl HomeScreen {
                     this.hover_sticker(None, cx);
                 }
             }))
-            .on_click(cx.listener(move |this, _, window, cx| {
-                this.pick_sticker(&pick_sticker, window, cx);
-            }))
+            .map(|this| match locked {
+                Some(reason) => this
+                    .cursor_not_allowed()
+                    .opacity(0.4)
+                    .tooltip(tooltip::text(reason)),
+                None => this
+                    .cursor_pointer()
+                    .hover(|this| this.bg(theme.accent))
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        this.pick_sticker(&pick_sticker, window, cx);
+                    })),
+            })
             .into_any_element()
     }
 
