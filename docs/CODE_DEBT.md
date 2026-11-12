@@ -13,6 +13,12 @@ Entry format:
 - **<Short gap title>** — what's missing or wrong, and why it was left. `src/path.rs:123`
 ```
 
+## Chat scrollbar
+
+- **Clicking the track jumps instead of paging** — gpui-kit's `Scrollbar` centers the thumb on
+  the click, where Discord (a browser scrollbar) pages one screen toward it. Paging needs a
+  scrollbar of our own. `src/screens/home/view/content/message_list.rs:166`
+
 ## Slash commands
 
 - **Permissions are simplified** — commands are filtered by `contexts`, `default_member_permissions`

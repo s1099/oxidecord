@@ -2,7 +2,11 @@
 //! conversation loads.
 
 use gpui_kit::component::{
-    ActiveTheme as _, Sizable as _, h_flex, skeleton::Skeleton, spinner::Spinner, v_flex,
+    ActiveTheme as _, Sizable as _, h_flex,
+    scroll::{Scrollbar, ScrollbarMode},
+    skeleton::Skeleton,
+    spinner::Spinner,
+    v_flex,
 };
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
@@ -18,6 +22,11 @@ use crate::screens::home::view::{GROUP_GAP, MESSAGE_PADDING_X};
 const NEWEST_MESSAGE_GAP: f32 = 12.;
 
 const UNREAD_BAR_HEIGHT: f32 = 28.;
+
+/// Thinner than Discord's 16px chat scroller: a 12px gutter holding a 6px track and thumb.
+const SCROLLBAR_GUTTER: f32 = 12.;
+const SCROLLBAR_INSET: f32 = 3.;
+const SCROLLBAR_THUMB_MIN: f32 = 40.;
 
 /// Discord ends an author group this long after its first message, however
 /// steadily the author kept posting.
@@ -103,16 +112,22 @@ impl Render for MessageListView {
         };
         // Each selectable text adds itself back as the list lays it out.
         regions.borrow_mut().clear();
+        // A thumb drag moves the list without rendering the screen, which would miss reaching
+        // the bottom.
+        screen.update(cx, |this, cx| this.sync_at_bottom(cx));
         let weak = self.screen.clone();
-        div()
+        h_flex()
             .relative()
             .size_full()
             .child(
-                list(state, move |ix, _window, cx| {
+                list(state.clone(), move |ix, _window, cx| {
                     screen.update(cx, |this, cx| this.render_message_item(ix, cx))
                 })
-                .size_full(),
+                .flex_1()
+                .min_w_0()
+                .h_full(),
             )
+            .child(scrollbar(&state, cx))
             .child(
                 canvas(
                     |_, _, _| {},
@@ -128,6 +143,49 @@ impl Render for MessageListView {
             )
             .into_any_element()
     }
+}
+
+/// Like Discord's, the gutter is the list's own space rather than an overlay, so hovered
+/// messages and their toolbars stop short of it, and the track shows even with nothing to scroll.
+fn scrollbar(state: &ListState, cx: &App) -> impl IntoElement {
+    let theme = cx.theme();
+    let thumb = theme.tokens.scrollbar_thumb;
+    div()
+        .relative()
+        .flex_shrink_0()
+        .w(px(SCROLLBAR_GUTTER))
+        .h_full()
+        .child(
+            div()
+                .absolute()
+                .inset(px(SCROLLBAR_INSET))
+                .rounded_full()
+                .bg(theme.scrollbar_thumb.opacity(0.3)),
+        )
+        .child(
+            Scrollbar::vertical(state)
+                .viewport_from_layout()
+                .mode(ScrollbarMode::Always)
+                // Set on the base style so hover and drag keep it: Discord's thumb neither grows
+                // nor recolors.
+                .styles(|styles| {
+                    styles
+                        .track(|track| {
+                            track
+                                .width(px(SCROLLBAR_GUTTER))
+                                .bg(transparent_black())
+                                .border_color(transparent_black())
+                        })
+                        .thumb(|style| {
+                            style
+                                .bg(thumb)
+                                .width(px(SCROLLBAR_GUTTER - SCROLLBAR_INSET * 2.))
+                                .inset(px(SCROLLBAR_INSET))
+                                .radius(px(SCROLLBAR_GUTTER))
+                                .min_length(px(SCROLLBAR_THUMB_MIN))
+                        })
+                }),
+        )
 }
 
 /// Feeds the mouse to the text selection for a frame. Press and release listen in the capture
