@@ -11,7 +11,7 @@ use twilight_model::id::{
 };
 
 use crate::discord;
-use crate::screens::home::{HomeScreen, View};
+use crate::screens::home::HomeScreen;
 
 /// Batched: following a busy channel live would otherwise send one ack per message.
 const ACK_DELAY: Duration = Duration::from_secs(2);
@@ -189,7 +189,7 @@ impl HomeScreen {
         // and only the loaded messages can be counted. In an unmuted DM
         // that's every message, the user's own included, as Discord's
         // client counts it.
-        let guild_id = self.selected_guild.filter(|_| self.view == View::Guild);
+        let guild_id = self.local_guild();
         let every_message = guild_id.is_none() && !self.unreads.is_muted(channel_id, None);
         let ix = self
             .messages

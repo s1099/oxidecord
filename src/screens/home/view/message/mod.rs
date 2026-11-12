@@ -21,9 +21,9 @@ use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
 use crate::discord;
+use crate::screens::home::HomeScreen;
 use crate::screens::home::selection::TextPart;
 use crate::screens::home::view::{avatar, bot_tag};
-use crate::screens::home::{HomeScreen, View};
 use crate::screens::home::{composer::EditingMessage, media::MediaKey};
 
 use super::markdown::MarkdownOptions;
@@ -404,8 +404,7 @@ impl HomeScreen {
             return true;
         }
         // Role mentions only exist in guilds, and the open guild is the message's own.
-        self.selected_guild
-            .filter(|_| self.view == View::Guild)
+        self.local_guild()
             .is_some_and(|guild_id| self.mentions_self_role(message, guild_id))
     }
 

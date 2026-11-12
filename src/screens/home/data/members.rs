@@ -10,7 +10,7 @@ use twilight_model::id::{
 };
 
 use crate::discord;
-use crate::screens::home::{HomeScreen, View};
+use crate::screens::home::HomeScreen;
 
 impl HomeScreen {
     pub(in crate::screens::home) fn self_roles(
@@ -37,7 +37,7 @@ impl HomeScreen {
     /// Packed `0xRRGGBB` of the highest role with a colour, ties to the older role
     /// as in Discord. `None` in a DM or while roles are unknown.
     pub(in crate::screens::home) fn role_color(&self, user_id: Id<UserMarker>) -> Option<u32> {
-        let guild_id = self.selected_guild.filter(|_| self.view == View::Guild)?;
+        let guild_id = self.local_guild()?;
         let roles = self.guild_data.roles.get(&guild_id)?;
         self.guild_data
             .member_roles
@@ -55,7 +55,7 @@ impl HomeScreen {
     /// members, so an author would flip between names as cached and fetched messages
     /// merge.
     pub(in crate::screens::home) fn member_name(&self, user_id: Id<UserMarker>) -> Option<&str> {
-        let guild_id = self.selected_guild.filter(|_| self.view == View::Guild)?;
+        let guild_id = self.local_guild()?;
         let member = self.guild_data.members.get(&guild_id)?.get(&user_id)?;
         Some(&member.name)
     }
@@ -74,7 +74,7 @@ impl HomeScreen {
     /// so without this most names would lack colours and show global names instead of
     /// nicknames. Called as each page of history or search results lands.
     pub(in crate::screens::home) fn request_author_members(&mut self) {
-        let Some(guild_id) = self.selected_guild.filter(|_| self.view == View::Guild) else {
+        let Some(guild_id) = self.local_guild() else {
             return;
         };
         let Some(gateway) = &self.gateway else {

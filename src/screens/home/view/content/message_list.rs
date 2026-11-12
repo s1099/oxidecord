@@ -394,24 +394,24 @@ impl HomeScreen {
 
     /// Consecutive messages from one author share a header, except replies always show theirs so
     /// the quoted preview fits above, and a divider or a system notice breaks a group.
-    fn breaks_group(&self, ix: usize) -> bool {
+    fn breaks_group(&self, ix: usize, unread_divider: Option<usize>) -> bool {
         let Some(previous) = ix.checked_sub(1).and_then(|ix| self.messages.get(ix)) else {
             return true;
         };
         let message = &self.messages[ix];
-        self.unread_divider_index() == Some(ix)
-            || message.starts_day_after(previous)
+        unread_divider == Some(ix)
+            || previous.author_id != message.author_id
             || message.reply.is_some()
             || message.system.is_some()
             || previous.system.is_some()
-            || previous.author_id != message.author_id
+            || message.starts_day_after(previous)
     }
 
     /// The time limit counts from where a group began, so this walks back to the run's start
     /// and replays it.
-    fn heads_group(&self, ix: usize) -> bool {
+    fn heads_group(&self, ix: usize, unread_divider: Option<usize>) -> bool {
         let mut start = ix;
-        while !self.breaks_group(start) {
+        while !self.breaks_group(start, unread_divider) {
             start -= 1;
         }
         let mut head = start;
@@ -427,11 +427,12 @@ impl HomeScreen {
         let Some(message) = self.messages.get(ix) else {
             return div().into_any_element();
         };
-        let unread_divider = self.unread_divider_index() == Some(ix);
+        let divider_ix = self.unread_divider_index();
+        let unread_divider = divider_ix == Some(ix);
         let previous = ix.checked_sub(1).and_then(|ix| self.messages.get(ix));
         // Unknown for the oldest loaded message, whose day may have begun further back.
         let new_day = previous.is_some_and(|previous| message.starts_day_after(previous));
-        let show_header = self.heads_group(ix);
+        let show_header = self.heads_group(ix, divider_ix);
         let row = self.render_message(message, show_header, cx);
         let row = if unread_divider || new_day {
             v_flex()

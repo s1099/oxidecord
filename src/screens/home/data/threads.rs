@@ -146,15 +146,18 @@ impl HomeScreen {
     }
 
     /// A message arrived; in a thread, its count, newest message and preview move on.
+    /// Returns whether it was in one.
     pub(in crate::screens::home) fn note_thread_message(
         &mut self,
         channel_id: Id<ChannelMarker>,
         message: &discord::Message,
-    ) {
-        if self.threads.note_message(channel_id, message) {
+    ) -> bool {
+        let in_thread = self.threads.note_message(channel_id, message);
+        if in_thread {
             // Sending to an archived thread reopens it, and it counts again.
             self.sync_thread_unread(channel_id);
         }
+        in_thread
     }
 
     /// Opens a thread as the conversation, in its guild. One the client hasn't

@@ -2,7 +2,9 @@
 //! markup are local, as Discord shows them, which takes chrono for the time
 //! zone; the rest is UTC and done by hand.
 
-use chrono::{DateTime, Local, TimeZone};
+use std::cell::Cell;
+
+use chrono::{DateTime, Local, NaiveDate, NaiveTime, TimeZone};
 use twilight_model::util::Timestamp;
 
 use super::markdown::TimestampStyle;
@@ -28,9 +30,31 @@ pub(super) fn format_message_clock(unix: i64) -> String {
     local(unix).map_or_else(String::new, |time| time.format("%-I:%M %p").to_string())
 }
 
+thread_local! {
+    /// The day last asked about and the Unix seconds it spans. Grouping messages asks
+    /// for the same day thousands of times a frame, and each conversion costs a
+    /// microsecond.
+    static LAST_DAY: Cell<Option<(i64, i64, NaiveDate)>> = const { Cell::new(None) };
+}
+
 /// The local calendar day, to tell where a new day starts in a conversation.
-pub(super) fn local_day(unix: i64) -> Option<chrono::NaiveDate> {
-    local(unix).map(|time| time.date_naive())
+pub(super) fn local_day(unix: i64) -> Option<NaiveDate> {
+    if let Some((start, end, day)) = LAST_DAY.get()
+        && (start..end).contains(&unix)
+    {
+        return Some(day);
+    }
+    let day = local(unix)?.date_naive();
+    // A midnight that a clock change skips or repeats is no single instant; such a
+    // day is worked out each time.
+    let midnight = |day: NaiveDate| {
+        let local = Local.from_local_datetime(&day.and_time(NaiveTime::MIN));
+        Some(local.single()?.timestamp())
+    };
+    if let (Some(start), Some(end)) = (midnight(day), day.succ_opt().and_then(midnight)) {
+        LAST_DAY.set(Some((start, end, day)));
+    }
+    Some(day)
 }
 
 /// `October 27, 2026`, in local time, as the divider between days reads.
@@ -152,6 +176,15 @@ mod tests {
     use chrono::Utc;
 
     use super::*;
+
+    #[test]
+    fn remembered_days_match_converted_ones() {
+        // Hourly across ten days, then back again, so both the hits and the misses are checked.
+        let hours = (0..240).chain((0..240).rev());
+        for unix in hours.map(|hour| 1_780_000_000 + hour * 3_600) {
+            assert_eq!(local_day(unix), local(unix).map(|time| time.date_naive()));
+        }
+    }
 
     #[test]
     fn markup_styles() {

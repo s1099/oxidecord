@@ -99,6 +99,12 @@ Entry format:
   crate plus Discord's `flag_xx`; names only Discord's own table has stay text.
   `src/discord/model/markdown/inline.rs:592`
 
+## Message grouping
+
+- **Day dividers lag a time zone change** — the local day last looked up is remembered by the
+  seconds it spans, so changing the system time zone mid-session leaves dividers on the old
+  zone's midnight until another day is asked about. `src/discord/model/time.rs:37`
+
 ## Close to tray
 
 - **No setting to quit on close** — closing the main window always hides it to the tray;

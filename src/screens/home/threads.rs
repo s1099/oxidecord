@@ -24,6 +24,9 @@ pub(super) struct KnownThread {
 #[derive(Default)]
 pub(super) struct Threads {
     known: HashMap<Id<ChannelMarker>, KnownThread>,
+    /// Thread ids by parent channel: the sidebar asks for each channel's every frame,
+    /// and `known` spans every guild.
+    by_parent: HashMap<Id<ChannelMarker>, Vec<Id<ChannelMarker>>>,
     /// Each thread's newest message, previewed in the threads list.
     pub latest: HashMap<Id<ChannelMarker>, discord::MessageReference>,
 }
@@ -41,11 +44,15 @@ impl Threads {
     pub fn upsert(&mut self, thread: Thread, parent: Option<&Channel>) -> &KnownThread {
         let thread = match self.known.remove(&thread.id) {
             Some(mut known) => {
+                self.unindex(&known.thread);
                 known.thread.merge(thread);
                 known.thread
             }
             None => thread,
         };
+        if let Some(parent_id) = thread.parent_id {
+            self.by_parent.entry(parent_id).or_default().push(thread.id);
+        }
         let channel = thread.channel(parent);
         self.known
             .entry(thread.id)
@@ -55,7 +62,39 @@ impl Threads {
 
     pub fn remove(&mut self, id: Id<ChannelMarker>) -> Option<KnownThread> {
         self.latest.remove(&id);
-        self.known.remove(&id)
+        let known = self.known.remove(&id)?;
+        self.unindex(&known.thread);
+        Some(known)
+    }
+
+    fn unindex(&mut self, thread: &Thread) {
+        let Some(parent_id) = thread.parent_id else {
+            return;
+        };
+        if let Some(siblings) = self.by_parent.get_mut(&parent_id) {
+            siblings.retain(|&id| id != thread.id);
+            if siblings.is_empty() {
+                self.by_parent.remove(&parent_id);
+            }
+        }
+    }
+
+    /// Newest activity first.
+    fn children(
+        &self,
+        parent_id: Id<ChannelMarker>,
+        keep: impl Fn(&Thread) -> bool,
+    ) -> Vec<&Thread> {
+        let mut threads: Vec<&Thread> = self
+            .by_parent
+            .get(&parent_id)
+            .into_iter()
+            .flatten()
+            .filter_map(|id| self.thread(*id))
+            .filter(|thread| keep(thread))
+            .collect();
+        threads.sort_by_key(|thread| std::cmp::Reverse(thread.last_active()));
+        threads
     }
 
     /// Active threads in the guild (or in `channels` of it) that aren't in a sync
@@ -102,30 +141,14 @@ impl Threads {
     /// Under a channel in the sidebar: the active ones the user is in, newest
     /// activity first.
     pub fn joined_in(&self, parent_id: Id<ChannelMarker>) -> Vec<&Thread> {
-        let mut threads: Vec<&Thread> = self
-            .known
-            .values()
-            .map(|known| &known.thread)
-            .filter(|thread| {
-                thread.parent_id == Some(parent_id)
-                    && !thread.archived
-                    && thread.membership.is_joined()
-            })
-            .collect();
-        threads.sort_by_key(|thread| std::cmp::Reverse(thread.last_active()));
-        threads
+        self.children(parent_id, |thread| {
+            !thread.archived && thread.membership.is_joined()
+        })
     }
 
     /// Active threads under `parent_id`, newest activity first.
     pub fn active_in(&self, parent_id: Id<ChannelMarker>) -> Vec<&Thread> {
-        let mut threads: Vec<&Thread> = self
-            .known
-            .values()
-            .map(|known| &known.thread)
-            .filter(|thread| thread.parent_id == Some(parent_id) && !thread.archived)
-            .collect();
-        threads.sort_by_key(|thread| std::cmp::Reverse(thread.last_active()));
-        threads
+        self.children(parent_id, |thread| !thread.archived)
     }
 
     /// A message arrived in `channel_id`. Returns whether that's a known thread.

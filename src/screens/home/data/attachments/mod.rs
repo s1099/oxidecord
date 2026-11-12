@@ -10,7 +10,7 @@ use gpui_kit::*;
 
 use crate::discord;
 use crate::platform::clipboard;
-use crate::screens::home::{HomeScreen, PasteAttachment, View};
+use crate::screens::home::{HomeScreen, PasteAttachment};
 use crate::ui::dialogs::show_error;
 
 pub(crate) use pending::{AttachmentData, PendingAttachment, format_size};
@@ -180,8 +180,7 @@ impl HomeScreen {
             .as_ref()
             .map_or(discord::DEFAULT_UPLOAD_LIMIT, |user| user.upload_limit);
         let guild_limit = self
-            .selected_guild
-            .filter(|_| self.view == View::Guild)
+            .local_guild()
             .and_then(|guild_id| self.guild_data.upload_limits.get(&guild_id))
             .copied()
             .unwrap_or_default();

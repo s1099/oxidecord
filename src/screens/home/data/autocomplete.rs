@@ -247,7 +247,7 @@ impl HomeScreen {
         if query.is_empty() {
             return;
         }
-        let Some(guild_id) = self.selected_guild.filter(|_| self.view == View::Guild) else {
+        let Some(guild_id) = self.local_guild() else {
             return;
         };
         let Some(gateway) = &self.gateway else {
@@ -279,6 +279,8 @@ impl HomeScreen {
         }
         if changed && self.selected_guild == Some(guild_id) {
             self.refresh_search_suggestions(cx);
+            // Messages are drawn under these names.
+            cx.notify();
         }
         if changed
             && self.selected_guild == Some(guild_id)
@@ -294,7 +296,7 @@ impl HomeScreen {
     /// Recent speakers first, then the member list, then whoever else the gateway
     /// has named, then roles.
     pub(in crate::screens::home) fn user_suggestions(&self, query: &str) -> Vec<Suggestion> {
-        let guild_id = self.selected_guild.filter(|_| self.view == View::Guild);
+        let guild_id = self.local_guild();
         let known = guild_id.and_then(|guild_id| self.guild_data.members.get(&guild_id));
 
         let mut seen = HashSet::new();

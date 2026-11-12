@@ -222,8 +222,7 @@ impl HomeScreen {
         };
         let author = |line: &mut Line| user(line, message.author_id);
         let guild_name = || {
-            self.selected_guild
-                .filter(|_| self.view == View::Guild)
+            self.local_guild()
                 .and_then(|id| self.guilds.iter().find(|guild| guild.id == id))
                 .map_or("the server", |guild| guild.name.as_str())
         };

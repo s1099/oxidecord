@@ -7,10 +7,10 @@ use gpui_kit::*;
 use twilight_model::id::{Id, marker::GuildMarker};
 
 use crate::discord::{self, ChannelKind};
+use crate::screens::home::HomeScreen;
 use crate::screens::home::quick_switcher::{
     Kind, Mode, NARROWED_LIMIT, RowIcon, Section, SwitcherRow, Target, now_ms, search,
 };
-use crate::screens::home::{HomeScreen, View};
 
 /// Uses are batched before saving, as Discord's client does.
 const FLUSH_DELAY: Duration = Duration::from_secs(30);
@@ -94,8 +94,7 @@ impl HomeScreen {
             // The open guild's, in sidebar order.
             Mode::TextChannels | Mode::VoiceChannels => {
                 let voice = mode == Mode::VoiceChannels;
-                let Some(guild_id) = self.selected_guild.filter(|_| self.view == View::Guild)
-                else {
+                let Some(guild_id) = self.local_guild() else {
                     return Vec::new();
                 };
                 let rows = self
@@ -148,21 +147,20 @@ impl HomeScreen {
         mentions
             .sort_by_key(|row| std::cmp::Reverse(self.unreads.latest(Id::new(row.frecency_id))));
 
-        let unread: Vec<SwitcherRow> =
-            match self.selected_guild.filter(|_| self.view == View::Guild) {
-                Some(guild_id) => self
-                    .channel_groups
-                    .iter()
-                    .flat_map(|group| &group.channels)
-                    .filter(|channel| {
-                        !channel.kind.is_voice()
-                            && Some(channel.id.get()) != current
-                            && self.unreads.shows_unread(channel.id, channel.parent_id)
-                    })
-                    .filter_map(|channel| self.switcher_channel_row(guild_id, channel))
-                    .collect(),
-                None => Vec::new(),
-            };
+        let unread: Vec<SwitcherRow> = match self.local_guild() {
+            Some(guild_id) => self
+                .channel_groups
+                .iter()
+                .flat_map(|group| &group.channels)
+                .filter(|channel| {
+                    !channel.kind.is_voice()
+                        && Some(channel.id.get()) != current
+                        && self.unreads.shows_unread(channel.id, channel.parent_id)
+                })
+                .filter_map(|channel| self.switcher_channel_row(guild_id, channel))
+                .collect(),
+            None => Vec::new(),
+        };
 
         let others_shown = !mentions.is_empty() || !unread.is_empty();
         let recent: Vec<SwitcherRow> = recent
@@ -239,7 +237,7 @@ impl HomeScreen {
         }
         if matches!(mode, Mode::All | Mode::Guilds) {
             // Discord leaves out the guild already open.
-            let open = self.selected_guild.filter(|_| self.view == View::Guild);
+            let open = self.local_guild();
             for guild in self.guilds.iter().filter(|guild| Some(guild.id) != open) {
                 rows.push(SwitcherRow {
                     target: Target::Guild(guild.id),

@@ -189,7 +189,7 @@ impl HomeScreen {
         resolve_custom_emoji(text, &emoji_names(self.usable_custom_emoji()))
     }
 
-    /// The open guild; in a DM none, so every guild's emoji are external.
+    /// The guild on screen; none in a DM, whatever guild was open before it.
     pub(in crate::screens::home) fn local_guild(&self) -> Option<Id<GuildMarker>> {
         self.selected_guild.filter(|_| self.view == View::Guild)
     }

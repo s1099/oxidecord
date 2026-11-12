@@ -162,6 +162,15 @@ impl HomeScreen {
                 }
             }
             discord::GatewayEvent::Message(incoming) => {
+                // Most messages land in channels already unread, changing nothing on screen.
+                let marks = |this: &Self| {
+                    let unreads = &this.unreads;
+                    (
+                        unreads.is_unread(incoming.channel_id),
+                        unreads.mentions(incoming.channel_id),
+                    )
+                };
+                let marked = marks(self);
                 self.unreads
                     .note_message(incoming.channel_id, incoming.message.id);
                 // Discord acks a sender's own message for them.
@@ -174,7 +183,12 @@ impl HomeScreen {
                     self.note_dm_activity(incoming.channel_id, incoming.message.id, cx);
                 }
                 self.notify_message(&incoming, window);
-                self.note_thread_message(incoming.channel_id, &incoming.message);
+                // A thread's preview and place in the sidebar move with each message.
+                if self.note_thread_message(incoming.channel_id, &incoming.message)
+                    || marks(self) != marked
+                {
+                    cx.notify();
+                }
                 self.stop_typing(incoming.channel_id, incoming.message.author_id, cx);
                 self.history_cache
                     .push(incoming.channel_id, &incoming.message);
@@ -388,20 +402,20 @@ impl HomeScreen {
                 user_id,
                 roles,
             } => {
-                let previous = self
-                    .guild_data
-                    .member_roles
-                    .entry(guild_id)
-                    .or_default()
-                    .insert(user_id, roles.clone());
-                // The user's own roles decide which channels they see. Every
-                // message they send carries them too, unchanged.
-                if Some(user_id) == self.self_user_id
-                    && previous.is_some_and(|previous| previous != roles)
-                {
+                let known = self.guild_data.member_roles.entry(guild_id).or_default();
+                // Every guild message carries its author's, nearly always
+                // unchanged, and a redraw for each would never let the screen rest.
+                if known.get(&user_id) == Some(&roles) {
+                    return;
+                }
+                let previous = known.insert(user_id, roles);
+                // The user's own roles decide which channels they see.
+                if Some(user_id) == self.self_user_id && previous.is_some() {
                     self.invalidate_guild_channels(guild_id, window, cx);
                 }
-                cx.notify();
+                if self.selected_guild == Some(guild_id) {
+                    cx.notify();
+                }
             }
         }
     }
