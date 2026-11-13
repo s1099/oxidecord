@@ -9,6 +9,7 @@ mod activities;
 mod autocomplete;
 mod channels;
 mod commands;
+mod components;
 mod composer;
 mod data;
 mod emoji;

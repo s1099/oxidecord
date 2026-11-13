@@ -13,6 +13,15 @@ that talks to Discord — payload shapes, opcodes, dispatch fields, close codes 
 guessing. Gateway events are under `topics/gateway-events`, voice and stream connections
 under `topics/voice-connections`.
 
+When the userdocs don't cover something, or to see exactly what Discord's client sends, check
+the datamined client bundle:
+<https://raw.githubusercontent.com/Discord-Datamining/Discord-Datamining/master/current.js>
+(the raw form of `blob/master/current.js`). It's huge and minified, so don't read it here: launch
+a subagent to fetch it into the scratchpad and dig through it, reporting back only the relevant
+snippets — payload shapes, endpoint paths, enum values. Use `model: "haiku"` for a plain lookup
+(find a string, an endpoint, an enum) and `model: "sonnet"` when it has to trace logic across
+the minified code.
+
 ## Searching the codebase
 
 If CodeGraph is available (a `.codegraph/` index at the repo root), use it before grep or

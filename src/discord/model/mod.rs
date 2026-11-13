@@ -8,6 +8,7 @@ mod activity;
 mod cdn;
 mod channel;
 mod command;
+mod component;
 mod embed;
 mod emoji;
 mod frecency;
@@ -33,6 +34,10 @@ pub use channel::{Channel, ChannelKind, DirectMessage, DmMember};
 pub use command::{
     AppCommand, CommandChoice, CommandContext, CommandIndex, CommandOption, CommandSource,
     OptionKind, SlashCommand,
+};
+pub use component::{
+    Button, ButtonAction, ButtonStyle, Component, InputKind, Media, MediaItem, Modal, ModalField,
+    ModalInput, Select, SelectKind, SelectOption, SelectValue,
 };
 pub use embed::{Embed, EmbedAuthor, EmbedField, EmbedFooter, EmbedLayout, EmbedMedia, EmbedVideo};
 pub use emoji::GuildEmoji;
@@ -68,8 +73,9 @@ pub use voice::{StreamServerInfo, VoiceServerInfo, VoiceUserState, stream_key};
 pub(super) use activity::{
     RawActivityInstance, RawShelf, convert_activity_instance, convert_shelf, entry_point,
 };
-pub(super) use channel::{convert_channel, convert_dms};
+pub(super) use channel::{convert_channel, convert_dm, convert_dms};
 pub(super) use command::{RawChoice, RawCommandIndex, convert_command_index};
+pub(super) use component::{RawModal, convert_modal};
 pub(super) use emoji::{RawEmoji, convert_guild_emoji};
 pub(super) use frecency::{encode_frecency_settings, parse_frecency_settings};
 pub(super) use guild::{RawMember, RawRole, convert_guild, convert_guild_appearance, convert_role};

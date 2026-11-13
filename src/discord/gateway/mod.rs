@@ -217,6 +217,8 @@ pub enum GatewayEvent {
         /// The app didn't answer in time, rather than failing some other way.
         timed_out: bool,
     },
+    /// An app answered an interaction from here with a form to fill in.
+    Modal(crate::discord::Modal),
     CommandChoices {
         nonce: u64,
         choices: Vec<CommandChoice>,

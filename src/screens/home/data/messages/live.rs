@@ -195,6 +195,7 @@ impl HomeScreen {
                 self.handle_incoming_message(incoming, cx)
             }
             discord::GatewayEvent::MessageUpdate(incoming) => {
+                self.component_message_changed(incoming.message.id);
                 self.history_cache
                     .edit(incoming.channel_id, &incoming.message);
                 self.handle_message_update(incoming, cx)
@@ -370,12 +371,24 @@ impl HomeScreen {
                 self.interaction_created(nonce, cx);
             }
             discord::GatewayEvent::InteractionSucceeded { nonce } => {
-                self.interaction_succeeded(nonce, cx);
+                if !self.component_interaction_succeeded(nonce, window, cx) {
+                    self.interaction_succeeded(nonce, cx);
+                }
             }
             discord::GatewayEvent::InteractionFailed { nonce, timed_out } => {
-                self.interaction_failed(nonce, timed_out, cx);
-                self.activity_launch_failed(nonce, timed_out, cx);
+                let error = if timed_out {
+                    "The app didn't respond in time."
+                } else {
+                    "Something went wrong. Try again."
+                };
+                if !self.modal_outcome(nonce, Some(error.into()), window, cx)
+                    && !self.component_interaction_failed(nonce, timed_out, cx)
+                {
+                    self.interaction_failed(nonce, timed_out, cx);
+                    self.activity_launch_failed(nonce, timed_out, cx);
+                }
             }
+            discord::GatewayEvent::Modal(modal) => self.open_modal(modal, window, cx),
             discord::GatewayEvent::CommandChoices { nonce, choices } => {
                 self.receive_command_choices(nonce, choices, cx);
             }

@@ -626,14 +626,10 @@ impl HomeScreen {
         let link = MessageLink {
             guild_id,
             channel_id: hit.channel_id,
-            message_id: hit.message.id,
+            message_id: Some(hit.message.id),
         };
         if !self.open_message_link(link, window, cx) {
-            let guild = guild_id.map_or("@me".to_string(), |id| id.to_string());
-            cx.open_url(&format!(
-                "https://discord.com/channels/{guild}/{}/{}",
-                link.channel_id, link.message_id
-            ));
+            cx.open_url(&link.web_url());
         }
     }
 }

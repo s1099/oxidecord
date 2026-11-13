@@ -19,6 +19,24 @@ Entry format:
   the click, where Discord (a browser scrollbar) pages one screen toward it. Paging needs a
   scrollbar of our own. `src/screens/home/view/content/message_list.rs:166`
 
+## Message components
+
+- **Modal file uploads can't be filled** — the field shows a notice, and a required one blocks
+  submitting. `src/screens/home/view/components/modal.rs:132`
+- **Modal text displays are plain text** — the markdown renderer needs the home screen's
+  context, which the modal's entity doesn't have. `src/screens/home/view/components/modal.rs:510`
+- **Radio groups and iframe modals are dropped** — twilight has no radio group (type 21), so the
+  field is left out of the form and of the submission; `INTERACTION_IFRAME_MODAL_CREATE` isn't
+  handled at all. `src/discord/model/component.rs:607`
+- **Premium buttons are inert** — there's no store purchase flow. Link buttons open without
+  Discord's "Leaving Discord" confirmation. `src/screens/home/view/message/components.rs:187`
+- **Components only draw in the message list** — forwards, the pins popout and search results
+  leave them out. `src/discord/model/message.rs:634`
+- **Auto-populated selects offer only what the client knows** — users come from member search
+  and the open conversation, roles and channels from the open guild's cache; a channel select in
+  a DM offers nothing. Media alt text and a file component's spoiler flag are ignored.
+  `src/screens/home/data/components.rs:263`
+
 ## Slash commands
 
 - **Permissions are simplified** — commands are filtered by `contexts`, `default_member_permissions`
@@ -98,6 +116,12 @@ Entry format:
 - **Shortcodes use gemoji's names** — `:name:` in received text resolves through the `emojis`
   crate plus Discord's `flag_xx`; names only Discord's own table has stay text.
   `src/discord/model/markdown/inline.rs:592`
+
+## Message links
+
+- **A closed DM opened from a link can drop out of the list** — it's added to `dms.list`, but if
+  the DM list hadn't loaded yet, the load replaces the list and the open DM loses its header.
+  `src/screens/home/data/messages/jump.rs:105`
 
 ## Message grouping
 

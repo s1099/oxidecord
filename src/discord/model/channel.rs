@@ -202,7 +202,9 @@ pub(in crate::discord) fn convert_dms(
     dms
 }
 
-fn convert_dm(channel: twilight_model::channel::Channel) -> Option<DirectMessage> {
+pub(in crate::discord) fn convert_dm(
+    channel: twilight_model::channel::Channel,
+) -> Option<DirectMessage> {
     let last_message_id = channel.last_message_id.map(|id| id.get());
     match channel.kind {
         ChannelType::Private => {

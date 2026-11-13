@@ -26,6 +26,7 @@ enum Variant {
     Outline,
     Ghost,
     Danger,
+    Success,
     Link,
 }
 
@@ -83,6 +84,11 @@ impl Button {
 
     pub fn danger(mut self) -> Self {
         self.variant = Variant::Danger;
+        self
+    }
+
+    pub fn success(mut self) -> Self {
+        self.variant = Variant::Success;
         self
     }
 
@@ -273,6 +279,14 @@ impl Variant {
                 bg: theme.danger,
                 hover: theme.danger.opacity(0.9),
                 fg: theme.danger_foreground,
+                border: None,
+                level: Some(Level::RaisedStrong),
+                finish: Finish::Subtle,
+            },
+            Variant::Success => Look {
+                bg: theme.success,
+                hover: theme.success.opacity(0.9),
+                fg: theme.success_foreground,
                 border: None,
                 level: Some(Level::RaisedStrong),
                 finish: Finish::Subtle,

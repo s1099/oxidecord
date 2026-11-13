@@ -1,6 +1,7 @@
 //! A single message row: its header, content, attachments, and hover toolbar.
 
 mod attachment;
+mod components;
 mod edit;
 mod embed;
 mod forward;
@@ -278,7 +279,8 @@ impl HomeScreen {
                     && command.is_none()
                     && upload.is_none()
                     && message.forward.is_none()
-                    && media.is_empty(),
+                    && media.is_empty()
+                    && !message.components.iter().any(|c| c.is_visible()),
                 |this| {
                     this.child(
                         div()
@@ -290,6 +292,9 @@ impl HomeScreen {
             )
             .when(!media.is_empty(), |this| {
                 this.child(self.render_media(message.id.get(), media, cx))
+            })
+            .when(!message.components.is_empty(), |this| {
+                this.child(self.render_components(message, cx))
             })
             .when(!message.reactions.is_empty(), |this| {
                 this.child(self.render_reactions(message, cx))

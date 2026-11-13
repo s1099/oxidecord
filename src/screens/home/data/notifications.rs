@@ -347,7 +347,7 @@ impl HomeScreen {
             MessageLink {
                 guild_id: id.guild.and_then(Id::new_checked),
                 channel_id,
-                message_id,
+                message_id: Some(message_id),
             },
             window,
             cx,

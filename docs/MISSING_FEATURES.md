@@ -10,7 +10,6 @@
 | Super reactions (burst) | Missing | |
 | Skin tones, favorite and frequently used emoji in the picker | Missing | |
 | Slash commands and app commands | Partial | Typed as `/name option:value`, with suggestions for commands, options, choices and app autocomplete, and the built-in `/shrug`, `/tableflip`, `/unflip`, `/me` and `/spoiler`. Not yet: user and message commands in context menus, file options, the option pills Discord's composer uses, and the `/nick`, `/tts`, `/gif` and moderation built-ins |
-| Message components (buttons, select menus, modals) | Missing | Bot messages only show their embeds |
 | GIF picker (Tenor) | Missing | |
 | Forwarding messages | Missing | Forwards from others are shown; there is no way to send one |
 | Message length limit and counter | Missing | Messages over 2,000 characters (4,000 with Nitro) are only refused by Discord when sent |

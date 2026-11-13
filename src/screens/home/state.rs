@@ -22,6 +22,7 @@ use crate::ui::smooth_scroll::SmoothScroll;
 use super::activities::{ActivitySession, ShelfState};
 use super::channels::ChannelGroup;
 use super::commands::{CommandChoices, IndexState, PendingCommands};
+use super::components::Components;
 use super::composer::{Autocomplete, EditingMessage, ReplyTarget, Typist};
 use super::data::attachments::PendingAttachment;
 use super::data::gif::LoadedGifs;
@@ -299,6 +300,7 @@ pub struct HomeScreen {
     /// By the id of the message standing in for the app's reply.
     pub(super) pending_commands: PendingCommands,
     pub(super) command_choices: CommandChoices,
+    pub(super) components: Components,
     /// Refocuses the screen when a menu or edit box closes so typing reaches the composer.
     pub(super) _focus_lost: Subscription,
     /// The taskbar thumbnail's call buttons, and what keeps them current.
@@ -523,6 +525,7 @@ impl HomeScreen {
             command_indexes: HashMap::new(),
             pending_commands: HashMap::new(),
             command_choices: CommandChoices::default(),
+            components: Components::default(),
             _focus_lost: focus_lost,
             #[cfg(windows)]
             thumb_bar: None,

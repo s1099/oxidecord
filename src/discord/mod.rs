@@ -30,6 +30,10 @@ pub use model::{
     UploadProgress, UserProfile, VideoAttachment, VoiceServerInfo, VoiceUserState, WELCOMES,
     animated_webp, call_duration, scaled_url, stream_key,
 };
+pub use model::{
+    Button, ButtonAction, ButtonStyle, Component, InputKind, Media, MediaItem, Modal, ModalField,
+    Select, SelectKind, SelectOption, SelectValue,
+};
 pub use rest::{
     ActivityLaunch, CommandArgument, CommandIndexScope, CommandInvocation, MESSAGE_PAGE_SIZE,
     MessageDraft, MessagePage, OAuthRequest, REACTORS_PAGE_SIZE, ack_message, authorize,
@@ -40,6 +44,11 @@ pub use rest::{
     fetch_user_settings, join_activity, leave_activity, log_out, preview_authorization,
     remove_account, request_autocomplete, ring_call, run_command, save_frecency, save_status,
     search_messages, send_message, start_activity, stop_ringing, toggle_reaction, trigger_typing,
+};
+pub use rest::{ChannelHome, fetch_channel_home};
+pub use rest::{
+    ComponentInteraction, ModalAnswer, ModalEntry, ModalSubmission, interact_component,
+    submit_modal,
 };
 pub use rest::{
     ThreadSearch, fetch_thread, search_threads, set_thread_archived, set_thread_joined,

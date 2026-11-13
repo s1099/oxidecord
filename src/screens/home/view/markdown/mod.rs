@@ -136,15 +136,17 @@ impl<'a> Renderer<'a> {
                     _ if weak
                         .read_with(cx, |this, _| this.has_text_selection())
                         .unwrap_or(false) => {}
-                    Action::Url(url) => {
-                        let opened = discord::MessageLink::parse(url).is_some_and(|link| {
-                            weak.update(cx, |this, cx| this.open_message_link(link, window, cx))
-                                .unwrap_or(false)
-                        });
-                        if !opened {
-                            cx.open_url(url);
+                    Action::Url(url) => match discord::MessageLink::parse(url) {
+                        Some(link) => {
+                            let opened = weak
+                                .update(cx, |this, cx| this.open_message_link(link, window, cx))
+                                .unwrap_or(false);
+                            if !opened {
+                                cx.open_url(&link.web_url());
+                            }
                         }
-                    }
+                        None => cx.open_url(url),
+                    },
                     Action::MaskedUrl(url) => dialogs::confirm_open_link(url.clone(), window, cx),
                     Action::User {
                         id,

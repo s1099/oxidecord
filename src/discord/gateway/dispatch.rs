@@ -13,10 +13,11 @@ use twilight_model::channel::message::MessageFlags;
 
 use crate::discord::model::{
     RawActivityInstance, RawEmoji, RawGuildChannel, RawGuildSettings, RawMember,
-    RawMemberListUpdate, RawRole, RawSticker, RawVoiceServer, RawVoiceState, StreamServerInfo,
-    author_member, boost_upload_limit, convert_activity_instance, convert_call_voice_states,
-    convert_channel_unreads, convert_guild_appearance, convert_guild_channels, convert_guild_emoji,
-    convert_guild_voice_states, convert_member_list_update, convert_message, convert_mute_settings,
+    RawMemberListUpdate, RawModal, RawRole, RawSticker, RawVoiceServer, RawVoiceState,
+    StreamServerInfo, author_member, boost_upload_limit, convert_activity_instance,
+    convert_call_voice_states, convert_channel_unreads, convert_guild_appearance,
+    convert_guild_channels, convert_guild_emoji, convert_guild_voice_states,
+    convert_member_list_update, convert_message, convert_modal, convert_mute_settings,
     convert_reaction_emoji, convert_read_states, convert_role, convert_sticker,
     convert_stream_server, convert_thread, convert_voice_server, convert_voice_state,
     parse_user_settings,
@@ -578,6 +579,10 @@ pub(super) fn dispatch(
                 })
                 .unwrap_or_default()
         }
+        "INTERACTION_MODAL_CREATE" => serde_json::from_str::<RawModal>(data)
+            .map(|modal| vec![GatewayEvent::Modal(convert_modal(modal))])
+            .inspect_err(|err| eprintln!("unreadable INTERACTION_MODAL_CREATE: {err}"))
+            .unwrap_or_default(),
         "APPLICATION_COMMAND_AUTOCOMPLETE_RESPONSE" => {
             serde_json::from_str::<AutocompletePayload>(data)
                 .ok()

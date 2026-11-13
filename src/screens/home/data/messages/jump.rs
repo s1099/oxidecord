@@ -7,16 +7,17 @@ use std::time::Duration;
 use gpui_kit::*;
 use twilight_model::id::{
     Id,
-    marker::{ChannelMarker, MessageMarker},
+    marker::{ChannelMarker, GuildMarker, MessageMarker},
 };
 
-use crate::discord::{self, MessageLink, MessagePage};
+use crate::discord::{self, ChannelHome, MessageLink, MessagePage};
 use crate::screens::home::HomeScreen;
 
 const FLASH: Duration = Duration::from_secs(2);
 
 impl HomeScreen {
-    /// False for a guild the user isn't in, which only the browser can show.
+    /// Opens a message or channel link. False for a guild the user isn't in,
+    /// which only the browser can show.
     pub(in crate::screens::home) fn open_message_link(
         &mut self,
         link: MessageLink,
@@ -37,9 +38,12 @@ impl HomeScreen {
             this.selected_channel == Some(channel_id) && (!is_voice(this) || this.voice_chat_open)
         };
         if is_open(self) {
-            self.jump_to_message(message_id, window, cx);
+            if let Some(message_id) = message_id {
+                self.jump_to_message(message_id, window, cx);
+            }
             return true;
         }
+        let pending_jump = message_id.map(|message_id| (channel_id, message_id));
         match guild_id {
             Some(guild_id) => {
                 if !self.guilds.iter().any(|guild| guild.id == guild_id) {
@@ -52,22 +56,19 @@ impl HomeScreen {
                     .get(&guild_id)
                     .is_none_or(|channels| channels.iter().any(|c| c.id == channel_id));
                 if !listed {
-                    self.pending_jump = Some((channel_id, message_id));
-                    let url = format!(
-                        "https://discord.com/channels/{guild_id}/{channel_id}/{message_id}"
-                    );
-                    self.open_thread_or(channel_id, Some(url), window, cx);
+                    self.pending_jump = pending_jump;
+                    self.open_thread_or(channel_id, Some(link.web_url()), window, cx);
                     return true;
                 }
                 // Opening the guild reopens its last channel, so the link's
                 // is opened even when the gateway has yet to send the list.
                 self.last_guild_channel.insert(guild_id, channel_id);
-                self.pending_jump = Some((channel_id, message_id));
+                self.pending_jump = pending_jump;
                 self.select_guild(guild_id, window, cx);
                 // Already open, or the link is to a voice channel's chat,
                 // which reopening a guild never opens.
                 if !is_open(self) && self.channel_info(channel_id).is_some() {
-                    self.pending_jump = Some((channel_id, message_id));
+                    self.pending_jump = pending_jump;
                     if is_voice(self) {
                         self.open_voice_chat(channel_id, window, cx);
                     } else {
@@ -75,13 +76,59 @@ impl HomeScreen {
                     }
                 }
             }
-            None => {
-                self.pending_jump = Some((channel_id, message_id));
+            None if self.dms.list.iter().any(|dm| dm.id == channel_id) => {
+                self.pending_jump = pending_jump;
                 self.open_dm(channel_id, window, cx);
+            }
+            // `@me` links are also made to guild channels, and to DMs that
+            // aren't open, so the channel itself says where it lives.
+            None => {
+                if let Some(guild_id) = self.known_channel_guild(channel_id) {
+                    let link = MessageLink {
+                        guild_id: Some(guild_id),
+                        ..link
+                    };
+                    return self.open_message_link(link, window, cx);
+                }
+                cx.spawn_in(window, async move |this, cx| {
+                    let home = discord::fetch_channel_home(channel_id).await;
+                    let _ = this.update_in(cx, |this, window, cx| {
+                        let opened = match home {
+                            Ok(Some(ChannelHome::Guild(guild_id))) => {
+                                let link = MessageLink {
+                                    guild_id: Some(guild_id),
+                                    ..link
+                                };
+                                this.open_message_link(link, window, cx)
+                            }
+                            Ok(Some(ChannelHome::Dm(dm))) => {
+                                this.dms.list.insert(0, dm);
+                                this.pending_jump = pending_jump;
+                                this.open_dm(channel_id, window, cx);
+                                cx.notify();
+                                true
+                            }
+                            Ok(None) | Err(_) => false,
+                        };
+                        if !opened {
+                            cx.open_url(&link.web_url());
+                        }
+                    });
+                })
+                .detach();
             }
         }
         cx.notify();
         true
+    }
+
+    fn known_channel_guild(&self, channel_id: Id<ChannelMarker>) -> Option<Id<GuildMarker>> {
+        self.guild_data
+            .channels
+            .iter()
+            .find(|(_, channels)| channels.iter().any(|c| c.id == channel_id))
+            .map(|(&guild_id, _)| guild_id)
+            .or_else(|| self.threads.get(channel_id)?.thread.guild_id)
     }
 
     pub(in crate::screens::home) fn jump_to_message(

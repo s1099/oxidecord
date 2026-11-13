@@ -3,10 +3,33 @@
 use twilight_http::request::{Method, Request, RequestBuilder};
 use twilight_http::response::marker::{EmptyBody, ListBody};
 use twilight_http::routing::Route;
-use twilight_model::id::{Id, marker::ChannelMarker};
+use twilight_model::id::{
+    Id,
+    marker::{ChannelMarker, GuildMarker},
+};
 
 use super::request;
-use crate::discord::model::{DirectMessage, convert_dms};
+use crate::discord::model::{DirectMessage, convert_dm, convert_dms};
+
+/// Where a channel lives, for a link that doesn't say.
+pub enum ChannelHome {
+    Guild(Id<GuildMarker>),
+    Dm(DirectMessage),
+}
+
+/// `GET /channels/{id}`. `None` for a channel that's neither a guild's nor a DM.
+pub async fn fetch_channel_home(
+    channel_id: Id<ChannelMarker>,
+) -> Result<Option<ChannelHome>, String> {
+    request(move |client| async move {
+        let channel = client.channel(channel_id).await?.model().await?;
+        Ok(match channel.guild_id {
+            Some(guild_id) => Some(ChannelHome::Guild(guild_id)),
+            None => convert_dm(channel).map(ChannelHome::Dm),
+        })
+    })
+    .await
+}
 
 /// Fetches the user's open DMs and group DMs, most recently active first
 /// (`GET /users/@me/channels`; no twilight helper, so a raw request).

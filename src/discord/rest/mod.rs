@@ -7,6 +7,7 @@ mod activity;
 mod auth;
 mod channel;
 mod command;
+mod component;
 mod guild;
 mod message;
 mod settings;
@@ -27,10 +28,14 @@ pub use activity::{
     leave_activity, preview_authorization, start_activity,
 };
 pub use auth::{log_out, remove_account};
-pub use channel::{fetch_dms, ring_call, stop_ringing};
+pub use channel::{ChannelHome, fetch_channel_home, fetch_dms, ring_call, stop_ringing};
 pub use command::{
     CommandArgument, CommandIndexScope, CommandInvocation, fetch_command_index,
     request_autocomplete, run_command,
+};
+pub use component::{
+    ComponentInteraction, ModalAnswer, ModalEntry, ModalSubmission, interact_component,
+    submit_modal,
 };
 pub use guild::{fetch_channels, fetch_guilds};
 pub use message::{

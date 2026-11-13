@@ -1,5 +1,6 @@
 //! Rendering for [`HomeScreen`], one module per region of the screen.
 
+pub(super) mod components;
 mod composer;
 mod content;
 mod image_viewer;

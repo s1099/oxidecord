@@ -28,7 +28,12 @@ pub(super) struct TextKey {
 pub(super) enum TextPart {
     Forward,
     Content,
-    Embed { embed: usize, piece: EmbedPiece },
+    Embed {
+        embed: usize,
+        piece: EmbedPiece,
+    },
+    /// A components-v2 message's text displays, in order.
+    Component(usize),
 }
 
 #[derive(Clone, Copy)]
@@ -62,6 +67,8 @@ impl TextOwner {
                 };
                 2 + embed as u32 * EMBED_SLOTS + slot
             }
+            // After the most embeds a message can carry.
+            TextPart::Component(index) => 2 + 10 * EMBED_SLOTS + index as u32,
         };
         Self { message, part }
     }

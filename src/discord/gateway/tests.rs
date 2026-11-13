@@ -680,3 +680,59 @@ fn members_chunk_names_the_members_it_carries() {
     // A cleared nickname falls back to the global name.
     assert_eq!(names, [("Two", Some("two")), ("Trey", Some("three"))]);
 }
+
+#[test]
+fn modal_create_reads_labels_rows_and_text() {
+    let events = dispatch_json(
+        "INTERACTION_MODAL_CREATE",
+        r#"{
+            "id": "500", "nonce": "77", "channel_id": "9", "title": "Feedback",
+            "custom_id": "form",
+            "application": {"id": "42", "name": "Bot", "icon": null},
+            "components": [
+                {"type": 1, "components": [
+                    {"type": 4, "custom_id": "name", "style": 1, "label": "Name", "required": false}
+                ]},
+                {"type": 10, "content": "Tell us more"},
+                {"type": 18, "label": "Pick", "description": "One only", "component":
+                    {"type": 3, "custom_id": "pick", "options": [
+                        {"label": "A", "value": "a", "default": true},
+                        {"label": "B", "value": "b"}
+                    ]}
+                }
+            ]
+        }"#,
+    );
+    let Some(GatewayEvent::Modal(modal)) = events.first() else {
+        panic!("expected a modal");
+    };
+    assert_eq!(modal.nonce, Some(77));
+    assert_eq!(modal.title, "Feedback");
+    assert_eq!(modal.fields.len(), 3);
+    let crate::discord::ModalField::Input(name) = &modal.fields[0] else {
+        panic!("expected the text input first");
+    };
+    assert_eq!(name.label, "Name");
+    assert!(!name.in_label);
+    assert!(matches!(
+        name.kind,
+        crate::discord::InputKind::Text {
+            required: false,
+            paragraph: false,
+            ..
+        }
+    ));
+    assert!(
+        matches!(&modal.fields[1], crate::discord::ModalField::Text(text) if text == "Tell us more")
+    );
+    let crate::discord::ModalField::Input(pick) = &modal.fields[2] else {
+        panic!("expected the labelled select");
+    };
+    assert!(pick.in_label);
+    assert_eq!(pick.description.as_deref(), Some("One only"));
+    let crate::discord::InputKind::Select(select) = &pick.kind else {
+        panic!("expected a select");
+    };
+    assert_eq!(select.options.len(), 2);
+    assert!(select.options[0].default);
+}

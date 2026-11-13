@@ -704,6 +704,20 @@ impl HomeScreen {
         cx.notify();
     }
 
+    /// A command answered with a form leaves no reply, so its stand-in goes.
+    pub(in crate::screens::home) fn command_opened_modal(
+        &mut self,
+        nonce: u64,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(id) = Id::new_checked(nonce) else {
+            return;
+        };
+        if self.pending_commands.remove(&id).is_some() {
+            self.drop_pending_message(id, cx);
+        }
+    }
+
     /// Ephemeral replies and failed commands exist only here, so dismissing
     /// one just forgets it.
     pub(in crate::screens::home) fn dismiss_message(

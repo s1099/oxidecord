@@ -9,6 +9,7 @@ pub(super) mod activities;
 pub(super) mod attachments;
 pub(super) mod autocomplete;
 pub(super) mod commands;
+pub(super) mod components;
 pub(super) mod dms;
 pub(super) mod emoji;
 pub(super) mod gif;

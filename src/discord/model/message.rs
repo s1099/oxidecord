@@ -9,11 +9,12 @@ use twilight_model::channel::message::{
 };
 use twilight_model::id::{
     Id,
-    marker::{EmojiMarker, GuildMarker, MessageMarker, RoleMarker, UserMarker},
+    marker::{ApplicationMarker, EmojiMarker, GuildMarker, MessageMarker, RoleMarker, UserMarker},
 };
 
 use super::cdn;
 use super::command::CommandApp;
+use super::component::{Component, convert_components};
 use super::embed::{Embed, EmbedLayout, convert_embeds};
 use super::guild::GuildMember;
 use super::markdown::{self, Inline, Markdown};
@@ -57,6 +58,12 @@ pub struct Message {
     pub forward: Option<ForwardedMessage>,
     /// In Discord's order (first reacted first).
     pub reactions: Vec<Reaction>,
+    /// An app's buttons and selects, or a components-v2 message's whole body.
+    pub components: Vec<Component>,
+    /// The app a component interaction is sent to.
+    pub application_id: Option<Id<ApplicationMarker>>,
+    /// Discord's raw flags, which a component interaction echoes.
+    pub flags: u64,
     /// Drawn as a one-line notice instead of the author's message.
     pub system: Option<SystemEvent>,
     /// The thread started from this message, as it stood when the message was sent
@@ -120,6 +127,9 @@ impl Message {
             reply: reply_to.map(|message| Reply::Quote(MessageReference::quoting(message))),
             forward: None,
             reactions: Vec::new(),
+            components: Vec::new(),
+            application_id: None,
+            flags: 0,
             system: None,
             thread: None,
             ephemeral: false,
@@ -175,6 +185,8 @@ impl Message {
         self.videos = edited.videos;
         self.files = edited.files;
         self.embeds = edited.embeds;
+        self.components = edited.components;
+        self.flags = edited.flags;
         // Starting a thread is announced as an edit carrying it; others leave it out.
         if edited.thread.is_some() {
             self.thread = edited.thread;
@@ -462,8 +474,14 @@ pub(in crate::discord) fn convert_message(
         .filter(|nick| !nick.is_empty())
         .or(message.author.global_name)
         .unwrap_or_else(|| message.author.name.clone());
-    let (images, videos, files) = convert_attachments(&message.attachments);
     let flags = message.flags.unwrap_or(MessageFlags::empty());
+    let components = convert_components(message.components, &message.attachments);
+    // A components-v2 message shows its files where its components place them.
+    let (images, videos, files) = if flags.contains(MessageFlags::IS_COMPONENTS_V2) {
+        Default::default()
+    } else {
+        convert_attachments(&message.attachments)
+    };
     // A forward uses the same reference as a reply, so check its type.
     let is_forward = message
         .reference
@@ -510,6 +528,9 @@ pub(in crate::discord) fn convert_message(
                 me: reaction.me,
             })
             .collect(),
+        components,
+        application_id: message.application_id,
+        flags: flags.bits(),
         system,
         thread: message.thread.and_then(convert_thread),
         ephemeral: flags.contains(MessageFlags::EPHEMERAL),
@@ -538,7 +559,7 @@ fn convert_command_use(message: &twilight_model::channel::Message) -> Option<Com
     })
 }
 
-fn convert_attachments(
+pub(super) fn convert_attachments(
     attachments: &[twilight_model::channel::Attachment],
 ) -> (
     Vec<ImageAttachment>,
