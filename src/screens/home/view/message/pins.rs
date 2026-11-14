@@ -191,41 +191,49 @@ impl HomeScreen {
                     .w_full()
                     .gap_1()
                     .child(
-                        h_flex()
-                            .gap_2()
-                            .items_center()
+                        // Name and text sit flush, as in the conversation; only
+                        // forwards and media take the gap.
+                        v_flex()
+                            .w_full()
+                            .min_w_0()
                             .child(
-                                div()
-                                    .text_sm()
-                                    .font_weight(FontWeight::SEMIBOLD)
-                                    .when_some(self.role_color(message.author_id), |this, color| {
-                                        this.text_color(rgb(color))
-                                    })
-                                    .child(author_name),
-                            )
-                            .when(message.author_bot, |this| this.child(bot_tag(cx)))
-                            .child(
-                                div()
-                                    .text_xs()
-                                    .text_color(theme.muted_foreground)
-                                    .child(message.timestamp_label()),
-                            ),
-                    )
-                    .when(!message.content.is_empty(), |this| {
-                        this.child(
-                            div().w_full().min_w_0().text_sm().child(
-                                self.render_markdown(
-                                    &message.markdown,
-                                    MarkdownOptions::new(
-                                        format!("{scope}-{}", message.id),
-                                        &message.mentions,
+                                h_flex()
+                                    .gap_2()
+                                    .items_center()
+                                    .child(
+                                        div()
+                                            .text_sm()
+                                            .font_weight(FontWeight::SEMIBOLD)
+                                            .when_some(
+                                                self.role_color(message.author_id),
+                                                |this, color| this.text_color(rgb(color)),
+                                            )
+                                            .child(author_name),
                                     )
-                                    .edited(message.edited_label()),
-                                    cx,
-                                ),
-                            ),
-                        )
-                    })
+                                    .when(message.author_bot, |this| this.child(bot_tag(cx)))
+                                    .child(
+                                        div()
+                                            .text_xs()
+                                            .text_color(theme.muted_foreground)
+                                            .child(message.timestamp_label()),
+                                    ),
+                            )
+                            .when(!message.content.is_empty(), |this| {
+                                this.child(
+                                    div().w_full().min_w_0().text_sm().child(
+                                        self.render_markdown(
+                                            &message.markdown,
+                                            MarkdownOptions::new(
+                                                format!("{scope}-{}", message.id),
+                                                &message.mentions,
+                                            )
+                                            .edited(message.edited_label()),
+                                            cx,
+                                        ),
+                                    ),
+                                )
+                            }),
+                    )
                     .when_some(message.forward.as_ref(), |this, forward| {
                         this.child(self.render_forward(message.id.get(), forward, cx))
                     })
