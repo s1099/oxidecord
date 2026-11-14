@@ -400,6 +400,27 @@ impl Unreads {
                 || self.unread_setting(channel_id, parent_id) == UnreadSetting::AllMessages)
     }
 
+    /// Each of the guild's channels and joined threads that's unread or holds
+    /// pings, with the message to ack it up to. Muted ones too: marking a
+    /// guild read clears them as well.
+    pub(super) fn guild_unacked(&self, guild_id: GuildId) -> Vec<(ChannelId, MessageId)> {
+        let channels = self
+            .guilds
+            .get(&guild_id)
+            .into_iter()
+            .flat_map(|guild| guild.channels.iter().map(|&(id, _)| id));
+        let threads = self
+            .threads
+            .get(&guild_id)
+            .into_iter()
+            .flat_map(|threads| threads.keys().copied());
+        channels
+            .chain(threads)
+            .filter(|&id| self.is_unread(id) || self.mentions(id) > 0)
+            .filter_map(|id| Some((id, self.latest(id)?)))
+            .collect()
+    }
+
     /// A muted guild never shows its mark.
     pub(super) fn is_guild_unread(&self, guild_id: GuildId) -> bool {
         self.mark(guild_id).unread
@@ -511,6 +532,19 @@ mod tests {
         ));
         assert!(!unreads.is_unread(Id::new(10)));
         assert!(unreads.is_unread(Id::new(11)));
+    }
+
+    #[test]
+    fn a_guilds_unacked_channels_are_listed_up_to_their_latest() {
+        let mut unreads = Unreads::default();
+        unreads.set_guild(guild(
+            Some(20),
+            &[(10, None, Some(15)), (11, None, Some(25))],
+        ));
+        assert_eq!(
+            unreads.guild_unacked(Id::new(1)),
+            vec![(Id::new(11), Id::new(25))]
+        );
     }
 
     #[test]

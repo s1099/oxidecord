@@ -79,7 +79,7 @@ impl HomeScreen {
         .detach();
     }
 
-    fn rebuild_rail(&mut self) {
+    pub(in crate::screens::home) fn rebuild_rail(&mut self) {
         self.rail_entries = build_rail_entries(&self.guilds, self.guild_folders.as_ref());
     }
 

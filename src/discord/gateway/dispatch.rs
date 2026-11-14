@@ -424,6 +424,9 @@ pub(super) fn dispatch(
                         instances: Vec::new(),
                     },
                 ]
+                .into_iter()
+                .chain((!guild.unavailable).then_some(GatewayEvent::GuildRemoved(guild.id)))
+                .collect()
             })
             .unwrap_or_default(),
         "GUILD_ROLE_CREATE" | "GUILD_ROLE_UPDATE" => {

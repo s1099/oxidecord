@@ -18,6 +18,14 @@ pub async fn fetch_guilds() -> Result<Vec<Guild>, String> {
     .await
 }
 
+pub async fn leave_guild(guild_id: Id<GuildMarker>) -> Result<(), String> {
+    request(move |client| async move {
+        client.leave_guild(guild_id).await?;
+        Ok(())
+    })
+    .await
+}
+
 /// Fetches a guild's channels, keeping those the user holds `VIEW_CHANNEL` on and
 /// recording `SEND_MESSAGES` and `MANAGE_MESSAGES`. `base_permissions` and `owner` come
 /// from the guild list, so the only extra request is the member object, whose role ids

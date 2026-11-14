@@ -201,6 +201,16 @@ fn guild_delete_clears_the_guilds_voice_states_and_activities() {
 }
 
 #[test]
+fn leaving_a_guild_removes_it() {
+    let events = dispatch_json("GUILD_DELETE", r#"{"id": "10"}"#);
+
+    assert!(matches!(
+        events.as_slice(),
+        [.., GatewayEvent::GuildRemoved(guild_id)] if *guild_id == Id::new(10)
+    ));
+}
+
+#[test]
 fn activity_instances_arrive_with_supplemental_and_updates() {
     let events = dispatch_json(
         "READY_SUPPLEMENTAL",

@@ -1,9 +1,15 @@
 //! The left-hand server rail: the DMs button, the guild icons, and the folders
 //! grouping them.
 
-use gpui_kit::component::{ActiveTheme as _, Icon, IconName, h_flex, separator::Separator, v_flex};
+use gpui_kit::component::{
+    ActiveTheme as _, Icon, IconName, h_flex,
+    menu::{ContextMenuExt as _, PopupMenu, PopupMenuItem},
+    separator::Separator,
+    v_flex,
+};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
+use twilight_model::id::{Id, marker::GuildMarker};
 
 use crate::discord::{DirectMessage, Guild};
 use crate::screens::home::folders::{RailEntry, RailFolder};
@@ -186,6 +192,8 @@ impl HomeScreen {
         let is_selected = self.view == View::Guild && self.selected_guild == Some(guild_id);
         let unread = !is_selected && self.unreads.is_guild_unread(guild_id);
         let mentions = self.unreads.guild_mentions(guild_id);
+        let can_leave = !guild.owner;
+        let screen = cx.entity().downgrade();
 
         selection_pill(div().id(("guild", guild_id.get())), is_selected, cx)
             .child(guild_avatar(guild, px(48.)))
@@ -195,6 +203,28 @@ impl HomeScreen {
             .on_click(cx.listener(move |this, _, window, cx| {
                 this.select_guild(guild_id, window, cx);
             }))
+            .context_menu(move |menu, _, cx| {
+                let menu = mark_read_item(menu, screen.clone(), vec![guild_id]);
+                // Discord won't let an owner leave without handing the server over.
+                if !can_leave {
+                    return menu;
+                }
+                let danger = cx.theme().danger;
+                let screen = screen.clone();
+                menu.separator().item(
+                    PopupMenuItem::element(move |_, _| {
+                        div().text_color(danger).child("Leave Server")
+                    })
+                    .icon(Icon::default().path("icons/log-out.svg").text_color(danger))
+                    .on_click(move |_, window, cx| {
+                        if let Some(screen) = screen.upgrade() {
+                            screen.update(cx, |this, cx| {
+                                this.confirm_leave_guild(guild_id, window, cx)
+                            });
+                        }
+                    }),
+                )
+            })
     }
 
     fn render_rail_folder(
@@ -207,6 +237,8 @@ impl HomeScreen {
             .color
             .map_or(theme.primary, |color| rgb(color).into());
         let selected_bg = theme.sidebar_accent;
+        let guild_ids: Vec<Id<GuildMarker>> = folder.guilds.iter().map(|guild| guild.id).collect();
+        let screen = cx.entity().downgrade();
 
         let folder_id = folder.id;
         let expanded = self.expanded_folders.contains(&folder_id);
@@ -273,7 +305,10 @@ impl HomeScreen {
                             this.expanded_folders.insert(folder_id);
                         }
                         cx.notify();
-                    })),
+                    }))
+                    .context_menu(move |menu, _, _| {
+                        mark_read_item(menu, screen.clone(), guild_ids.clone())
+                    }),
             )
             .when(expanded, |this| {
                 this.children(
@@ -284,6 +319,22 @@ impl HomeScreen {
                 )
             })
     }
+}
+
+fn mark_read_item(
+    menu: PopupMenu,
+    screen: WeakEntity<HomeScreen>,
+    guild_ids: Vec<Id<GuildMarker>>,
+) -> PopupMenu {
+    menu.item(
+        PopupMenuItem::new("Mark As Read")
+            .icon(Icon::default().path("icons/check-check.svg"))
+            .on_click(move |_, _, cx| {
+                if let Some(screen) = screen.upgrade() {
+                    screen.update(cx, |this, cx| this.mark_guilds_read(&guild_ids, cx));
+                }
+            }),
+    )
 }
 
 fn selection_pill(frame: Stateful<Div>, selected: bool, cx: &App) -> Stateful<Div> {

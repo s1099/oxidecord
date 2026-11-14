@@ -25,7 +25,7 @@
 | Copy message ID and other developer-mode context-menu items | Missing | "Copy Text" and "Copy Message Link" are there |
 | Saving images | Missing | The image viewer's right-click menu copies the image or its link, but can't save it |
 | Invite links shown as server cards | Missing | |
-| Right-click context menus (message, user, channel, server) | Missing | Actions are on the hover toolbar and "More" menu only |
+| Right-click context menus (message, user, channel, server) | Partial | Messages, servers and server folders have one; users and channels don't yet |
 | Report message | Missing | |
 | Suppress embeds on your own message | Missing | |
 | Scheduled and silent messages (`@silent`) | Missing | |
@@ -45,7 +45,7 @@
 | Announcement channel follow and publish | Missing | Listed and readable only |
 | Server and channel notification settings (all, mentions, nothing, suppress `@everyone`) | Partial | Read from Discord and honoured by unread marks and pings; can't be changed in the app |
 | Muting servers, channels and DMs | Missing | |
-| Marking a server or channel as read from the sidebar | Missing | Only Esc in the open conversation marks it read |
+| Marking a server or channel as read from the sidebar | Partial | A server or folder marks read from its right-click menu; a single channel only by Esc in the open conversation |
 | Member list sidebar with roles, presence and grouping | Partial | Guild text and announcement channels and group DMs; threads show none, a group DM's list doesn't follow members joining or leaving until the DM list refreshes, and right-clicking a member does nothing |
 | Role icons, server tags and badges next to names | Missing | |
 | Server header dropdown menu | Missing | The banner and verified badge are drawn; the name opens nothing yet |

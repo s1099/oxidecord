@@ -232,6 +232,8 @@ pub enum GatewayEvent {
         guild_id: Id<GuildMarker>,
         instances: Vec<ActivityInstance>,
     },
+    /// The user left or was removed, or the guild was deleted.
+    GuildRemoved(Id<GuildMarker>),
 }
 
 pub enum ReactionChange {

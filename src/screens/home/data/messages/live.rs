@@ -404,6 +404,9 @@ impl HomeScreen {
             } => {
                 self.handle_guild_activities(guild_id, instances, cx);
             }
+            discord::GatewayEvent::GuildRemoved(guild_id) => {
+                self.remove_guild(guild_id, window, cx);
+            }
             discord::GatewayEvent::MemberList(update) => {
                 self.apply_member_list_update(update, cx);
             }

@@ -36,14 +36,15 @@ pub use model::{
 };
 pub use rest::{
     ActivityLaunch, CommandArgument, CommandIndexScope, CommandInvocation, MESSAGE_PAGE_SIZE,
-    MessageDraft, MessagePage, OAuthRequest, REACTORS_PAGE_SIZE, ack_message, authorize,
+    MessageDraft, MessagePage, OAuthRequest, REACTORS_PAGE_SIZE, ack_bulk, ack_message, authorize,
     delete_message, edit_message, fetch_activity_shelf, fetch_channels, fetch_command_index,
     fetch_current_user, fetch_dms, fetch_entry_point, fetch_frecency, fetch_guilds,
     fetch_install_type, fetch_messages, fetch_oauth_identity, fetch_pins, fetch_proxy_ticket,
     fetch_reactors, fetch_sticker_packs, fetch_user_object, fetch_user_profile,
-    fetch_user_settings, join_activity, leave_activity, log_out, preview_authorization,
-    remove_account, request_autocomplete, ring_call, run_command, save_frecency, save_status,
-    search_messages, send_message, start_activity, stop_ringing, toggle_reaction, trigger_typing,
+    fetch_user_settings, join_activity, leave_activity, leave_guild, log_out,
+    preview_authorization, remove_account, request_autocomplete, ring_call, run_command,
+    save_frecency, save_status, search_messages, send_message, start_activity, stop_ringing,
+    toggle_reaction, trigger_typing,
 };
 pub use rest::{ChannelHome, fetch_channel_home};
 pub use rest::{

@@ -216,6 +216,33 @@ pub async fn ack_message(
     .await
 }
 
+/// Discord takes at most this many read states per bulk ack.
+const ACK_BULK_LIMIT: usize = 100;
+
+/// Marks each channel read up to its message, as "Mark As Read" on a server does.
+pub async fn ack_bulk(acks: Vec<(Id<ChannelMarker>, Id<MessageMarker>)>) -> Result<(), String> {
+    request(move |client| async move {
+        for chunk in acks.chunks(ACK_BULK_LIMIT) {
+            let read_states: Vec<_> = chunk
+                .iter()
+                .map(|(channel_id, message_id)| {
+                    serde_json::json!({
+                        "channel_id": channel_id,
+                        "message_id": message_id,
+                        "read_state_type": 0,
+                    })
+                })
+                .collect();
+            let request = RequestBuilder::raw(Method::Post, "read-states/ack-bulk".to_owned())
+                .json(&serde_json::json!({ "read_states": read_states }))
+                .build()?;
+            client.request::<EmptyBody>(request).await?;
+        }
+        Ok(())
+    })
+    .await
+}
+
 /// What a sent message carries besides its files.
 pub struct MessageDraft {
     pub content: String,

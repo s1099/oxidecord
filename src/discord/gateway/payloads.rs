@@ -358,6 +358,9 @@ pub(super) struct ThreadDeletePayload {
 #[derive(Deserialize)]
 pub(super) struct GuildDeletePayload {
     pub(super) id: Id<GuildMarker>,
+    /// Absent when the user left, was removed, or the guild was deleted.
+    #[serde(default)]
+    pub(super) unavailable: bool,
 }
 
 #[derive(Deserialize)]
