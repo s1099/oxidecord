@@ -1,9 +1,12 @@
-//! What a server's or folder's right-click menu does: marking it read and
-//! leaving it.
+//! What the right-click menus on servers, folders and channels do: marking
+//! them read and leaving a server.
 
 use gpui_kit::component::{WindowExt as _, button::ButtonVariant, dialog::DialogButtonProps};
 use gpui_kit::*;
-use twilight_model::id::{Id, marker::GuildMarker};
+use twilight_model::id::{
+    Id,
+    marker::{ChannelMarker, GuildMarker, MessageMarker},
+};
 
 use crate::discord;
 use crate::screens::home::{HomeScreen, View};
@@ -20,6 +23,49 @@ impl HomeScreen {
             .iter()
             .flat_map(|&guild_id| self.unreads.guild_unacked(guild_id))
             .collect();
+        let clears_open = self.view == View::Guild
+            && self
+                .selected_guild
+                .is_some_and(|id| guild_ids.contains(&id));
+        self.ack_now(acks, clears_open, cx);
+    }
+
+    /// The open server, as Discord's shift+escape does.
+    pub(in crate::screens::home) fn mark_open_guild_read(&mut self, cx: &mut Context<Self>) {
+        if self.view != View::Guild {
+            return;
+        }
+        if let Some(guild_id) = self.selected_guild {
+            self.mark_guilds_read(&[guild_id], cx);
+        }
+    }
+
+    pub(in crate::screens::home) fn mark_channel_read(
+        &mut self,
+        channel_id: Id<ChannelMarker>,
+        cx: &mut Context<Self>,
+    ) {
+        if !self.unreads.is_unread(channel_id) && self.unreads.mentions(channel_id) == 0 {
+            return;
+        }
+        let acks: Vec<_> = self
+            .unreads
+            .latest(channel_id)
+            .map(|latest| (channel_id, latest))
+            .into_iter()
+            .collect();
+        let clears_open = self.selected_channel == Some(channel_id);
+        self.ack_now(acks, clears_open, cx);
+    }
+
+    /// Skips the ack batching, since the user asked for it outright. `clears_open` drops the open
+    /// conversation's "new" divider and any mark-unread hold along with it.
+    fn ack_now(
+        &mut self,
+        acks: Vec<(Id<ChannelMarker>, Id<MessageMarker>)>,
+        clears_open: bool,
+        cx: &mut Context<Self>,
+    ) {
         if acks.is_empty() {
             return;
         }
@@ -27,18 +73,14 @@ impl HomeScreen {
             self.unreads.ack(channel_id, message_id);
             self.pending_acks.remove(&channel_id);
         }
-        if self.view == View::Guild
-            && self
-                .selected_guild
-                .is_some_and(|id| guild_ids.contains(&id))
-        {
+        if clears_open {
             self.marked_unread = false;
             self.set_unread_marker(None);
         }
         cx.notify();
         cx.spawn(async move |_, _| {
             if let Err(err) = discord::ack_bulk(acks).await {
-                eprintln!("marking servers read failed: {err}");
+                eprintln!("marking read failed: {err}");
             }
         })
         .detach();

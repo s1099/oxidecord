@@ -1,7 +1,11 @@
 //! The channel list itself: one row per channel, grouped under its category.
 
 use gpui_kit::component::{
-    ActiveTheme as _, Icon, IconName, Sizable as _, collapsible::Collapsible, h_flex, v_flex,
+    ActiveTheme as _, Icon, IconName, Sizable as _,
+    collapsible::Collapsible,
+    h_flex,
+    menu::{ContextMenuExt as _, PopupMenu, PopupMenuItem},
+    v_flex,
 };
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
@@ -82,6 +86,8 @@ impl HomeScreen {
         let unread = self.unreads.shows_unread(thread_id, thread.parent_id);
         let muted = self.unreads.is_muted(thread_id, thread.parent_id);
         let mentions = self.unreads.mentions(thread_id);
+        let has_unread = self.unreads.is_unread(thread_id) || mentions > 0;
+        let screen = cx.entity().downgrade();
         let spine = theme.border;
 
         h_flex()
@@ -145,6 +151,9 @@ impl HomeScreen {
             .on_click(cx.listener(move |this, _, window, cx| {
                 this.open_thread(thread_id, window, cx);
             }))
+            .context_menu(move |menu, _, _| {
+                mark_read_item(menu, screen.clone(), thread_id, has_unread)
+            })
     }
 
     fn channel_row(&self, channel: &Channel, cx: &Context<Self>) -> impl IntoElement {
@@ -160,6 +169,8 @@ impl HomeScreen {
         let unread = self.shows_unread(channel);
         let muted = self.unreads.is_muted(channel_id, channel.parent_id);
         let mentions = self.unreads.mentions(channel_id);
+        let has_unread = self.unreads.is_unread(channel_id) || mentions > 0;
+        let screen = cx.entity().downgrade();
         let group = SharedString::from(format!("channel-{channel_id}"));
 
         h_flex()
@@ -210,6 +221,9 @@ impl HomeScreen {
                     this.select_channel(channel_id, window, cx);
                 }
             }))
+            .context_menu(move |menu, _, _| {
+                mark_read_item(menu, screen.clone(), channel_id, has_unread)
+            })
     }
 
     /// Opens a voice channel's text chat without joining. Shown on hover and on the user's own
@@ -382,4 +396,23 @@ impl HomeScreen {
 
         collapsible.into_any_element()
     }
+}
+
+/// Disabled with nothing to clear, as in Discord.
+fn mark_read_item(
+    menu: PopupMenu,
+    screen: WeakEntity<HomeScreen>,
+    channel_id: Id<ChannelMarker>,
+    has_unread: bool,
+) -> PopupMenu {
+    menu.item(
+        PopupMenuItem::new("Mark As Read")
+            .icon(Icon::default().path("icons/check-check.svg"))
+            .disabled(!has_unread)
+            .on_click(move |_, _, cx| {
+                if let Some(screen) = screen.upgrade() {
+                    screen.update(cx, |this, cx| this.mark_channel_read(channel_id, cx));
+                }
+            }),
+    )
 }

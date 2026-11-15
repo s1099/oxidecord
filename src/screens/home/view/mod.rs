@@ -24,7 +24,7 @@ use gpui_kit::*;
 
 use crate::discord::DirectMessage;
 
-use super::{FocusSearch, HOME_CONTEXT, HomeScreen, MarkConversationRead, View};
+use super::{FocusSearch, HOME_CONTEXT, HomeScreen, MarkConversationRead, MarkGuildRead, View};
 use crate::ui::depth;
 use crate::ui::smooth_scroll::SmoothScroll;
 
@@ -105,6 +105,7 @@ impl Render for HomeScreen {
                     this.mark_conversation_read(window, cx);
                 }
             }))
+            .on_action(cx.listener(|this, _: &MarkGuildRead, _, cx| this.mark_open_guild_read(cx)))
             .on_action(cx.listener(Self::on_copy_selection))
             .on_action(cx.listener(Self::toggle_quick_switcher))
             .on_action(

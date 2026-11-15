@@ -16,7 +16,7 @@ use gpui_kit::*;
 use crate::screens::app::AppScreen;
 use crate::screens::home::{
     AutocompleteAccept, AutocompleteNext, AutocompletePrevious, COMPOSER_CONTEXT, CopySelection,
-    EDIT_CONTEXT, EditLastMessage, FocusSearch, HOME_CONTEXT, MarkConversationRead,
+    EDIT_CONTEXT, EditLastMessage, FocusSearch, HOME_CONTEXT, MarkConversationRead, MarkGuildRead,
     PasteAttachment, SEARCH_CONTEXT, SaveEdit, SearchAccept, SearchNext, SearchPrevious,
     SearchSubmit, SendMessage, ToggleQuickSwitcher,
 };
@@ -98,6 +98,7 @@ fn main() {
             // Screen context, not none: a global binding would beat any input or
             // menu that binds escape.
             KeyBinding::new("escape", MarkConversationRead, Some(HOME_CONTEXT)),
+            KeyBinding::new("shift-escape", MarkGuildRead, Some(HOME_CONTEXT)),
         ]);
 
         let options = WindowOptions {

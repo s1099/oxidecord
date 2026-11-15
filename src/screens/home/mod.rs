@@ -79,6 +79,8 @@ actions!(
         /// Bound to escape, as in Discord; in the composer the input's own escape
         /// does it once nothing else needs closing.
         MarkConversationRead,
+        /// Shift+Escape, as in Discord: marks the whole open server read.
+        MarkGuildRead,
         /// Copies the message-list selection, handing on to the input's copy when empty.
         CopySelection,
         /// Ctrl+K, as in Discord; pressed again it closes.

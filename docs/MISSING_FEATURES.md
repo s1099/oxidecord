@@ -25,7 +25,7 @@
 | Copy message ID and other developer-mode context-menu items | Missing | "Copy Text" and "Copy Message Link" are there |
 | Saving images | Missing | The image viewer's right-click menu copies the image or its link, but can't save it |
 | Invite links shown as server cards | Missing | |
-| Right-click context menus (message, user, channel, server) | Partial | Messages, servers and server folders have one; users and channels don't yet |
+| Right-click context menus (message, user, channel, server) | Partial | Messages, servers, server folders, channels and threads have one (channels only mark as read so far); users don't yet |
 | Report message | Missing | |
 | Suppress embeds on your own message | Missing | |
 | Scheduled and silent messages (`@silent`) | Missing | |
@@ -45,7 +45,6 @@
 | Announcement channel follow and publish | Missing | Listed and readable only |
 | Server and channel notification settings (all, mentions, nothing, suppress `@everyone`) | Partial | Read from Discord and honoured by unread marks and pings; can't be changed in the app |
 | Muting servers, channels and DMs | Missing | |
-| Marking a server or channel as read from the sidebar | Partial | A server or folder marks read from its right-click menu; a single channel only by Esc in the open conversation |
 | Member list sidebar with roles, presence and grouping | Partial | Guild text and announcement channels and group DMs; threads show none, a group DM's list doesn't follow members joining or leaving until the DM list refreshes, and right-clicking a member does nothing |
 | Role icons, server tags and badges next to names | Missing | |
 | Server header dropdown menu | Missing | The banner and verified badge are drawn; the name opens nothing yet |
@@ -135,7 +134,7 @@
 | Appearance settings (compact mode, font scaling, message spacing, zoom level) | Missing | |
 | Accessibility (reduced motion, saturation, role colors, text-to-speech, screen-reader support) | Missing | |
 | Chat settings (display images, embeds, link previews, emoji autoconvert) | Missing | |
-| Keybinds settings and global shortcuts (Alt+Up/Down channel nav) | Missing | Only paste, send, save edit, edit-last-message, Esc mark-as-read and Ctrl+K quick switcher are bound |
+| Keybinds settings and global shortcuts (Alt+Up/Down channel nav) | Missing | Only paste, send, save edit, edit-last-message, Esc mark-as-read, Shift+Esc mark-server-read and Ctrl+K quick switcher are bound |
 | Language and localization | Missing | |
 | Streamer mode | Missing | |
 | Developer mode (copy IDs) | Missing | |
