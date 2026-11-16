@@ -163,3 +163,13 @@ Entry format:
   right-click menu reaches the scrim too. `src/screens/home/view/image_viewer.rs:92`
 - **Animated images copy their first frame** — only PNG and a bitmap go on the clipboard,
   as Discord's own "Copy Image" does. `src/platform/clipboard.rs:89`
+
+## Profile popout
+
+- **No friend button** — Discord's card shows the friendship state (and add/accept) beside
+  the menu, but the gateway handling only keeps blocks out of `RELATIONSHIP_*`, so the card
+  can't tell a friend from a stranger. `src/screens/home/view/profile/card.rs:216`
+- **Messaging from the card overwrites a draft** — the text is sent through the composer, so
+  anything already typed in that DM's composer is replaced. `src/screens/home/data/profile.rs:174`
+- **Stale cache** — a profile is fetched once per user and server and kept for the session,
+  so a changed bio, banner or roles show only after a restart. `src/screens/home/data/profile.rs:78`

@@ -1,16 +1,26 @@
-//! The card itself: banner, avatar, identity line, and the details box.
+//! The card itself: banner, avatar, identity, mutuals, bio, roles, and the box
+//! for messaging them.
 
 use gpui_kit::component::{
-    ActiveTheme as _, h_flex, separator::Separator, skeleton::Skeleton, v_flex,
+    ActiveTheme as _, IconName, Sizable as _,
+    button::{Button, ButtonVariants as _},
+    h_flex,
+    input::Input,
+    menu::{DropdownMenu as _, PopupMenuItem},
+    skeleton::Skeleton,
+    v_flex,
 };
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
+use twilight_model::id::{Id, marker::GuildMarker};
 
-use crate::discord::UserProfile;
+use crate::discord::{self, UserProfile};
+use crate::screens::home::view::markdown::MarkdownOptions;
 use crate::screens::home::view::user_panel::status_indicator;
 use crate::screens::home::view::{avatar, bot_tag};
 use crate::screens::home::{HomeScreen, ProfilePopup};
 use crate::ui::depth::{self, Level, radius};
+use crate::ui::tooltip;
 
 pub(in crate::screens::home::view) const CARD_WIDTH: f32 = 300.;
 
@@ -24,10 +34,14 @@ const STATUS_SIZE: f32 = 16.;
 
 const AVATAR_RING: f32 = 6.;
 
-const AVATAR_INSET: f32 = 10.;
+const INSET: f32 = 16.;
 
-/// Keeps a wall-of-text bio from stretching the card down the window.
-const MAX_BIO_LINES: usize = 3;
+const BADGE_SIZE: f32 = 18.;
+
+const MUTUAL_AVATAR_SIZE: f32 = 16.;
+
+/// Discord stacks no more than this many mutual friends' faces.
+const MAX_MUTUAL_AVATARS: usize = 3;
 
 impl HomeScreen {
     pub(super) fn render_profile_card(
@@ -37,9 +51,10 @@ impl HomeScreen {
     ) -> impl IntoElement {
         let theme = cx.theme();
         let profile = popup.profile.as_ref();
+        let is_self = Some(popup.user_id) == self.self_user_id;
 
         // Accent colour and banner image only arrive with the fetched profile.
-        let banner_url = profile.and_then(|profile| profile.banner_url.clone());
+        let banner_url = profile.and_then(|profile| profile.display_banner().cloned());
         let banner_height = if banner_url.is_some() {
             BANNER_HEIGHT
         } else {
@@ -51,7 +66,7 @@ impl HomeScreen {
 
         // The opening message supplies avatar and name while the profile loads.
         let avatar_url = profile
-            .and_then(|profile| profile.avatar_url.clone())
+            .and_then(|profile| profile.display_avatar().cloned())
             .or_else(|| popup.avatar_url.clone());
         let status_inset =
             AVATAR_SIZE / 2. * (1. - std::f32::consts::FRAC_1_SQRT_2) - (STATUS_SIZE + 4.) / 2.;
@@ -77,6 +92,19 @@ impl HomeScreen {
 
         // gpui clips to rectangles, so the banner rounds its own corners.
         let banner_radius = radius::CARD - px(1.);
+
+        let body = match (profile, &popup.error) {
+            _ if popup.webhook => None,
+            (Some(profile), _) => Some(self.render_details(popup, profile, is_self, cx)),
+            (None, Some(error)) => Some(
+                div()
+                    .text_sm()
+                    .text_color(theme.danger)
+                    .child(error.clone())
+                    .into_any_element(),
+            ),
+            (None, None) => Some(render_skeleton().into_any_element()),
+        };
 
         div()
             .relative()
@@ -104,10 +132,19 @@ impl HomeScreen {
                         )
                     }),
             )
+            .when(!popup.webhook, |this| {
+                this.child(
+                    div()
+                        .absolute()
+                        .top(px(10.))
+                        .right(px(10.))
+                        .child(render_more_menu(popup, profile, cx)),
+                )
+            })
             .child(
                 div()
                     .absolute()
-                    .left(px(AVATAR_INSET - AVATAR_RING))
+                    .left(px(INSET - AVATAR_RING))
                     .top(px(banner_height - AVATAR_SIZE / 2. - AVATAR_RING))
                     .p(px(AVATAR_RING))
                     .rounded_full()
@@ -116,24 +153,106 @@ impl HomeScreen {
             )
             .child(
                 v_flex()
-                    .px(px(AVATAR_INSET))
-                    .pb(px(AVATAR_INSET))
-                    .pt(px(AVATAR_SIZE / 2. + AVATAR_RING + 6.))
-                    .gap(px(10.))
+                    .px(px(INSET))
+                    .pb(px(INSET))
+                    .pt(px(AVATAR_SIZE / 2. + AVATAR_RING + 8.))
+                    .gap(px(12.))
                     .child(render_identity(popup, cx))
-                    .when(!popup.webhook, |this| {
-                        this.child(match (profile, &popup.error) {
-                            (Some(profile), _) => render_details(profile, cx),
-                            (None, Some(error)) => div()
-                                .text_sm()
-                                .text_color(theme.danger)
-                                .child(error.clone())
-                                .into_any_element(),
-                            (None, None) => render_skeleton().into_any_element(),
-                        })
+                    .children(body)
+                    .when(!popup.webhook && !is_self, |this| {
+                        this.child(Input::new(&popup.message).focus_bordered(false))
                     }),
             )
     }
+
+    fn render_details(
+        &self,
+        popup: &ProfilePopup,
+        profile: &UserProfile,
+        is_self: bool,
+        cx: &Context<Self>,
+    ) -> AnyElement {
+        let bio = profile.display_bio().map(|bio| {
+            div().text_sm().child(self.render_markdown(
+                bio,
+                MarkdownOptions::new(format!("profile-bio-{}", popup.user_id), &[]),
+                cx,
+            ))
+        });
+        let roles = popup
+            .guild_id
+            .zip(profile.member.as_ref())
+            .map(|(guild_id, member)| self.member_roles_sorted(guild_id, &member.roles))
+            .filter(|roles| !roles.is_empty())
+            .map(|roles| render_roles(roles, cx));
+
+        v_flex()
+            .gap(px(12.))
+            .when(!is_self, |this| this.children(render_mutuals(profile, cx)))
+            .children(bio)
+            .children(roles)
+            .into_any_element()
+    }
+
+    /// Highest first, as Discord lists them; `@everyone` is everyone's and never shown.
+    fn member_roles_sorted(
+        &self,
+        guild_id: Id<GuildMarker>,
+        ids: &[Id<twilight_model::id::marker::RoleMarker>],
+    ) -> Vec<discord::Role> {
+        let Some(known) = self.guild_data.roles.get(&guild_id) else {
+            return Vec::new();
+        };
+        let mut roles: Vec<discord::Role> = ids
+            .iter()
+            .filter(|id| id.get() != guild_id.get())
+            .filter_map(|id| known.get(id).cloned())
+            .collect();
+        roles.sort_by_key(|role| std::cmp::Reverse(role.position));
+        roles
+    }
+}
+
+fn render_more_menu(
+    popup: &ProfilePopup,
+    profile: Option<&UserProfile>,
+    cx: &App,
+) -> impl IntoElement {
+    let user_id = popup.user_id;
+    let username = profile.map(|profile| profile.username.clone());
+    let created_at = profile.map(|profile| profile.created_at.clone());
+
+    // Dimmed so it reads over any banner.
+    div()
+        .rounded_full()
+        .bg(black().opacity(0.45))
+        .child(
+            Button::new("profile-more")
+                .icon(IconName::Ellipsis)
+                .ghost()
+                .small()
+                .rounded_full()
+                .text_color(white())
+                .tooltip("More")
+                .dropdown_menu_with_anchor(Anchor::TopRight, move |menu, _, _| {
+                    menu.when_some(created_at.clone(), |menu, created_at| {
+                        menu.label(format!("Member since {created_at}")).separator()
+                    })
+                    .when_some(username.clone(), |menu, username| {
+                        menu.item(
+                            PopupMenuItem::new("Copy Username").on_click(move |_, _, cx| {
+                                cx.write_to_clipboard(ClipboardItem::new_string(username.clone()));
+                            }),
+                        )
+                    })
+                    .item(
+                        PopupMenuItem::new("Copy User ID").on_click(move |_, _, cx| {
+                            cx.write_to_clipboard(ClipboardItem::new_string(user_id.to_string()));
+                        }),
+                    )
+                }),
+        )
+        .text_color(cx.theme().foreground)
 }
 
 fn render_identity(popup: &ProfilePopup, cx: &App) -> impl IntoElement {
@@ -154,7 +273,7 @@ fn render_identity(popup: &ProfilePopup, cx: &App) -> impl IntoElement {
                         .font_weight(FontWeight::BOLD)
                         .child(
                             profile
-                                .map(|profile| profile.name.clone())
+                                .map(|profile| profile.display_name().to_owned())
                                 .unwrap_or_else(|| popup.name.clone()),
                         ),
                 )
@@ -168,77 +287,131 @@ fn render_identity(popup: &ProfilePopup, cx: &App) -> impl IntoElement {
                 .gap(px(8.))
                 .items_center()
                 .text_sm()
-                .text_color(theme.muted_foreground)
+                .text_color(theme.foreground)
                 .children(
                     profile
                         .map(|profile| div().min_w_0().truncate().child(profile.username.clone())),
                 )
                 .children(
                     profile
-                        .and_then(|profile| profile.pronouns.clone())
+                        .and_then(|profile| profile.display_pronouns())
                         .map(|pronouns| {
                             h_flex()
                                 .gap(px(8.))
                                 .items_center()
+                                .text_color(theme.muted_foreground)
                                 .child(div().size(px(4.)).rounded_full().bg(theme.muted_foreground))
-                                .child(div().child(pronouns))
+                                .child(div().child(pronouns.to_owned()))
                         }),
+                )
+                .children(
+                    profile
+                        .filter(|profile| !profile.badges.is_empty())
+                        .map(|profile| render_badges(&profile.badges, cx)),
                 ),
         )
 }
 
-fn render_details(profile: &UserProfile, cx: &App) -> AnyElement {
-    v_flex()
-        .p(px(8.))
-        .gap(px(8.))
+fn render_badges(badges: &[discord::ProfileBadge], cx: &App) -> impl IntoElement {
+    h_flex()
+        .flex_shrink_0()
+        .gap(px(2.))
+        .p(px(2.))
         .rounded(radius::CONTROL)
-        .bg(cx.theme().background)
-        .when_some(profile.bio.clone(), |this, bio| {
-            this.child(section(
-                "ABOUT ME",
-                div()
-                    .line_clamp(MAX_BIO_LINES)
-                    .text_ellipsis()
-                    .child(clamp_lines(&bio, MAX_BIO_LINES))
-                    .into_any_element(),
-                cx,
-            ))
-            .child(Separator::horizontal())
-        })
-        .child(section(
-            "MEMBER SINCE",
-            div().child(profile.created_at.clone()).into_any_element(),
-            cx,
-        ))
-        .into_any_element()
-}
-
-/// gpui's own clamp estimates how much fits in `max` full-width lines, so its
-/// ellipsis never fires when explicit line breaks run out first; this covers
-/// that and leaves wrapping overflow to the clamp.
-fn clamp_lines(text: &str, max: usize) -> String {
-    let mut lines = text.lines();
-    let mut kept = lines.by_ref().take(max).collect::<Vec<_>>().join(
-        "
-",
-    );
-    if lines.next().is_some() {
-        kept.push('…');
-    }
-    kept
-}
-
-fn section(header: &'static str, content: AnyElement, cx: &App) -> impl IntoElement {
-    v_flex()
-        .gap(px(5.))
-        .child(
+        .border_1()
+        .border_color(cx.theme().border)
+        .children(badges.iter().enumerate().map(|(index, badge)| {
+            let link = badge.link.clone();
             div()
-                .text_size(px(11.))
-                .font_weight(FontWeight::BOLD)
-                .text_color(cx.theme().foreground)
-                .child(header),
-        )
-        .child(div().text_sm().child(content))
+                .id(("profile-badge", index))
+                .size(px(BADGE_SIZE))
+                .tooltip(tooltip::text(badge.description.clone()))
+                .when_some(link, |this, link| {
+                    this.cursor_pointer()
+                        .on_click(move |_, _, cx| cx.open_url(&link))
+                })
+                .child(
+                    img(badge.icon_url.clone())
+                        .image_cache(&crate::ui::avatar::cache(cx))
+                        .size_full(),
+                )
+        }))
+}
+
+/// "3 Mutual Friends • 1 Mutual Server", with the first friends' faces in front.
+fn render_mutuals(profile: &UserProfile, cx: &App) -> Option<impl IntoElement> {
+    let theme = cx.theme();
+    let friends = profile.mutual_friends_count;
+    let servers = profile.mutual_guilds.len();
+    if friends == 0 && servers == 0 {
+        return None;
+    }
+    let plural = |count: usize, noun: &str| {
+        format!("{count} Mutual {noun}{}", if count == 1 { "" } else { "s" })
+    };
+
+    let faces = h_flex().children(
+        profile
+            .mutual_friends
+            .iter()
+            .take(MAX_MUTUAL_AVATARS)
+            .enumerate()
+            .map(|(index, friend)| {
+                div()
+                    .when(index > 0, |this| this.ml(px(-4.)))
+                    .rounded_full()
+                    .border_2()
+                    .border_color(theme.popover)
+                    .child(avatar(
+                        friend.name.clone(),
+                        friend.avatar_url.clone(),
+                        px(MUTUAL_AVATAR_SIZE),
+                    ))
+            }),
+    );
+
+    let mut parts = Vec::new();
+    if friends > 0 {
+        parts.push(plural(friends, "Friend"));
+    }
+    if servers > 0 {
+        parts.push(plural(servers, "Server"));
+    }
+
+    Some(
+        h_flex()
+            .gap(px(6.))
+            .items_center()
+            .text_sm()
+            .text_color(theme.muted_foreground)
+            .when(!profile.mutual_friends.is_empty(), |this| this.child(faces))
+            .child(div().min_w_0().truncate().child(parts.join(" • "))),
+    )
+}
+
+fn render_roles(roles: Vec<discord::Role>, cx: &App) -> impl IntoElement {
+    let theme = cx.theme();
+    h_flex()
+        .flex_wrap()
+        .gap(px(4.))
+        .children(roles.into_iter().map(|role| {
+            let color: Hsla = role
+                .color
+                .map_or(theme.muted_foreground, |color| rgb(color).into());
+            h_flex()
+                .max_w_full()
+                .gap(px(5.))
+                .items_center()
+                .px(px(6.))
+                .py(px(2.))
+                .rounded(radius::CONTROL)
+                .border_1()
+                .border_color(theme.border)
+                .bg(theme.background)
+                .text_xs()
+                .child(div().flex_shrink_0().size(px(10.)).rounded_full().bg(color))
+                .child(div().min_w_0().truncate().child(role.name))
+        }))
 }
 
 /// Keeps the card from resizing much once the real content lands.

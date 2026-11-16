@@ -2,7 +2,7 @@
 
 use twilight_model::id::{
     Id,
-    marker::{ChannelMarker, GuildMarker},
+    marker::{ChannelMarker, GuildMarker, UserMarker},
 };
 
 /// Extension for a CDN image hash: animated assets are prefixed `a_` and only
@@ -51,6 +51,35 @@ pub(super) fn default_avatar_url(user_id: u64, discriminator: u16) -> String {
         u64::from(discriminator) % 5
     };
     format!("https://cdn.discordapp.com/embed/avatars/{index}.png")
+}
+
+pub(super) fn member_avatar_url(
+    guild_id: Id<GuildMarker>,
+    user_id: Id<UserMarker>,
+    hash: &str,
+    size: u32,
+) -> String {
+    format!(
+        "https://cdn.discordapp.com/guilds/{guild_id}/users/{user_id}/avatars/{hash}.{}?size={size}",
+        extension(hash)
+    )
+}
+
+pub(super) fn member_banner_url(
+    guild_id: Id<GuildMarker>,
+    user_id: Id<UserMarker>,
+    hash: &str,
+    size: u32,
+) -> String {
+    format!(
+        "https://cdn.discordapp.com/guilds/{guild_id}/users/{user_id}/banners/{hash}.{}?size={size}",
+        extension(hash)
+    )
+}
+
+/// Badge icons are only served as PNG.
+pub(super) fn badge_icon_url(hash: &str) -> String {
+    format!("https://cdn.discordapp.com/badge-icons/{hash}.png")
 }
 
 pub(super) fn guild_icon_url(guild_id: Id<GuildMarker>, hash: &str) -> String {

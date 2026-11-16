@@ -67,7 +67,7 @@ pub use sticker::{Sticker, StickerItem, StickerPack};
 pub use system::{SystemEvent, WELCOMES, call_duration};
 pub use thread::{Membership, Thread};
 pub use upload::{DEFAULT_UPLOAD_LIMIT, MAX_UPLOAD_TOTAL, Upload, UploadProgress};
-pub use user::{CurrentUser, Reactor, UserProfile};
+pub use user::{CurrentUser, ProfileBadge, Reactor, UserProfile};
 pub use voice::{StreamServerInfo, VoiceServerInfo, VoiceUserState, stream_key};
 
 pub(super) use activity::{

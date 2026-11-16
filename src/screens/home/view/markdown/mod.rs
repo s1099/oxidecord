@@ -161,6 +161,7 @@ impl<'a> Renderer<'a> {
                                 avatar_url.clone(),
                                 false,
                                 position,
+                                window,
                                 cx,
                             )
                         });

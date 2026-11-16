@@ -74,10 +74,9 @@
 | Closing (hiding) a DM from the list | Missing | |
 | Active Now panel | Missing | |
 | Notes on users | Missing | |
-| Mutual servers and mutual friends in profiles | Missing | |
-| Full user profile modal (activity, connections, member-since, roles) | Partial | Popout has a banner, bio, pronouns and creation date |
-| Server-specific profile (nickname, server avatar, roles) in the popout | Missing | |
+| Full user profile modal (activity, connections, member-since, roles) | Partial | The popout has the banner, badges, mutual counts, bio, server roles and member-since (in its menu); there's no full modal, and clicking the mutuals opens nothing |
 | Avatar decorations, profile effects, nameplates | Missing | |
+| Game collection and other profile widgets | Missing | The profile response's `widgets` aren't read |
 
 ## Presence and status
 

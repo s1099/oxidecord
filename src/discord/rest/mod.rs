@@ -28,7 +28,9 @@ pub use activity::{
     leave_activity, preview_authorization, start_activity,
 };
 pub use auth::{log_out, remove_account};
-pub use channel::{ChannelHome, fetch_channel_home, fetch_dms, ring_call, stop_ringing};
+pub use channel::{
+    ChannelHome, fetch_channel_home, fetch_dms, open_dm_with, ring_call, stop_ringing,
+};
 pub use command::{
     CommandArgument, CommandIndexScope, CommandInvocation, fetch_command_index,
     request_autocomplete, run_command,

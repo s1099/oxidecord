@@ -5,7 +5,7 @@ use twilight_http::response::marker::{EmptyBody, ListBody};
 use twilight_http::routing::Route;
 use twilight_model::id::{
     Id,
-    marker::{ChannelMarker, GuildMarker},
+    marker::{ChannelMarker, GuildMarker, UserMarker},
 };
 
 use super::request;
@@ -93,6 +93,20 @@ pub async fn stop_ringing(channel_id: Id<ChannelMarker>) -> Result<(), String> {
         .build()?;
         client.request::<EmptyBody>(request).await?;
         Ok(())
+    })
+    .await
+}
+
+/// The one-on-one DM with `user_id`, created if there isn't one yet
+/// (`POST /users/@me/channels`, which returns the existing one otherwise).
+pub async fn open_dm_with(user_id: Id<UserMarker>) -> Result<DirectMessage, String> {
+    request(move |client| async move {
+        let channel = client
+            .create_private_channel(user_id)
+            .await?
+            .model()
+            .await?;
+        convert_dm(channel).ok_or_else(|| anyhow::anyhow!("Discord didn't return a DM"))
     })
     .await
 }

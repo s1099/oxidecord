@@ -124,6 +124,7 @@ impl HomeScreen {
                             avatar,
                             false,
                             window.mouse_position(),
+                            window,
                             cx,
                         );
                     }

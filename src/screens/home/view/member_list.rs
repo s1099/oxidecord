@@ -285,6 +285,7 @@ impl HomeScreen {
                         avatar_url.clone(),
                         false,
                         point(x, event.position.y),
+                        window,
                         cx,
                     );
                 }),

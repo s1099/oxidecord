@@ -436,26 +436,29 @@ impl HomeScreen {
         let profile_name = author_name.clone();
         let author_avatar_url = message.author_avatar_url.clone();
         let author_webhook = message.author_webhook;
+        let open_profile = || {
+            let profile_name = profile_name.clone();
+            let author_avatar_url = author_avatar_url.clone();
+            cx.listener(move |this, event: &MouseDownEvent, window, cx| {
+                cx.stop_propagation();
+                this.open_profile(
+                    author_id,
+                    profile_name.clone(),
+                    author_avatar_url.clone(),
+                    author_webhook,
+                    event.position,
+                    window,
+                    cx,
+                );
+            })
+        };
         let avatar = div()
             .id(("message-avatar", message.id.get()))
             .flex_shrink_0()
             .cursor_pointer()
             .hover(|this| this.opacity(0.8))
             .child(avatar)
-            .on_mouse_down(
-                MouseButton::Left,
-                cx.listener(move |this, event: &MouseDownEvent, _window, cx| {
-                    cx.stop_propagation();
-                    this.open_profile(
-                        author_id,
-                        profile_name.clone(),
-                        author_avatar_url.clone(),
-                        author_webhook,
-                        event.position,
-                        cx,
-                    );
-                }),
-            );
+            .on_mouse_down(MouseButton::Left, open_profile());
 
         let header_row = h_flex()
             .w_full()
@@ -473,11 +476,17 @@ impl HomeScreen {
                             .items_center()
                             .child(
                                 div()
+                                    .id(("message-author", message.id.get()))
+                                    .min_w_0()
+                                    .truncate()
+                                    .cursor_pointer()
+                                    .hover(|this| this.underline())
                                     .text_sm()
                                     .font_weight(FontWeight::SEMIBOLD)
                                     .when_some(self.role_color(author_id), |this, color| {
                                         this.text_color(rgb(color))
                                     })
+                                    .on_mouse_down(MouseButton::Left, open_profile())
                                     .child(author_name),
                             )
                             .when(message.author_bot, |this| this.child(bot_tag(cx)))

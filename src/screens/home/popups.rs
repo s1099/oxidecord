@@ -8,7 +8,7 @@ use gpui_kit::component::input::InputState;
 use gpui_kit::*;
 use twilight_model::id::{
     Id,
-    marker::{ChannelMarker, MessageMarker, UserMarker},
+    marker::{ChannelMarker, GuildMarker, MessageMarker, UserMarker},
 };
 
 use crate::discord;
@@ -19,6 +19,8 @@ use super::stickers::PickerLayout as StickerLayout;
 
 pub(super) struct ProfilePopup {
     pub user_id: Id<UserMarker>,
+    /// The server it was opened in, whose profile and roles it shows.
+    pub guild_id: Option<Id<GuildMarker>>,
     /// Window coordinates of the avatar click.
     pub position: Point<Pixels>,
     pub name: String,
@@ -28,6 +30,9 @@ pub(super) struct ProfilePopup {
     /// `None` until the fetch resolves; the card shows a skeleton.
     pub profile: Option<discord::UserProfile>,
     pub error: Option<String>,
+    /// The "Message @name" box; Enter sends it to their DM.
+    pub message: Entity<InputState>,
+    pub _message_sent: Subscription,
 }
 
 pub(super) struct PinsPopup {
