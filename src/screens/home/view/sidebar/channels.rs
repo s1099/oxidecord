@@ -98,6 +98,7 @@ impl HomeScreen {
             .flex_shrink_0()
             .w_full()
             .h(banner_height)
+            .overflow_hidden()
             .child(
                 img(url)
                     .image_cache(&crate::ui::avatar::cache(cx))

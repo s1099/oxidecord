@@ -128,6 +128,7 @@ impl HomeScreen {
                 div()
                     .w_full()
                     .h(px(banner_height))
+                    .overflow_hidden()
                     .rounded_t(banner_radius)
                     .bg(banner_color)
                     .when_some(banner_url, |this, url| {

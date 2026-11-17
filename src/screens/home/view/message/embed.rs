@@ -414,6 +414,8 @@ impl HomeScreen {
                 .id(id.element_id(&format!("embed-gallery-{index}")))
                 .w(px(cell_width))
                 .h(px(height))
+                // `Cover` paints past the image's bounds; only the tile clips it.
+                .overflow_hidden()
                 .cursor_pointer()
                 .hover(|this| this.opacity(0.9))
                 .on_click(cx.listener(move |this, _, window, cx| {

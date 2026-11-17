@@ -164,6 +164,7 @@ impl HomeScreen {
                 div()
                     .w_full()
                     .h(px(BANNER_HEIGHT))
+                    .overflow_hidden()
                     .rounded_tl(banner_radius)
                     .bg(banner_color)
                     .when_some(banner_url, |this, url| {
@@ -677,6 +678,7 @@ impl HomeScreen {
                         .relative()
                         .flex_shrink_0()
                         .size(px(ACTIVITY_IMAGE))
+                        .overflow_hidden()
                         .child(
                             img(url)
                                 .image_cache(&crate::ui::avatar::cache(cx))

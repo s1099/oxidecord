@@ -277,6 +277,8 @@ impl HomeScreen {
                     .id(id.clone())
                     .flex_shrink_0()
                     .size(px(THUMBNAIL_SIZE))
+                    // `Cover` paints past the image's bounds; only the box clips it.
+                    .overflow_hidden()
                     .cursor_pointer()
                     .hover(|this| this.opacity(0.9))
                     .on_click(cx.listener(move |this, _, window, cx| {
@@ -338,6 +340,9 @@ impl HomeScreen {
                                 div()
                                     .id(walk.id("gallery"))
                                     .size(px(tile.min(MEDIA_MAX_HEIGHT)))
+                                    // `Cover` paints past the image's bounds; only the tile
+                                    // clips it.
+                                    .overflow_hidden()
                                     .cursor_pointer()
                                     .hover(|this| this.opacity(0.9))
                                     .on_click(cx.listener(move |this, _, window, cx| {
