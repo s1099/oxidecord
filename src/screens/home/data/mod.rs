@@ -21,6 +21,7 @@ pub(super) mod members;
 pub(super) mod messages;
 pub(super) mod notifications;
 pub(super) mod pins;
+pub(super) mod polls;
 pub(super) mod presence;
 pub(super) mod profile;
 pub(super) mod quick_switcher;

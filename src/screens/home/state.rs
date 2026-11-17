@@ -311,6 +311,10 @@ pub struct HomeScreen {
     pub(super) pending_commands: PendingCommands,
     pub(super) command_choices: CommandChoices,
     pub(super) components: Components,
+    /// Answers ticked on a poll but not yet voted, by message.
+    pub(super) poll_picks: HashMap<Id<MessageMarker>, Vec<u8>>,
+    /// Polls showing their tally before the user has voted.
+    pub(super) poll_results_shown: HashSet<Id<MessageMarker>>,
     /// Refocuses the screen when a menu or edit box closes so typing reaches the composer.
     pub(super) _focus_lost: Subscription,
     /// The taskbar thumbnail's call buttons, and what keeps them current.
@@ -540,6 +544,8 @@ impl HomeScreen {
             pending_commands: HashMap::new(),
             command_choices: CommandChoices::default(),
             components: Components::default(),
+            poll_picks: HashMap::new(),
+            poll_results_shown: HashSet::new(),
             _focus_lost: focus_lost,
             #[cfg(windows)]
             thumb_bar: None,

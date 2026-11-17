@@ -19,7 +19,7 @@ use twilight_model::id::{
 
 use super::request;
 use crate::discord::model::{
-    Message, RawPins, RawSearch, ReactionEmoji, Reactor, SearchFilters, SearchResponse,
+    Message, PollDraft, RawPins, RawSearch, ReactionEmoji, Reactor, SearchFilters, SearchResponse,
     SearchScope, UploadProgress, convert_message, convert_reactor, convert_search,
 };
 use crate::platform::http;
@@ -250,6 +250,7 @@ pub struct MessageDraft {
     /// Whether a reply pings the replied-to author.
     pub mention_author: bool,
     pub stickers: Vec<Id<StickerMarker>>,
+    pub poll: Option<PollDraft>,
 }
 
 impl MessageDraft {
@@ -259,6 +260,7 @@ impl MessageDraft {
             reply_to: None,
             mention_author: true,
             stickers: Vec::new(),
+            poll: None,
         }
     }
 }
@@ -282,6 +284,7 @@ pub async fn send_message(
         reply_to,
         mention_author,
         stickers,
+        poll,
     } = draft;
     // Left out, Discord pings the replied-to author; otherwise everything else
     // still mentions, as Discord's client sends it.
@@ -294,7 +297,8 @@ pub async fn send_message(
         ..Default::default()
     });
     request(move |client| async move {
-        if attachments.is_empty() {
+        // twilight's poll is a sent one, with an expiry where a new one takes a duration.
+        if attachments.is_empty() && poll.is_none() {
             let mut request = client
                 .create_message(channel_id)
                 .nonce(nonce)
@@ -311,7 +315,11 @@ pub async fn send_message(
             return Ok(convert_message(request.await?.model().await?));
         }
 
-        let uploaded = upload_attachments(&client, channel_id, attachments, &progress).await?;
+        let uploaded = if attachments.is_empty() {
+            Vec::new()
+        } else {
+            upload_attachments(&client, channel_id, attachments, &progress).await?
+        };
         let sent = async {
             anyhow::ensure!(!progress.is_cancelled(), "upload cancelled");
             // Attachment ids only need to be unique within this message, so the
@@ -334,6 +342,9 @@ pub async fn send_message(
             });
             if !stickers.is_empty() {
                 body["sticker_ids"] = serde_json::to_value(&stickers)?;
+            }
+            if let Some(poll) = &poll {
+                body["poll"] = poll.to_json();
             }
             if let Some(message_id) = reply_to {
                 body["message_reference"] =
@@ -517,6 +528,42 @@ pub async fn delete_message(
     request(move |client| async move {
         client.delete_message(channel_id, message_id).await?;
         Ok(())
+    })
+    .await
+}
+
+/// Replaces the user's vote on a poll; no answers takes it back.
+pub async fn vote_poll(
+    channel_id: Id<ChannelMarker>,
+    message_id: Id<MessageMarker>,
+    answer_ids: Vec<u8>,
+) -> Result<(), String> {
+    request(move |client| async move {
+        let request = RequestBuilder::raw(
+            Method::Put,
+            format!("channels/{channel_id}/polls/{message_id}/answers/@me"),
+        )
+        .json(&serde_json::json!({ "answer_ids": answer_ids }))
+        .build()?;
+        client.request::<EmptyBody>(request).await?;
+        Ok(())
+    })
+    .await
+}
+
+/// Closes the user's own poll early. The result comes back as a `MESSAGE_UPDATE`.
+pub async fn end_poll(
+    channel_id: Id<ChannelMarker>,
+    message_id: Id<MessageMarker>,
+) -> Result<Message, String> {
+    request(move |client| async move {
+        let request = RequestBuilder::raw(
+            Method::Post,
+            format!("channels/{channel_id}/polls/{message_id}/expire"),
+        )
+        .build()?;
+        let message = client.request::<RawMessage>(request).await?.model().await?;
+        Ok(convert_message(message))
     })
     .await
 }

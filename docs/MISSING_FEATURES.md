@@ -13,7 +13,6 @@
 | GIF picker (Tenor) | Missing | |
 | Forwarding messages | Missing | Forwards from others are shown; there is no way to send one |
 | Message length limit and counter | Missing | Messages over 2,000 characters (4,000 with Nitro) are only refused by Discord when sent |
-| Polls (creating, voting, results) | Missing | |
 | Non-media file attachments shown in the chat (audio player, file cards for PDFs, zips, and so on) | Partial | Shown as file cards that open in the browser to download; audio has no inline player, and spoilered files aren't covered |
 | Voice messages (recording and playback) | Missing | |
 | Cloud uploads (`POST /channels/{id}/attachments`, as Discord's client sends files) | Partial | Files go to cloud storage before the message is sent, but are read whole into memory first, and one upload takes at most 500 MiB, so Nitro's 1 GB files are capped at 500 MB |

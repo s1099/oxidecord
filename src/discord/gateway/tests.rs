@@ -752,3 +752,15 @@ fn modal_create_reads_labels_rows_and_text() {
     assert_eq!(select.options.len(), 2);
     assert!(select.options[0].default);
 }
+
+#[test]
+fn poll_votes_say_which_answer_and_which_way() {
+    let events = dispatch_json(
+        "MESSAGE_POLL_VOTE_REMOVE",
+        r#"{"user_id": "2", "channel_id": "100", "message_id": "5", "guild_id": "10", "answer_id": 3}"#,
+    );
+    assert!(matches!(
+        events.as_slice(),
+        [GatewayEvent::PollVote { user_id, answer_id: 3, add: false, .. }] if *user_id == Id::new(2)
+    ));
+}

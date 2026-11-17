@@ -57,6 +57,7 @@ pub struct Channel {
     pub can_add_reactions: bool,
     /// `MENTION_EVERYONE`; without it `@everyone`/`@here` notify no one.
     pub can_mention_everyone: bool,
+    pub can_send_polls: bool,
     pub can_create_public_threads: bool,
     pub can_create_private_threads: bool,
     /// Threads take `SEND_MESSAGES_IN_THREADS`, not `SEND_MESSAGES`.
@@ -85,6 +86,7 @@ impl Thread {
             can_use_external_stickers: allowed(|parent| parent.can_use_external_stickers),
             can_add_reactions: allowed(|parent| parent.can_add_reactions),
             can_mention_everyone: allowed(|parent| parent.can_mention_everyone),
+            can_send_polls: allowed(|parent| parent.can_send_polls),
             can_create_public_threads: false,
             can_create_private_threads: false,
             can_send_in_threads: allowed(|parent| parent.can_send_in_threads),
@@ -185,6 +187,7 @@ pub(super) fn guild_channel(fields: GuildChannelFields) -> Option<Channel> {
         can_use_external_stickers: permissions.contains(Permissions::USE_EXTERNAL_STICKERS),
         can_add_reactions: permissions.contains(Permissions::ADD_REACTIONS),
         can_mention_everyone: permissions.contains(Permissions::MENTION_EVERYONE),
+        can_send_polls: permissions.contains(Permissions::SEND_POLLS),
         can_create_public_threads: permissions.contains(Permissions::CREATE_PUBLIC_THREADS),
         can_create_private_threads: permissions.contains(Permissions::CREATE_PRIVATE_THREADS),
         can_send_in_threads: permissions.contains(Permissions::SEND_MESSAGES_IN_THREADS),

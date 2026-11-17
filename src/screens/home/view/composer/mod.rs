@@ -5,13 +5,16 @@
 mod attachments;
 mod autocomplete;
 mod emoji_picker;
+mod poll_dialog;
 mod reply_banner;
 mod sticker_picker;
 mod typing_indicator;
 
 use gpui_kit::component::{
     ActiveTheme as _, Icon, IconName, Selectable as _, Sizable as _, Size, StyleSized as _, h_flex,
-    input::Textarea, v_flex,
+    input::Textarea,
+    menu::{DropdownMenu as _, PopupMenuItem},
+    v_flex,
 };
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
@@ -94,16 +97,7 @@ impl HomeScreen {
                                     .h(COMPOSER_LINE_HEIGHT)
                                     .flex_shrink_0()
                                     .items_center()
-                                    .child(
-                                        Button::new("add-attachment")
-                                            .icon(IconName::Plus)
-                                            .ghost()
-                                            .small()
-                                            .tooltip("Add attachment")
-                                            .on_click(cx.listener(|this, _, window, cx| {
-                                                this.pick_attachments(window, cx);
-                                            })),
-                                    ),
+                                    .child(self.render_add_button(cx)),
                             )
                             .child(
                                 div()
@@ -180,6 +174,51 @@ impl HomeScreen {
                             ),
                     ),
             )
+            .into_any_element()
+    }
+}
+
+impl HomeScreen {
+    /// Opens a picker straight away where polls can't be sent, else asks which.
+    fn render_add_button(&self, cx: &Context<Self>) -> AnyElement {
+        let button = Button::new("add-attachment")
+            .icon(IconName::Plus)
+            .ghost()
+            .small();
+        if !self.can_send_polls() {
+            return button
+                .tooltip("Upload a file")
+                .on_click(cx.listener(|this, _, window, cx| {
+                    this.pick_attachments(window, cx);
+                }))
+                .into_any_element();
+        }
+        let screen = cx.entity().downgrade();
+        button
+            .dropdown_menu_with_anchor(Anchor::BottomLeft, move |menu, _, _| {
+                let item = |label: &'static str,
+                            icon: &'static str,
+                            run: fn(&mut HomeScreen, &mut Window, &mut Context<HomeScreen>)| {
+                    let screen = screen.clone();
+                    PopupMenuItem::new(label)
+                        .icon(Icon::default().path(icon))
+                        .on_click(move |_, window, cx| {
+                            if let Some(screen) = screen.upgrade() {
+                                screen.update(cx, |this, cx| run(this, window, cx));
+                            }
+                        })
+                };
+                menu.item(item(
+                    "Upload a File",
+                    "icons/upload.svg",
+                    |this, window, cx| this.pick_attachments(window, cx),
+                ))
+                .item(item(
+                    "Create Poll",
+                    "icons/chart-bar.svg",
+                    |this, window, cx| this.open_poll_creator(window, cx),
+                ))
+            })
             .into_any_element()
     }
 }

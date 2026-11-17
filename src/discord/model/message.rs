@@ -18,6 +18,7 @@ use super::component::{Component, convert_components};
 use super::embed::{Embed, EmbedLayout, convert_embeds};
 use super::guild::GuildMember;
 use super::markdown::{self, Inline, Markdown};
+use super::poll::{Poll, convert_poll};
 use super::sticker::{StickerItem, convert_sticker_items};
 use super::system::{SystemEvent, convert_system};
 use super::thread::{Thread, convert_thread};
@@ -54,6 +55,7 @@ pub struct Message {
     pub files: Vec<FileAttachment>,
     pub embeds: Vec<Embed>,
     pub stickers: Vec<StickerItem>,
+    pub poll: Option<Poll>,
     pub reply: Option<Reply>,
     pub forward: Option<ForwardedMessage>,
     /// In Discord's order (first reacted first).
@@ -124,6 +126,7 @@ impl Message {
             files: Vec::new(),
             embeds: Vec::new(),
             stickers,
+            poll: None,
             reply: reply_to.map(|message| Reply::Quote(MessageReference::quoting(message))),
             forward: None,
             reactions: Vec::new(),
@@ -187,6 +190,10 @@ impl Message {
         self.embeds = edited.embeds;
         self.components = edited.components;
         self.flags = edited.flags;
+        match (&mut self.poll, edited.poll) {
+            (Some(poll), Some(updated)) => poll.apply_update(updated),
+            (poll, updated) => *poll = updated,
+        }
         // Starting a thread is announced as an edit carrying it; others leave it out.
         if edited.thread.is_some() {
             self.thread = edited.thread;
@@ -511,6 +518,7 @@ pub(in crate::discord) fn convert_message(
         files,
         embeds: convert_embeds(message.embeds),
         stickers: convert_sticker_items(message.sticker_items),
+        poll: message.poll.map(convert_poll),
         reply: match message.referenced_message {
             _ if is_forward => None,
             _ if command.is_some() => command.map(Reply::Command),

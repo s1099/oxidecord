@@ -21,6 +21,8 @@ pub(super) struct MessageMenu {
     pub can_delete: bool,
     pub can_start_thread: bool,
     pub has_reactions: bool,
+    /// The user's own poll, still open.
+    pub can_end_poll: bool,
     /// The raw content, so a link hidden behind its GIF still copies.
     pub text: Option<SharedString>,
 }
@@ -47,6 +49,11 @@ impl MessageMenu {
             can_delete: screen.can_delete_message(message),
             can_start_thread: screen.can_start_thread(message),
             has_reactions: !message.reactions.is_empty(),
+            can_end_poll: Some(message.author_id) == screen.self_user_id
+                && message
+                    .poll
+                    .as_ref()
+                    .is_some_and(|poll| !poll.is_closed(discord::Poll::now())),
             text: (message.system.is_none() && !message.content.trim().is_empty())
                 .then(|| message.content.clone().into()),
         }
@@ -138,6 +145,15 @@ impl MessageMenu {
                         .on_click(move |_, _, cx| {
                             cx.write_to_clipboard(ClipboardItem::new_string(text.to_string()))
                         }),
+                )
+            })
+            .when(self.can_end_poll, |menu| {
+                menu.item(
+                    PopupMenuItem::new("End Poll Now")
+                        .icon(Icon::default().path("icons/chart-bar.svg"))
+                        .on_click(action(|this, message_id, _, cx| {
+                            this.end_poll(message_id, cx)
+                        })),
                 )
             })
             .item(

@@ -437,6 +437,15 @@ pub(super) struct ReactionPayload {
     pub(super) emoji: Option<twilight_model::channel::message::EmojiReactionType>,
 }
 
+/// `MESSAGE_POLL_VOTE_ADD` and `MESSAGE_POLL_VOTE_REMOVE`.
+#[derive(Deserialize)]
+pub(super) struct PollVotePayload {
+    pub(super) channel_id: Id<ChannelMarker>,
+    pub(super) message_id: Id<MessageMarker>,
+    pub(super) user_id: Id<UserMarker>,
+    pub(super) answer_id: u8,
+}
+
 #[derive(Deserialize)]
 pub(super) struct TypingStartPayload {
     pub(super) channel_id: Id<ChannelMarker>,

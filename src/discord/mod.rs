@@ -39,6 +39,7 @@ pub use model::{
     Button, ButtonAction, ButtonStyle, Component, InputKind, Media, MediaItem, Modal, ModalField,
     Select, SelectKind, SelectOption, SelectValue,
 };
+pub use model::{Poll, PollDraft};
 pub use rest::{
     ActivityLaunch, CommandArgument, CommandIndexScope, CommandInvocation, MESSAGE_PAGE_SIZE,
     MessageDraft, MessagePage, OAuthRequest, REACTORS_PAGE_SIZE, ack_bulk, ack_message, authorize,
@@ -60,6 +61,7 @@ pub use rest::{
     ThreadSearch, fetch_thread, search_threads, set_thread_archived, set_thread_joined,
     start_thread, start_thread_from_message,
 };
+pub use rest::{end_poll, vote_poll};
 pub use token::{
     Account, accounts, active_account, load_token, remember_profile, save_token, switch_account,
 };

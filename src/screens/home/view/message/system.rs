@@ -85,6 +85,7 @@ impl HomeScreen {
             | SystemEvent::InvitesResumed
             | SystemEvent::RaidReported
             | SystemEvent::RaidFalseAlarm => ("icons/shield.svg", theme.warning),
+            SystemEvent::PollResult { .. } => ("icons/chart-bar.svg", theme.muted_foreground),
             SystemEvent::Notice(_) => ("icons/flag.svg", theme.muted_foreground),
         };
 
@@ -393,6 +394,34 @@ impl HomeScreen {
                 line.push(" reported a false alarm in ");
                 line.styled(guild_name(), strong);
                 line.push(".");
+            }
+            SystemEvent::PollResult {
+                question,
+                total_votes,
+                winner,
+                poll,
+            } => {
+                author(&mut line);
+                line.push("'s poll ");
+                line.styled(question, strong);
+                line.push(" has closed. ");
+                match winner {
+                    Some((answer, votes)) => {
+                        line.styled(answer, strong);
+                        let share = (*votes as f64 / (*total_votes).max(1) as f64 * 100.).round();
+                        line.push(&format!(" won with {share}% of the vote. "));
+                    }
+                    None if *total_votes == 0 => {
+                        line.push("No one voted. ");
+                    }
+                    None => {
+                        line.push("It was a tie. ");
+                    }
+                }
+                if let Some(poll) = poll {
+                    let range = line.styled("View Poll", link);
+                    line.clicks.push((range, Click::Message(*poll)));
+                }
             }
             SystemEvent::Notice(text) => {
                 line.push(text);

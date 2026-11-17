@@ -77,6 +77,14 @@ pub enum GatewayEvent {
         message_id: Id<MessageMarker>,
         change: ReactionChange,
     },
+    /// One answer gained or lost a vote; a multi-answer vote comes as one per answer.
+    PollVote {
+        channel_id: Id<ChannelMarker>,
+        message_id: Id<MessageMarker>,
+        user_id: Id<UserMarker>,
+        answer_id: u8,
+        add: bool,
+    },
     VoiceState(VoiceUserState),
     /// Replaces what was known of the guild; empty from `GUILD_DELETE`.
     GuildVoiceStates {

@@ -198,6 +198,19 @@ pub(super) fn dispatch(
                 }])
             })
             .unwrap_or_default(),
+        "MESSAGE_POLL_VOTE_ADD" | "MESSAGE_POLL_VOTE_REMOVE" => {
+            serde_json::from_str::<PollVotePayload>(data)
+                .map(|vote| {
+                    vec![GatewayEvent::PollVote {
+                        channel_id: vote.channel_id,
+                        message_id: vote.message_id,
+                        user_id: vote.user_id,
+                        answer_id: vote.answer_id,
+                        add: name == "MESSAGE_POLL_VOTE_ADD",
+                    }]
+                })
+                .unwrap_or_default()
+        }
         "TYPING_START" => serde_json::from_str::<TypingStartPayload>(data)
             .map(|typing| {
                 vec![GatewayEvent::Typing {

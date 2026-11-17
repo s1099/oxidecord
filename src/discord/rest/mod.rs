@@ -42,8 +42,8 @@ pub use component::{
 pub use guild::{fetch_channels, fetch_guilds, leave_guild};
 pub use message::{
     MESSAGE_PAGE_SIZE, MessageDraft, MessagePage, REACTORS_PAGE_SIZE, ack_bulk, ack_message,
-    delete_message, edit_message, fetch_messages, fetch_pins, fetch_reactors, search_messages,
-    send_message, toggle_reaction, trigger_typing,
+    delete_message, edit_message, end_poll, fetch_messages, fetch_pins, fetch_reactors,
+    search_messages, send_message, toggle_reaction, trigger_typing, vote_poll,
 };
 pub use settings::{
     fetch_frecency, fetch_user_settings, save_dm_override_flags, save_frecency, save_status,

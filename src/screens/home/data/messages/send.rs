@@ -7,7 +7,10 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use futures::FutureExt as _;
 use gpui_kit::*;
-use twilight_model::id::{Id, marker::MessageMarker};
+use twilight_model::id::{
+    Id,
+    marker::{ChannelMarker, MessageMarker},
+};
 
 use crate::discord;
 use crate::screens::home::autocomplete::resolve_mentions;
@@ -16,6 +19,17 @@ use crate::screens::home::{HomeScreen, View};
 
 /// How often an uploading message's progress bar is redrawn.
 const PROGRESS_REDRAW: Duration = Duration::from_millis(200);
+
+/// A message on its way out, whatever the composer or a dialog put in it.
+struct Outgoing {
+    channel_id: Id<ChannelMarker>,
+    content: String,
+    reply_to: Option<Id<MessageMarker>>,
+    mention_author: bool,
+    stickers: Vec<discord::StickerItem>,
+    poll: Option<discord::PollDraft>,
+    attachments: Vec<(String, Vec<u8>)>,
+}
 
 /// Discord's epoch, 2015-01-01, in Unix milliseconds.
 const DISCORD_EPOCH_MS: u64 = 1_420_070_400_000;
@@ -103,6 +117,62 @@ impl HomeScreen {
             })
             .collect();
 
+        self.message_input.update(cx, |input, cx| {
+            input.set_value("", window, cx);
+        });
+        self.composer_mentions.clear();
+        self.replying_to = None;
+        self.post_message(
+            Outgoing {
+                channel_id,
+                content,
+                reply_to,
+                mention_author,
+                stickers,
+                poll: None,
+                attachments,
+            },
+            window,
+            cx,
+        );
+    }
+
+    /// Sends a poll as a message of its own, leaving the composer as it is.
+    pub(in crate::screens::home) fn send_poll(
+        &mut self,
+        poll: discord::PollDraft,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(channel_id) = self.selected_channel else {
+            return;
+        };
+        self.post_message(
+            Outgoing {
+                channel_id,
+                content: String::new(),
+                reply_to: None,
+                mention_author: true,
+                stickers: Vec::new(),
+                poll: Some(poll),
+                attachments: Vec::new(),
+            },
+            window,
+            cx,
+        );
+    }
+
+    /// Shows `outgoing` as pending at once and sends it.
+    fn post_message(&mut self, outgoing: Outgoing, window: &mut Window, cx: &mut Context<Self>) {
+        let Outgoing {
+            channel_id,
+            content,
+            reply_to,
+            mention_author,
+            stickers,
+            poll,
+            attachments,
+        } = outgoing;
         let progress = discord::UploadProgress::new(
             attachments.iter().map(|(_, file)| file.len() as u64).sum(),
         );
@@ -114,12 +184,7 @@ impl HomeScreen {
             progress: progress.clone(),
         });
 
-        self.message_input.update(cx, |input, cx| {
-            input.set_value("", window, cx);
-        });
-        self.composer_mentions.clear();
         self.send_error = None;
-        self.replying_to = None;
         // Speaking up reads the conversation, as in Discord: the divider goes
         // and the channel can be acked again.
         self.set_unread_marker(None);
@@ -143,7 +208,7 @@ impl HomeScreen {
             && let Some(author) = &self.current_user
         {
             let replied = reply_to.and_then(|id| self.messages.iter().find(|m| m.id == id));
-            let pending = discord::Message::pending(
+            let mut pending = discord::Message::pending(
                 pending_id,
                 author,
                 content.clone(),
@@ -152,6 +217,9 @@ impl HomeScreen {
                 upload.clone(),
                 stickers.clone(),
             );
+            pending.poll = poll
+                .as_ref()
+                .map(|poll| discord::Poll::from_draft(poll, timestamp));
             let ix = self.messages.len();
             self.messages.push(pending);
             self.splice_messages(ix..ix, 1);
@@ -173,6 +241,7 @@ impl HomeScreen {
                     reply_to,
                     mention_author,
                     stickers: stickers.iter().map(|sticker| sticker.id).collect(),
+                    poll,
                 },
                 attachments,
                 progress.clone(),

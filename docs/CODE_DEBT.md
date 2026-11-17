@@ -19,6 +19,20 @@ Entry format:
   the click, where Discord (a browser scrollbar) pages one screen toward it. Paging needs a
   scrollbar of our own. `src/screens/home/view/content/message_list.rs:166`
 
+## Polls
+
+- **Time left doesn't tick** — the footer's "5h left" is worked out when the row renders, so
+  it goes stale on a quiet channel, and a poll that expires there keeps its Vote button until
+  something redraws it. `src/screens/home/view/message/poll.rs:158`
+- **No answer emoji when composing** — Discord's creator lets each answer carry an emoji;
+  the dialog only takes text. Received polls draw their emoji. `src/screens/home/view/composer/poll_dialog.rs:177`
+- **No voter list** — Discord's client opens who voted for each answer
+  (`GET /channels/{id}/polls/{id}/answers/{id}`); nothing here fetches it.
+  `src/screens/home/view/message/poll.rs:22`
+- **Forwarded polls aren't drawn** — a forward's snapshot drops its poll. `src/discord/model/message.rs:642`
+- **Answer ids sent as numbers** — the userdocs type `answer_ids` as integers; unconfirmed
+  against what Discord's client sends. `src/discord/rest/message.rs:546`
+
 ## Message components
 
 - **Modal file uploads can't be filled** — the field shows a notice, and a required one blocks

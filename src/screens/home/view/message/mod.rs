@@ -7,6 +7,7 @@ mod embed;
 mod forward;
 mod menu;
 mod pins;
+mod poll;
 mod reactions;
 mod reactors;
 mod reply;
@@ -280,6 +281,7 @@ impl HomeScreen {
                     && upload.is_none()
                     && message.forward.is_none()
                     && media.is_empty()
+                    && message.poll.is_none()
                     && !message.components.iter().any(|c| c.is_visible()),
                 |this| {
                     this.child(
@@ -292,6 +294,9 @@ impl HomeScreen {
             )
             .when(!media.is_empty(), |this| {
                 this.child(self.render_media(message.id.get(), media, cx))
+            })
+            .when_some(message.poll.as_ref(), |this, poll| {
+                this.child(self.render_poll(message, poll, cx))
             })
             .when(!message.components.is_empty(), |this| {
                 this.child(self.render_components(message, cx))

@@ -67,6 +67,14 @@ pub enum SystemEvent {
     InvitesResumed,
     RaidReported,
     RaidFalseAlarm,
+    /// The author's poll closed; the line links back to it.
+    PollResult {
+        question: String,
+        total_votes: u64,
+        /// The answer and its votes; `None` for a tie or no votes.
+        winner: Option<(String, u64)>,
+        poll: Option<Id<MessageMarker>>,
+    },
     /// A notice with nothing in it but the client's own text.
     Notice(&'static str),
 }
@@ -92,7 +100,7 @@ pub const WELCOMES: [(&str, &str); 13] = [
 const DISCORD_EPOCH_MS: u64 = 1_420_070_400_000;
 
 /// `None` for a regular message, or a type the client draws as one (replies,
-/// commands, polls, AutoMod's embed) or that's unknown here.
+/// commands, AutoMod's embed) or that's unknown here.
 pub(super) fn convert_system(message: &twilight_model::channel::Message) -> Option<SystemEvent> {
     let target = || message.mentions.first().map(|user| user.id);
     let content = || message.content.clone();
@@ -155,6 +163,7 @@ pub(super) fn convert_system(message: &twilight_model::channel::Message) -> Opti
                 renewal: data.is_renewal,
             }
         }
+        MessageType::PollResult => poll_result(message),
         MessageType::GuildIncidentAlertModeEnabled => SystemEvent::InvitesPaused,
         MessageType::GuildIncidentAlertModeDisabled => SystemEvent::InvitesResumed,
         MessageType::GuildIncidentReportRaid => SystemEvent::RaidReported,
@@ -180,6 +189,33 @@ pub(super) fn convert_system(message: &twilight_model::channel::Message) -> Opti
         ),
         _ => return None,
     })
+}
+
+/// Discord sends the result as an embed whose fields are named values, all strings.
+fn poll_result(message: &twilight_model::channel::Message) -> SystemEvent {
+    let field = |name: &str| {
+        message
+            .embeds
+            .first()?
+            .fields
+            .iter()
+            .find(|field| field.name == name)
+            .map(|field| field.value.as_str())
+    };
+    SystemEvent::PollResult {
+        question: field("poll_question_text").unwrap_or_default().to_owned(),
+        total_votes: field("total_votes")
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(0),
+        winner: field("victor_answer_text").map(|text| {
+            let votes = field("victor_answer_votes").and_then(|v| v.parse().ok());
+            (text.to_owned(), votes.unwrap_or(0))
+        }),
+        poll: message
+            .reference
+            .as_ref()
+            .and_then(|reference| reference.message_id),
+    }
 }
 
 /// `content` holds the number of boosts at once, when more than one.

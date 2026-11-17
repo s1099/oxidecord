@@ -17,6 +17,7 @@ mod link;
 mod markdown;
 mod member_list;
 mod message;
+mod poll;
 mod presence;
 mod read_state;
 mod search;
@@ -54,6 +55,7 @@ pub use message::{
     Message, MessageReference, Reaction, ReactionEmoji, Reply, SPOILER_PREFIX, SpoilerCover,
     VideoAttachment,
 };
+pub use poll::{Poll, PollDraft};
 pub use presence::{Activity, ActivityEmoji, ActivityKind, Presence};
 pub use read_state::{
     CHANNEL_FAVORITED, ChannelLatest, GuildUnreads, MuteSettings, NotifyLevel, ReadState,
