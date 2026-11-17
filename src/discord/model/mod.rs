@@ -17,6 +17,7 @@ mod link;
 mod markdown;
 mod member_list;
 mod message;
+mod presence;
 mod read_state;
 mod search;
 mod settings;
@@ -53,6 +54,7 @@ pub use message::{
     Message, MessageReference, Reaction, ReactionEmoji, Reply, SPOILER_PREFIX, SpoilerCover,
     VideoAttachment,
 };
+pub use presence::{Activity, ActivityEmoji, ActivityKind, Presence};
 pub use read_state::{
     ChannelLatest, GuildUnreads, MuteSettings, NotifyLevel, ReadState, UnreadChannel, UnreadSetting,
 };
@@ -67,7 +69,10 @@ pub use sticker::{Sticker, StickerItem, StickerPack};
 pub use system::{SystemEvent, WELCOMES, call_duration};
 pub use thread::{Membership, Thread};
 pub use upload::{DEFAULT_UPLOAD_LIMIT, MAX_UPLOAD_TOTAL, Upload, UploadProgress};
-pub use user::{CurrentUser, ProfileBadge, Reactor, UserProfile};
+pub use user::{
+    CurrentUser, GameInfo, ProfileBadge, ProfileConnection, Reactor, UserProfile, connection_label,
+    widget_tag_label,
+};
 pub use voice::{StreamServerInfo, VoiceServerInfo, VoiceUserState, stream_key};
 
 pub(super) use activity::{
@@ -81,6 +86,7 @@ pub(super) use frecency::{encode_frecency_settings, parse_frecency_settings};
 pub(super) use guild::{RawMember, RawRole, convert_guild, convert_guild_appearance, convert_role};
 pub(super) use member_list::{RawMemberListUpdate, convert_member_list_update};
 pub(super) use message::{RawPins, author_member, convert_message, convert_reaction_emoji};
+pub(super) use presence::{RawActivity, convert_activities};
 pub(super) use read_state::{
     RawChannelUnread, RawGuildChannel, RawGuildSettings, RawReadState, convert_channel_unreads,
     convert_guild_channels, convert_mute_settings, convert_read_states, versioned_list,
@@ -90,7 +96,9 @@ pub(super) use settings::{RawSettingsProto, encode_status_settings, parse_user_s
 pub(super) use sticker::{RawSticker, RawStickerPacks, convert_sticker, convert_sticker_packs};
 pub(super) use thread::convert_thread;
 pub(super) use upload::boost_upload_limit;
-pub(super) use user::{RawProfile, convert_current_user, convert_reactor, convert_user_profile};
+pub(super) use user::{
+    RawGame, RawProfile, convert_current_user, convert_reactor, convert_user_profile,
+};
 pub(super) use voice::{
     RawVoiceServer, RawVoiceState, convert_call_voice_states, convert_guild_voice_states,
     convert_stream_server, convert_voice_server, convert_voice_state,

@@ -1,6 +1,9 @@
 //! Fetching the signed-in user and other users' profiles.
 
+use serde::Deserialize;
+use twilight_http::error::ErrorType;
 use twilight_http::request::{Method, RequestBuilder};
+use twilight_http::response::marker::EmptyBody;
 use twilight_model::id::{
     Id,
     marker::{GuildMarker, UserMarker},
@@ -8,7 +11,8 @@ use twilight_model::id::{
 
 use super::request;
 use crate::discord::model::{
-    CurrentUser, RawProfile, UserProfile, convert_current_user, convert_user_profile,
+    CurrentUser, GameInfo, RawGame, RawProfile, UserProfile, convert_current_user,
+    convert_user_profile,
 };
 
 pub async fn fetch_current_user() -> Result<CurrentUser, String> {
@@ -48,6 +52,61 @@ pub async fn fetch_user_profile(
 
         let user = client.user(user_id).await?.model().await?;
         Ok(convert_user_profile(user))
+    })
+    .await
+}
+
+#[derive(Deserialize)]
+struct RawNote {
+    #[serde(default)]
+    note: String,
+}
+
+/// The private note the user keeps on `user_id`; empty when there is none,
+/// which Discord answers with a 404.
+pub async fn fetch_user_note(user_id: Id<UserMarker>) -> Result<String, String> {
+    request(move |client| async move {
+        let request =
+            RequestBuilder::raw(Method::Get, format!("users/@me/notes/{user_id}")).build()?;
+        match client.request::<RawNote>(request).await {
+            Ok(response) => Ok(response.model().await?.note),
+            Err(err) if matches!(err.kind(), ErrorType::Response { status, .. } if status.get() == 404) => {
+                Ok(String::new())
+            }
+            Err(err) => Err(err.into()),
+        }
+    })
+    .await
+}
+
+pub async fn save_user_note(user_id: Id<UserMarker>, note: String) -> Result<(), String> {
+    request(move |client| async move {
+        let request = RequestBuilder::raw(Method::Put, format!("users/@me/notes/{user_id}"))
+            .json(&serde_json::json!({ "note": note }))
+            .build()?;
+        client.request::<EmptyBody>(request).await?;
+        Ok(())
+    })
+    .await
+}
+
+/// Names and art for the games on a profile's board, which carries only their
+/// ids. Discord's client asks for twenty at a time.
+pub async fn fetch_games(ids: Vec<u64>) -> Result<Vec<GameInfo>, String> {
+    request(move |client| async move {
+        let mut games = Vec::new();
+        for chunk in ids.chunks(20) {
+            let query: Vec<String> = chunk.iter().map(|id| format!("game_ids={id}")).collect();
+            let request =
+                RequestBuilder::raw(Method::Get, format!("games?{}", query.join("&"))).build()?;
+            let raw = client
+                .request::<Vec<RawGame>>(request)
+                .await?
+                .model()
+                .await?;
+            games.extend(raw.into_iter().map(RawGame::into_game));
+        }
+        Ok(games)
     })
     .await
 }

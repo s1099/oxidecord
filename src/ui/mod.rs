@@ -6,6 +6,7 @@ pub mod button;
 pub mod depth;
 pub mod dialogs;
 pub mod gallery;
+pub mod scrollbar;
 pub mod settings;
 pub mod smooth_scroll;
 pub mod theme;

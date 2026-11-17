@@ -51,7 +51,9 @@ pub use thread::{
     ThreadSearch, fetch_thread, search_threads, set_thread_archived, set_thread_joined,
     start_thread, start_thread_from_message,
 };
-pub use user::{fetch_current_user, fetch_user_profile};
+pub use user::{
+    fetch_current_user, fetch_games, fetch_user_note, fetch_user_profile, save_user_note,
+};
 
 /// Runs a request against the shared client on the runtime, flattening its
 /// error to the message the UI shows.

@@ -11,8 +11,9 @@ use twilight_model::id::{
 use twilight_model::util::Timestamp;
 
 use crate::discord::model::{
-    PresenceStatus, RawActivityInstance, RawChannelUnread, RawChoice, RawEmoji, RawGuildChannel,
-    RawGuildSettings, RawMember, RawReadState, RawRole, RawSticker, RawVoiceState, versioned_list,
+    Presence, PresenceStatus, RawActivity, RawActivityInstance, RawChannelUnread, RawChoice,
+    RawEmoji, RawGuildChannel, RawGuildSettings, RawMember, RawReadState, RawRole, RawSticker,
+    RawVoiceState, convert_activities, versioned_list,
 };
 
 /// `STREAM_CREATE`, of which only what a connection needs is read.
@@ -124,9 +125,8 @@ impl MergedPresences {
     }
 }
 
-/// A presence, of which only whose it is and their status are read. A
-/// `PRESENCE_UPDATE` names the user in a partial `user`; a merged presence by
-/// `user_id`.
+/// A presence. A `PRESENCE_UPDATE` names the user in a partial `user`; a
+/// merged presence by `user_id`.
 #[derive(Deserialize)]
 pub(super) struct RawPresence {
     #[serde(default)]
@@ -134,16 +134,19 @@ pub(super) struct RawPresence {
     #[serde(default)]
     user_id: Option<Id<UserMarker>>,
     status: String,
+    #[serde(default, deserialize_with = "skip_invalid")]
+    activities: Vec<RawActivity>,
 }
 
-pub(super) fn convert_presences(
-    presences: impl IntoIterator<Item = RawPresence>,
-) -> Vec<(Id<UserMarker>, PresenceStatus)> {
+pub(super) fn convert_presences(presences: impl IntoIterator<Item = RawPresence>) -> Vec<Presence> {
     presences
         .into_iter()
         .filter_map(|presence| {
-            let user_id = presence.user_id.or(presence.user.map(|user| user.id))?;
-            Some((user_id, PresenceStatus::from_presence(&presence.status)?))
+            Some(Presence {
+                user_id: presence.user_id.or(presence.user.map(|user| user.id))?,
+                status: PresenceStatus::from_presence(&presence.status)?,
+                activities: convert_activities(presence.activities),
+            })
         })
         .collect()
 }

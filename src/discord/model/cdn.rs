@@ -91,6 +91,17 @@ pub(super) fn guild_banner_url(guild_id: Id<GuildMarker>, hash: &str) -> String 
     format!("https://cdn.discordapp.com/banners/{guild_id}/{hash}.webp?size=480")
 }
 
+pub(super) fn app_asset_url(app_id: u64, asset_id: &str) -> String {
+    format!("https://cdn.discordapp.com/app-assets/{app_id}/{asset_id}.png")
+}
+
+/// Game art (covers, icons) shares the app icon path; covers keep their aspect.
+pub(super) fn game_asset_url(game_id: u64, hash: &str) -> String {
+    format!(
+        "https://cdn.discordapp.com/app-icons/{game_id}/{hash}.png?size=256&keep_aspect_ratio=true"
+    )
+}
+
 pub(super) fn app_icon_url(app_id: impl std::fmt::Display, hash: &str) -> String {
     format!("https://cdn.discordapp.com/app-icons/{app_id}/{hash}.webp?size=80")
 }

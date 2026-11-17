@@ -1,7 +1,9 @@
 //! The profile popout: the small card Discord shows when you click someone's
-//! avatar, opened here from a message's avatar in the chat.
+//! avatar, opened here from a message's avatar in the chat; and the full
+//! profile modal it leads to.
 
 mod card;
+mod modal;
 
 pub(super) use card::CARD_WIDTH;
 

@@ -401,8 +401,12 @@ fn presences_arrive_from_ready_supplemental_and_updates() {
         panic!("READY_SUPPLEMENTAL should yield its presences");
     };
     // An unknown status is skipped rather than guessed at.
+    let statuses: Vec<_> = presences
+        .iter()
+        .map(|presence| (presence.user_id, presence.status))
+        .collect();
     assert_eq!(
-        presences.as_slice(),
+        statuses,
         [
             (Id::new(2), PresenceStatus::Idle),
             (Id::new(3), PresenceStatus::DoNotDisturb)
@@ -416,7 +420,9 @@ fn presences_arrive_from_ready_supplemental_and_updates() {
     assert!(matches!(
         events.as_slice(),
         [GatewayEvent::Presences(presences)]
-            if presences.as_slice() == [(Id::new(2), PresenceStatus::Invisible)]
+            if presences.len() == 1
+                && presences[0].user_id == Id::new(2)
+                && presences[0].status == PresenceStatus::Invisible
     ));
 }
 

@@ -73,10 +73,8 @@
 | Group DM management (add or remove members, rename, change icon, leave) | Missing | |
 | Closing (hiding) a DM from the list | Missing | |
 | Active Now panel | Missing | |
-| Notes on users | Missing | |
-| Full user profile modal (activity, connections, member-since, roles) | Partial | The popout has the banner, badges, mutual counts, bio, server roles and member-since (in its menu); there's no full modal, and clicking the mutuals opens nothing |
 | Avatar decorations, profile effects, nameplates | Missing | |
-| Game collection and other profile widgets | Missing | The profile response's `widgets` aren't read |
+| Game collection and other profile widgets | Partial | The full profile shows the game widgets read-only; `application` widgets, the wishlist and editing your own board aren't there |
 
 ## Presence and status
 
@@ -84,7 +82,7 @@
 |---|---|---|
 | Custom status | Missing | |
 | Showing other users' presence (status dots) | Partial | Shown in the DM list and profile cards; the member list doesn't exist yet |
-| Rich presence and activities (games, Spotify, streaming) | Missing | |
+| Rich presence and activities (games, Spotify, streaming) | Partial | Shown in the full profile's Activity tab only; the member list, DM list and popout show none, and the app never sets your own |
 | Detecting and broadcasting your own game activity | Missing | |
 | Idle detection (auto-idle when AFK) | Missing | |
 

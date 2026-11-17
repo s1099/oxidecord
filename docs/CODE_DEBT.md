@@ -168,8 +168,22 @@ Entry format:
 
 - **No friend button** — Discord's card shows the friendship state (and add/accept) beside
   the menu, but the gateway handling only keeps blocks out of `RELATIONSHIP_*`, so the card
-  can't tell a friend from a stranger. `src/screens/home/view/profile/card.rs:216`
+  can't tell a friend from a stranger. The full profile lacks it too.
+  `src/screens/home/view/profile/card.rs:231`
 - **Messaging from the card overwrites a draft** — the text is sent through the composer, so
-  anything already typed in that DM's composer is replaced. `src/screens/home/data/profile.rs:174`
+  anything already typed in that DM's composer is replaced. `src/screens/home/data/profile.rs:357`
 - **Stale cache** — a profile is fetched once per user and server and kept for the session,
-  so a changed bio, banner or roles show only after a restart. `src/screens/home/data/profile.rs:78`
+  so a changed bio, banner or roles show only after a restart. `src/screens/home/data/profile.rs:39`
+
+## Full profile
+
+- **Activity timers don't tick** — the elapsed time and track position are worked out when the
+  screen repaints, so with nothing else changing they sit still.
+  `src/screens/home/view/profile/modal.rs:645`
+- **Your own activity is never shown** — the gateway doesn't send your own presence back, so the
+  Activity tab is always empty for you. `src/screens/home/view/profile/modal.rs:639`
+- **Connection logos come from Simple Icons** — Discord's own are hashed client assets, so the
+  logos load from jsDelivr instead and may differ slightly from Discord's.
+  `src/discord/model/user.rs:714`
+- **Note saves only on close** — Discord saves on blur; here the change goes out when the modal
+  closes, and is lost if the app quits with it open. `src/screens/home/data/profile.rs:224`

@@ -25,7 +25,7 @@ use crate::platform::runtime;
 use super::model::{
     ActivityInstance, Channel, ChannelLatest, CommandChoice, DmMember, GuildAppearance, GuildEmoji,
     GuildMember, GuildUnreads, MemberListUpdate, Membership, Message, MuteSettings, NotifyLevel,
-    PresenceStatus, ReactionEmoji, ReadState, Role, Sticker, StreamServerInfo, Thread,
+    Presence, PresenceStatus, ReactionEmoji, ReadState, Role, Sticker, StreamServerInfo, Thread,
     VoiceServerInfo, VoiceUserState,
 };
 
@@ -156,7 +156,7 @@ pub enum GatewayEvent {
         members: Vec<GuildMember>,
     },
     MemberList(MemberListUpdate),
-    Presences(Vec<(Id<UserMarker>, PresenceStatus)>),
+    Presences(Vec<Presence>),
     StatusSettings(PresenceStatus),
     /// Replaces who the user has blocked.
     BlockedUsers(Vec<Id<UserMarker>>),

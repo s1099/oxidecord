@@ -89,6 +89,7 @@ impl Render for HomeScreen {
         .map(|sidebar| self.render_sidebar_frame(sidebar, cx));
 
         let image_viewer = self.render_image_viewer(window, cx);
+        let profile_modal = self.render_profile_modal(window, cx);
 
         h_flex()
             .size_full()
@@ -101,6 +102,8 @@ impl Render for HomeScreen {
             .on_action(cx.listener(|this, _: &MarkConversationRead, window, cx| {
                 if this.image_viewer.is_some() {
                     this.close_image_viewer(window, cx);
+                } else if this.profile_modal.is_some() {
+                    this.close_profile_modal(cx);
                 } else {
                     this.mark_conversation_read(window, cx);
                 }
@@ -172,6 +175,7 @@ impl Render for HomeScreen {
             )
             .child(inset(self.render_content(cx), cx))
             .children(self.render_profile_popup(cx))
+            .children(profile_modal)
             .children(self.render_pins_popup(cx))
             .children(self.render_threads_popup(cx))
             .children(self.render_emoji_picker(cx))

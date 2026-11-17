@@ -31,7 +31,8 @@ use super::history_cache::HistoryCache;
 use super::media::VideoPlayback;
 use super::member_list_cache::MemberListCache;
 use super::popups::{
-    EmojiPicker, ImageViewer, PinsPopup, ProfilePopup, Reactors, StickerPicker, ThreadsPopup,
+    EmojiPicker, ImageViewer, PinsPopup, ProfileModal, ProfilePopup, Reactors, StickerPicker,
+    ThreadsPopup,
 };
 use super::quick_switcher::Frecency;
 use super::search::{SearchNames, SearchPanel, SearchSuggestions};
@@ -137,6 +138,8 @@ pub struct HomeScreen {
     /// Anyone missing is shown offline: Discord sends presences only for friends
     /// and shared-guild users, and never offline ones up front.
     pub(super) user_presences: HashMap<Id<UserMarker>, discord::PresenceStatus>,
+    /// What they're doing, for the full profile; only users doing something.
+    pub(super) user_activities: HashMap<Id<UserMarker>, Vec<discord::Activity>>,
     /// By folder id; folders start collapsed.
     pub(super) expanded_folders: HashSet<i64>,
     pub(super) selected_guild: Option<Id<GuildMarker>>,
@@ -246,6 +249,11 @@ pub struct HomeScreen {
     /// root's listeners never run.
     pub(super) focus_handle: FocusHandle,
     pub(super) profile_popup: Option<ProfilePopup>,
+    pub(super) profile_modal: Option<ProfileModal>,
+    /// Game details for profile widgets, by application id.
+    pub(super) games: HashMap<u64, discord::GameInfo>,
+    /// Asked for already, so a profile reopened mid-request doesn't ask again.
+    pub(super) requested_games: HashSet<u64>,
     pub(super) profile_cache: HashMap<Id<UserMarker>, discord::UserProfile>,
     pub(super) guild_data: GuildData,
     /// Dropped when its reaction changes, then refetched by whatever still shows it.
@@ -406,6 +414,7 @@ impl HomeScreen {
             guild_folders: None,
             presence_status: None,
             user_presences: HashMap::new(),
+            user_activities: HashMap::new(),
             expanded_folders: HashSet::new(),
             current_user: None,
             selected_guild: None,
@@ -485,6 +494,9 @@ impl HomeScreen {
             message_menu: None,
             focus_handle: cx.focus_handle(),
             profile_popup: None,
+            profile_modal: None,
+            games: HashMap::new(),
+            requested_games: HashSet::new(),
             profile_cache: HashMap::new(),
             guild_data: GuildData::default(),
             reactors: HashMap::new(),

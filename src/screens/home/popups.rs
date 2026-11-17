@@ -4,7 +4,7 @@
 use std::collections::HashSet;
 use std::rc::Rc;
 
-use gpui_kit::component::input::InputState;
+use gpui_kit::component::input::{InputState, TextareaState};
 use gpui_kit::*;
 use twilight_model::id::{
     Id,
@@ -33,6 +33,38 @@ pub(super) struct ProfilePopup {
     /// The "Message @name" box; Enter sends it to their DM.
     pub message: Entity<InputState>,
     pub _message_sent: Subscription,
+}
+
+/// The full profile, opened from the popout: a modal with everything the popout
+/// leaves out, and tabs for what they're doing and what's shared with them.
+pub(super) struct ProfileModal {
+    pub user_id: Id<UserMarker>,
+    pub guild_id: Option<Id<GuildMarker>>,
+    /// Shown while the profile loads.
+    pub name: String,
+    pub avatar_url: Option<String>,
+    pub profile: Option<discord::UserProfile>,
+    pub error: Option<String>,
+    /// `None` opens on the first tab, which is the board when there is one.
+    pub tab: Option<ProfileTab>,
+    /// Board widgets showing all their games, by index.
+    pub expanded_widgets: HashSet<usize>,
+    pub identity_scroll: ScrollHandle,
+    /// Shared by the tabs; back to the top on a switch.
+    pub tab_scroll: ScrollHandle,
+    pub note: Entity<TextareaState>,
+    /// What the note held when it loaded, so closing saves only a change; `None`
+    /// until then, and nothing is saved over a note that never loaded.
+    pub saved_note: Option<String>,
+    pub _note_task: Task<()>,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum ProfileTab {
+    Board,
+    Activity,
+    MutualFriends,
+    MutualServers,
 }
 
 pub(super) struct PinsPopup {

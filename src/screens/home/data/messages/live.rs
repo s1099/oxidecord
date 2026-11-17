@@ -117,6 +117,7 @@ impl HomeScreen {
                 // Likewise the presences, and anyone who went offline in the
                 // meantime won't be among them.
                 self.user_presences.clear();
+                self.user_activities.clear();
                 // A member asked for in a session that dropped before
                 // answering is worth asking for again.
                 self.guild_data.requested_members.clear();
@@ -132,9 +133,28 @@ impl HomeScreen {
             }
             discord::GatewayEvent::Presences(presences) => {
                 // Most of these are guild members nobody here is looking at,
-                // so only a change to someone in the DM list redraws.
+                // so only a change to someone in the DM list or an open
+                // profile redraws.
                 let mut changed = false;
-                for (user_id, status) in presences {
+                for discord::Presence {
+                    user_id,
+                    status,
+                    activities,
+                } in presences
+                {
+                    let shown = self
+                        .profile_modal
+                        .as_ref()
+                        .is_some_and(|modal| modal.user_id == user_id);
+                    let activities_changed = if activities.is_empty() {
+                        self.user_activities.remove(&user_id).is_some()
+                    } else if self.user_activities.get(&user_id) == Some(&activities) {
+                        false
+                    } else {
+                        self.user_activities.insert(user_id, activities);
+                        true
+                    };
+                    changed |= shown && activities_changed;
                     if self.user_presences.insert(user_id, status) != Some(status) {
                         changed |= self
                             .dms

@@ -58,7 +58,8 @@ pub const SEARCH_CONTEXT: &str = "MessageSearch";
 
 use composer::{Autocomplete, EditingMessage, ReplyTarget};
 use popups::{
-    EmojiPicker, EmojiTarget, ImageViewer, PinsPopup, ProfilePopup, StickerPicker, ThreadsPopup,
+    EmojiPicker, EmojiTarget, ImageViewer, PinsPopup, ProfileModal, ProfilePopup, ProfileTab,
+    StickerPicker, ThreadsPopup,
 };
 use state::View;
 

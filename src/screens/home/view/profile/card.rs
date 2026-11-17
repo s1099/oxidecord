@@ -18,7 +18,7 @@ use crate::discord::{self, UserProfile};
 use crate::screens::home::view::markdown::MarkdownOptions;
 use crate::screens::home::view::user_panel::status_indicator;
 use crate::screens::home::view::{avatar, bot_tag};
-use crate::screens::home::{HomeScreen, ProfilePopup};
+use crate::screens::home::{HomeScreen, ProfilePopup, ProfileTab};
 use crate::ui::depth::{self, Level, radius};
 use crate::ui::tooltip;
 
@@ -71,7 +71,15 @@ impl HomeScreen {
         let status_inset =
             AVATAR_SIZE / 2. * (1. - std::f32::consts::FRAC_1_SQRT_2) - (STATUS_SIZE + 4.) / 2.;
         let avatar = div()
+            .id("profile-card-avatar")
             .relative()
+            .when(!popup.webhook, |this| {
+                this.cursor_pointer()
+                    .tooltip(tooltip::text("View Full Profile"))
+                    .on_click(cx.listener(|this, _, window, cx| {
+                        this.expand_profile(None, window, cx);
+                    }))
+            })
             .child(avatar(popup.name.clone(), avatar_url, px(AVATAR_SIZE)))
             // Webhooks have no presence.
             .when(!popup.webhook, |this| {
@@ -138,7 +146,12 @@ impl HomeScreen {
                         .absolute()
                         .top(px(10.))
                         .right(px(10.))
-                        .child(render_more_menu(popup, profile, cx)),
+                        .child(render_more_menu(
+                            popup,
+                            profile,
+                            cx.entity().downgrade(),
+                            cx,
+                        )),
                 )
             })
             .child(
@@ -188,14 +201,16 @@ impl HomeScreen {
 
         v_flex()
             .gap(px(12.))
-            .when(!is_self, |this| this.children(render_mutuals(profile, cx)))
+            .when(!is_self, |this| {
+                this.children(self.render_mutuals(profile, cx))
+            })
             .children(bio)
             .children(roles)
             .into_any_element()
     }
 
     /// Highest first, as Discord lists them; `@everyone` is everyone's and never shown.
-    fn member_roles_sorted(
+    pub(super) fn member_roles_sorted(
         &self,
         guild_id: Id<GuildMarker>,
         ids: &[Id<twilight_model::id::marker::RoleMarker>],
@@ -216,6 +231,7 @@ impl HomeScreen {
 fn render_more_menu(
     popup: &ProfilePopup,
     profile: Option<&UserProfile>,
+    screen: WeakEntity<HomeScreen>,
     cx: &App,
 ) -> impl IntoElement {
     let user_id = popup.user_id;
@@ -235,9 +251,16 @@ fn render_more_menu(
                 .text_color(white())
                 .tooltip("More")
                 .dropdown_menu_with_anchor(Anchor::TopRight, move |menu, _, _| {
+                    let screen = screen.clone();
                     menu.when_some(created_at.clone(), |menu, created_at| {
                         menu.label(format!("Member since {created_at}")).separator()
                     })
+                    .item(
+                        PopupMenuItem::new("View Full Profile").on_click(move |_, window, cx| {
+                            let _ =
+                                screen.update(cx, |this, cx| this.expand_profile(None, window, cx));
+                        }),
+                    )
                     .when_some(username.clone(), |menu, username| {
                         menu.item(
                             PopupMenuItem::new("Copy Username").on_click(move |_, _, cx| {
@@ -312,7 +335,7 @@ fn render_identity(popup: &ProfilePopup, cx: &App) -> impl IntoElement {
         )
 }
 
-fn render_badges(badges: &[discord::ProfileBadge], cx: &App) -> impl IntoElement {
+pub(super) fn render_badges(badges: &[discord::ProfileBadge], cx: &App) -> impl IntoElement {
     h_flex()
         .flex_shrink_0()
         .gap(px(2.))
@@ -338,58 +361,76 @@ fn render_badges(badges: &[discord::ProfileBadge], cx: &App) -> impl IntoElement
         }))
 }
 
-/// "3 Mutual Friends • 1 Mutual Server", with the first friends' faces in front.
-fn render_mutuals(profile: &UserProfile, cx: &App) -> Option<impl IntoElement> {
-    let theme = cx.theme();
-    let friends = profile.mutual_friends_count;
-    let servers = profile.mutual_guilds.len();
-    if friends == 0 && servers == 0 {
-        return None;
-    }
-    let plural = |count: usize, noun: &str| {
-        format!("{count} Mutual {noun}{}", if count == 1 { "" } else { "s" })
-    };
+impl HomeScreen {
+    /// "3 Mutual Friends • 1 Mutual Server", with the first friends' faces in front.
+    fn render_mutuals(
+        &self,
+        profile: &UserProfile,
+        cx: &Context<Self>,
+    ) -> Option<impl IntoElement> {
+        let theme = cx.theme();
+        let friends = profile.mutual_friends_count;
+        let servers = profile.mutual_guilds.len();
+        if friends == 0 && servers == 0 {
+            return None;
+        }
+        let plural = |count: usize, noun: &str| {
+            format!("{count} Mutual {noun}{}", if count == 1 { "" } else { "s" })
+        };
 
-    let faces = h_flex().children(
-        profile
-            .mutual_friends
-            .iter()
-            .take(MAX_MUTUAL_AVATARS)
-            .enumerate()
-            .map(|(index, friend)| {
-                div()
-                    .when(index > 0, |this| this.ml(px(-4.)))
-                    .rounded_full()
-                    .border_2()
-                    .border_color(theme.popover)
-                    .child(avatar(
-                        friend.name.clone(),
-                        friend.avatar_url.clone(),
-                        px(MUTUAL_AVATAR_SIZE),
-                    ))
-            }),
-    );
+        let faces = h_flex().children(
+            profile
+                .mutual_friends
+                .iter()
+                .take(MAX_MUTUAL_AVATARS)
+                .enumerate()
+                .map(|(index, friend)| {
+                    div()
+                        .when(index > 0, |this| this.ml(px(-4.)))
+                        .rounded_full()
+                        .border_2()
+                        .border_color(theme.popover)
+                        .child(avatar(
+                            friend.name.clone(),
+                            friend.avatar_url.clone(),
+                            px(MUTUAL_AVATAR_SIZE),
+                        ))
+                }),
+        );
 
-    let mut parts = Vec::new();
-    if friends > 0 {
-        parts.push(plural(friends, "Friend"));
-    }
-    if servers > 0 {
-        parts.push(plural(servers, "Server"));
-    }
+        let mut parts = Vec::new();
+        if friends > 0 {
+            parts.push(plural(friends, "Friend"));
+        }
+        if servers > 0 {
+            parts.push(plural(servers, "Server"));
+        }
 
-    Some(
-        h_flex()
-            .gap(px(6.))
-            .items_center()
-            .text_sm()
-            .text_color(theme.muted_foreground)
-            .when(!profile.mutual_friends.is_empty(), |this| this.child(faces))
-            .child(div().min_w_0().truncate().child(parts.join(" • "))),
-    )
+        // Opens the full profile on whichever list has anyone in it.
+        let tab = if friends > 0 {
+            ProfileTab::MutualFriends
+        } else {
+            ProfileTab::MutualServers
+        };
+        Some(
+            h_flex()
+                .id("profile-mutuals")
+                .cursor_pointer()
+                .hover(|style| style.text_color(theme.foreground))
+                .on_click(cx.listener(move |this, _, window, cx| {
+                    this.expand_profile(Some(tab), window, cx);
+                }))
+                .gap(px(6.))
+                .items_center()
+                .text_sm()
+                .text_color(theme.muted_foreground)
+                .when(!profile.mutual_friends.is_empty(), |this| this.child(faces))
+                .child(div().min_w_0().truncate().child(parts.join(" • "))),
+        )
+    }
 }
 
-fn render_roles(roles: Vec<discord::Role>, cx: &App) -> impl IntoElement {
+pub(super) fn render_roles(roles: Vec<discord::Role>, cx: &App) -> impl IntoElement {
     let theme = cx.theme();
     h_flex()
         .flex_wrap()

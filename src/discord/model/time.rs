@@ -108,6 +108,12 @@ pub(super) fn format_snowflake_date(id: u64) -> String {
     format!("{} {day}, {year}", MONTHS[(month - 1) as usize])
 }
 
+/// An ISO 8601 timestamp's date as `Jan 5, 2021` (UTC), as "Member Since" shows it.
+pub(super) fn format_iso_date(iso: &str) -> Option<String> {
+    let date = DateTime::parse_from_rfc3339(iso).ok()?.date_naive();
+    Some(date.format("%b %-d, %Y").to_string())
+}
+
 /// Howard Hinnant's `civil_from_days`: days since the Unix epoch to a civil date.
 fn civil_from_days(days: i64) -> (i64, u32, u32) {
     // Eras start on 0000-03-01 so the leap day ends the year.
