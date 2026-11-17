@@ -21,6 +21,9 @@ use super::super::super::data::attachments::format_size;
 use super::super::super::data::image_viewer::ViewerImage;
 use super::{MEDIA_MAX_HEIGHT, MEDIA_MAX_WIDTH, fit_within};
 
+/// Wide enough for "00:00", so the bubble can be centred on the handle without measuring.
+const TIME_BUBBLE_WIDTH: f32 = 40.;
+
 /// Fallback video card shape when Discord reports no dimensions; about 16:9.
 const FALLBACK_VIDEO_SIZE: (f32, f32) = (MEDIA_MAX_WIDTH, MEDIA_MAX_WIDTH * 9. / 16.);
 
@@ -255,6 +258,7 @@ impl HomeScreen {
             Some(playback) => {
                 let loading = playback.state == PlaybackState::Loading;
                 surface
+                    .group(key.group())
                     .when(!loading, |this| {
                         this.cursor_pointer().on_click(
                             cx.listener(|this, _, _window, cx| this.toggle_video_paused(cx)),
@@ -450,6 +454,7 @@ impl HomeScreen {
     ) -> impl IntoElement {
         let paused = playback.player.is_paused();
         let muted = playback.player.is_muted();
+        let accent = cx.theme().primary;
 
         let toggle = Button::new(key.element_id("video-pause"))
             .icon(Icon::default().path(if paused {
@@ -458,7 +463,7 @@ impl HomeScreen {
                 "icons/pause.svg"
             }))
             .ghost()
-            .xsmall()
+            .small()
             .text_color(white())
             .tooltip(if paused { "Play" } else { "Pause" })
             .on_click(cx.listener(|this, _, _window, cx| this.toggle_video_paused(cx)));
@@ -470,41 +475,88 @@ impl HomeScreen {
                 "icons/volume-2.svg"
             }))
             .ghost()
-            .xsmall()
+            .small()
             .text_color(white())
             .tooltip(if muted { "Unmute" } else { "Mute" })
             .on_click(cx.listener(|this, _, _window, cx| this.toggle_video_muted(cx)));
+
+        let scrub_group = SharedString::from(format!("{}-scrub", key.group()));
+        let fraction = if playback.duration.is_zero() {
+            0.
+        } else {
+            (playback.position.as_secs_f32() / playback.duration.as_secs_f32()).clamp(0., 1.)
+        };
+        // Rides above the handle while the bar is hovered, as Discord's does, instead of a
+        // readout that would take width from the bar.
+        let time = div()
+            .absolute()
+            .bottom(px(22.))
+            .left(relative(fraction))
+            .ml(px(-TIME_BUBBLE_WIDTH / 2.))
+            .w(px(TIME_BUBBLE_WIDTH))
+            .py_0p5()
+            .rounded(px(4.))
+            .bg(black().opacity(0.85))
+            .text_xs()
+            .font_weight(FontWeight::MEDIUM)
+            .text_center()
+            .text_color(white())
+            .invisible()
+            .group_hover(scrub_group.clone(), |this| this.visible())
+            .child(format_time(playback.position));
 
         h_flex()
             .absolute()
             .bottom_0()
             .left_0()
             .right_0()
-            .px_2()
-            .py_1()
-            .gap_2()
+            .pt_6()
+            .pb_1()
+            .px_1()
+            .gap_1()
             .items_center()
+            // Out of the way while it plays; a paused clip keeps them so the next press is obvious.
+            .when(!paused, |this| {
+                this.invisible()
+                    .group_hover(key.group(), |this| this.visible())
+            })
             // Presses here are for the controls, not the pause toggle on the card beneath.
             .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-            // A scrim: the bar sits over arbitrary video, so contrast must come from itself.
-            .bg(black().opacity(0.55))
+            // Fades up from the bottom: the bar sits over arbitrary video, so contrast must come
+            // from itself, but a hard band would crop the picture.
+            .bg(linear_gradient(
+                180.,
+                linear_color_stop(black().alpha(0.), 0.),
+                linear_color_stop(black().alpha(0.75), 1.),
+            ))
             .child(toggle)
             .child(
                 div()
-                    .flex_shrink_0()
-                    .text_xs()
-                    .text_color(white())
-                    .child(format!(
-                        "{} / {}",
-                        format_time(playback.position),
-                        format_time(playback.duration)
-                    )),
-            )
-            .child(
-                div()
+                    .group(scrub_group)
+                    .relative()
                     .flex_1()
                     .min_w_0()
-                    .child(Slider::new(&playback.scrubber).horizontal()),
+                    .mx_1()
+                    .flex()
+                    .items_center()
+                    // The slider tints its own track from the accent, which vanishes over dark
+                    // footage; a light rail under it keeps the unplayed part visible.
+                    .child(
+                        div()
+                            .absolute()
+                            .left_0()
+                            .right_0()
+                            .h_1p5()
+                            .rounded_full()
+                            .bg(white().opacity(0.3)),
+                    )
+                    .child(
+                        Slider::new(&playback.scrubber)
+                            .horizontal()
+                            .bg(accent)
+                            .text_color(accent),
+                    )
+                    .child(time),
             )
             .child(sound)
     }
