@@ -98,6 +98,12 @@ twilight-model = { git = "https://github.com/s1099/twilight", branch = "main" }
 twilight-gateway = { git = "https://github.com/s1099/twilight", branch = "main" }
 twilight-util = { git = "https://github.com/s1099/twilight", branch = "main" }
 
+# Merges duplicate generic code and drops dead code across crates, shrinking the binary.
+# panic stays unwind: runtime::run turns a panicking background task into an Err
+# the UI survives, and abort would make that a crash.
+[profile.release]
+lto = "fat"
+
 # Comment out if required while using debugger.
 [profile.dev]
 debug = "line-tables-only"
