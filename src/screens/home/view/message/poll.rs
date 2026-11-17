@@ -55,7 +55,10 @@ impl HomeScreen {
             let highlight = if tallied { answer.me_voted } else { picked };
 
             h_flex()
-                .id(("poll-answer", message_id.get() * 16 + u64::from(answer_id)))
+                .id(ElementId::NamedInteger(
+                    format!("poll-answer-{message_id}").into(),
+                    u64::from(answer_id),
+                ))
                 .relative()
                 .w_full()
                 .h(px(ANSWER_HEIGHT))
