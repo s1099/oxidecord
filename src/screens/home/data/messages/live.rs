@@ -387,6 +387,10 @@ impl HomeScreen {
                 self.unreads.set_mutes(settings);
                 cx.notify();
             }
+            discord::GatewayEvent::DmOverrideFlags(flags) => {
+                self.dms.override_flags = flags.into_iter().collect();
+                cx.notify();
+            }
             discord::GatewayEvent::InteractionCreated { nonce } => {
                 self.interaction_created(nonce, cx);
             }

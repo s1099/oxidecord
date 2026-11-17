@@ -1,7 +1,8 @@
 //! The direct-message sidebar: one row per conversation.
 
 use gpui_kit::component::button::Button;
-use gpui_kit::component::{ActiveTheme as _, h_flex, skeleton::Skeleton, v_flex};
+use gpui_kit::component::menu::{ContextMenuExt as _, PopupMenuItem};
+use gpui_kit::component::{ActiveTheme as _, Icon, h_flex, skeleton::Skeleton, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
@@ -12,6 +13,7 @@ use crate::screens::home::{HomeScreen, ToggleQuickSwitcher};
 use crate::ui::depth::{Finish, Level, Lit as _, radius};
 use crate::ui::theme;
 
+use super::channel_list::mark_read_item;
 use super::{TITLE_HEIGHT, shell};
 
 /// Skeleton row widths, fixed so it doesn't reshuffle between frames.
@@ -26,6 +28,10 @@ impl HomeScreen {
         let is_selected = self.selected_channel == Some(channel_id);
         let muted = self.unreads.is_muted(channel_id, None);
         let unread = !muted && self.unreads.is_unread(channel_id);
+        let mentions = self.unreads.dm_mentions(channel_id);
+        let has_unread = self.unreads.is_unread(channel_id) || mentions > 0;
+        let pinned = self.is_dm_pinned(channel_id);
+        let screen = cx.entity().downgrade();
 
         // Only a 1:1 conversation has one person whose status to show.
         let status = dm.recipient_id.map(|user_id| self.user_status(user_id));
@@ -90,10 +96,38 @@ impl HomeScreen {
             })
             .child(avatar)
             .child(div().flex_1().truncate().child(dm.name.clone()))
-            .children(mention_badge(self.unreads.dm_mentions(channel_id), cx))
+            .children(mention_badge(mentions, cx))
+            .when(pinned, |this| {
+                this.child(
+                    Icon::default()
+                        .path("icons/pin-filled.svg")
+                        .size_4()
+                        .flex_shrink_0()
+                        .text_color(theme.muted_foreground),
+                )
+            })
             .on_click(cx.listener(move |this, _, window, cx| {
                 this.select_channel(channel_id, window, cx);
             }))
+            .context_menu(move |menu, _, _| {
+                let pin_screen = screen.clone();
+                mark_read_item(menu, screen.clone(), channel_id, has_unread)
+                    .separator()
+                    .item(
+                        PopupMenuItem::new(if pinned { "Unpin" } else { "Pin" })
+                            .icon(Icon::default().path(if pinned {
+                                "icons/pin-off.svg"
+                            } else {
+                                "icons/pin.svg"
+                            }))
+                            .on_click(move |_, _, cx| {
+                                if let Some(screen) = pin_screen.upgrade() {
+                                    screen
+                                        .update(cx, |this, cx| this.toggle_dm_pin(channel_id, cx));
+                                }
+                            }),
+                    )
+            })
     }
 
     pub(in crate::screens::home) fn render_dm_sidebar(
@@ -155,7 +189,18 @@ impl HomeScreen {
                     .child("No conversations yet."),
             );
         } else {
-            list = list.children(self.dms.list.iter().map(|dm| self.render_dm_row(dm, cx)));
+            // Pinned conversations lead, each half keeping its recency order.
+            let (pinned, rest): (Vec<_>, Vec<_>) = self
+                .dms
+                .list
+                .iter()
+                .partition(|dm| self.is_dm_pinned(dm.id));
+            list = list.children(
+                pinned
+                    .into_iter()
+                    .chain(rest)
+                    .map(|dm| self.render_dm_row(dm, cx)),
+            );
         }
 
         let header = h_flex()

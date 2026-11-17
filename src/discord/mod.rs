@@ -19,20 +19,21 @@ pub use model::{
     widget_tag_label,
 };
 pub use model::{
-    ActivityApp, ActivityInstance, AppCommand, AuthorType, Block, Channel, ChannelKind,
-    ChannelLatest, CommandChoice, CommandContext, CommandIndex, CommandOption, CommandSource,
-    CommandUse, CurrentUser, DEFAULT_UPLOAD_LIMIT, Delivery, DirectMessage, DmMember, Embed,
-    EmbedAuthor, EmbedField, EmbedFooter, EmbedLayout, EmbedMedia, EmbedVideo, FileAttachment,
-    ForwardedMessage, FrecencyItem, Guild, GuildAppearance, GuildEmoji, GuildFolders, GuildMember,
-    GuildUnreads, ImageAttachment, Inline, List, ListMember, MAX_UPLOAD_TOTAL, Markdown,
-    MemberGroupKind, MemberListGroup, MemberListItem, MemberListOp, MemberListUpdate, Membership,
-    Mention, MentionedUser, Message, MessageLink, MessageReference, MuteSettings, NotifyLevel,
-    OptionKind, PresenceStatus, ProfileBadge, Reaction, ReactionEmoji, Reactor, ReadState, Reply,
-    Role, SEARCH_MAX_OFFSET, SEARCH_PAGE_SIZE, SPOILER_PREFIX, SearchFilters, SearchHas, SearchHit,
-    SearchResponse, SearchScope, SearchSort, SlashCommand, SpoilerCover, Sticker, StickerItem,
-    StickerPack, StreamServerInfo, SystemEvent, Thread, UnreadChannel, UnreadSetting, Upload,
-    UploadProgress, UserProfile, VideoAttachment, VoiceServerInfo, VoiceUserState, WELCOMES,
-    animated_webp, call_duration, scaled_url, stream_key,
+    ActivityApp, ActivityInstance, AppCommand, AuthorType, Block, CHANNEL_FAVORITED, Channel,
+    ChannelKind, ChannelLatest, CommandChoice, CommandContext, CommandIndex, CommandOption,
+    CommandSource, CommandUse, CurrentUser, DEFAULT_UPLOAD_LIMIT, Delivery, DirectMessage,
+    DmMember, Embed, EmbedAuthor, EmbedField, EmbedFooter, EmbedLayout, EmbedMedia, EmbedVideo,
+    FileAttachment, ForwardedMessage, FrecencyItem, Guild, GuildAppearance, GuildEmoji,
+    GuildFolders, GuildMember, GuildUnreads, ImageAttachment, Inline, List, ListMember,
+    MAX_UPLOAD_TOTAL, Markdown, MemberGroupKind, MemberListGroup, MemberListItem, MemberListOp,
+    MemberListUpdate, Membership, Mention, MentionedUser, Message, MessageLink, MessageReference,
+    MuteSettings, NotifyLevel, OptionKind, PresenceStatus, ProfileBadge, Reaction, ReactionEmoji,
+    Reactor, ReadState, Reply, Role, SEARCH_MAX_OFFSET, SEARCH_PAGE_SIZE, SPOILER_PREFIX,
+    SearchFilters, SearchHas, SearchHit, SearchResponse, SearchScope, SearchSort, SlashCommand,
+    SpoilerCover, Sticker, StickerItem, StickerPack, StreamServerInfo, SystemEvent, Thread,
+    UnreadChannel, UnreadSetting, Upload, UploadProgress, UserProfile, VideoAttachment,
+    VoiceServerInfo, VoiceUserState, WELCOMES, animated_webp, call_duration, scaled_url,
+    stream_key,
 };
 pub use model::{
     Button, ButtonAction, ButtonStyle, Component, InputKind, Media, MediaItem, Modal, ModalField,
@@ -47,8 +48,8 @@ pub use rest::{
     fetch_reactors, fetch_sticker_packs, fetch_user_note, fetch_user_object, fetch_user_profile,
     fetch_user_settings, join_activity, leave_activity, leave_guild, log_out, open_dm_with,
     preview_authorization, remove_account, request_autocomplete, ring_call, run_command,
-    save_frecency, save_status, save_user_note, search_messages, send_message, start_activity,
-    stop_ringing, toggle_reaction, trigger_typing,
+    save_dm_override_flags, save_frecency, save_status, save_user_note, search_messages,
+    send_message, start_activity, stop_ringing, toggle_reaction, trigger_typing,
 };
 pub use rest::{ChannelHome, fetch_channel_home};
 pub use rest::{

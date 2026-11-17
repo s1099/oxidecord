@@ -175,6 +175,45 @@ impl HomeScreen {
         cx.notify();
     }
 
+    pub(in crate::screens::home) fn is_dm_pinned(&self, channel_id: Id<ChannelMarker>) -> bool {
+        self.dms
+            .override_flags
+            .get(&channel_id)
+            .is_some_and(|flags| flags & discord::CHANNEL_FAVORITED != 0)
+    }
+
+    /// Flipped here at once; the settings update Discord sends back confirms it,
+    /// and a failed save puts the old flags back.
+    pub(in crate::screens::home) fn toggle_dm_pin(
+        &mut self,
+        channel_id: Id<ChannelMarker>,
+        cx: &mut Context<Self>,
+    ) {
+        let previous = self.dms.override_flags.get(&channel_id).copied();
+        let flags = previous.unwrap_or(0) ^ discord::CHANNEL_FAVORITED;
+        self.dms.override_flags.insert(channel_id, flags);
+        cx.notify();
+
+        cx.spawn(async move |this, cx| {
+            let Err(err) = discord::save_dm_override_flags(channel_id, flags).await else {
+                return;
+            };
+            eprintln!("pinning a DM failed: {err}");
+            let _ = this.update(cx, |this, cx| {
+                // A newer toggle or update since owns the value now.
+                if this.dms.override_flags.get(&channel_id) != Some(&flags) {
+                    return;
+                }
+                match previous {
+                    Some(previous) => this.dms.override_flags.insert(channel_id, previous),
+                    None => this.dms.override_flags.remove(&channel_id),
+                };
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
     pub(in crate::screens::home) fn selected_dm_info(&self) -> Option<&DirectMessage> {
         let id = self.selected_channel?;
         self.dms.list.iter().find(|dm| dm.id == id)

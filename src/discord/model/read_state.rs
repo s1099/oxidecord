@@ -199,6 +199,9 @@ const GUILD_UNREADS_ONLY_MENTIONS: u64 = 1 << 12;
 /// Channel overrides number the same flags the other way round.
 const CHANNEL_UNREADS_ONLY_MENTIONS: u64 = 1 << 9;
 const CHANNEL_UNREADS_ALL: u64 = 1 << 10;
+/// `FAVORITED` in a channel override. On a DM's override (in the settings whose
+/// `guild_id` is null) it's what Discord's client shows as a pinned conversation.
+pub const CHANNEL_FAVORITED: u64 = 1 << 11;
 
 #[derive(Deserialize)]
 struct RawMuteConfig {
@@ -348,6 +351,20 @@ fn timestamp_snowflake(timestamp: Timestamp) -> Option<Id<MessageMarker>> {
         .and_then(|ms| Id::new_checked(ms << 22))
 }
 
+/// Each DM override's flags, kept whole so pinning can flip one bit without
+/// clearing the rest. `None` for a guild's settings.
+pub(in crate::discord) fn dm_override_flags(
+    settings: &RawGuildSettings,
+) -> Option<Vec<(Id<ChannelMarker>, u64)>> {
+    settings.guild_id.is_none().then(|| {
+        settings
+            .channel_overrides
+            .iter()
+            .map(|channel| (channel.channel_id, channel.flags.unwrap_or(0)))
+            .collect()
+    })
+}
+
 /// Drops mutes already expired. One expiring mid-session stays in force until
 /// the settings next change.
 pub(in crate::discord) fn convert_mute_settings(settings: RawGuildSettings) -> MuteSettings {
@@ -487,6 +504,26 @@ mod tests {
         let mutes = convert_mute_settings(settings);
         assert!(!mutes.muted);
         assert_eq!(mutes.muted_channels, [Id::new(100)]);
+    }
+
+    #[test]
+    fn dm_override_flags_come_only_from_the_dm_settings() {
+        let dms: RawGuildSettings = serde_json::from_str(
+            r#"{"guild_id": null, "channel_overrides": [
+                {"channel_id": "10", "muted": true},
+                {"channel_id": "11", "flags": 2048}
+            ]}"#,
+        )
+        .unwrap();
+        let flags = dm_override_flags(&dms).unwrap();
+        assert_eq!(
+            flags,
+            vec![(Id::new(10), 0), (Id::new(11), CHANNEL_FAVORITED)]
+        );
+
+        let guild: RawGuildSettings =
+            serde_json::from_str(r#"{"guild_id": "1", "channel_overrides": []}"#).unwrap();
+        assert!(dm_override_flags(&guild).is_none());
     }
 
     #[test]

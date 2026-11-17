@@ -56,7 +56,8 @@ pub use message::{
 };
 pub use presence::{Activity, ActivityEmoji, ActivityKind, Presence};
 pub use read_state::{
-    ChannelLatest, GuildUnreads, MuteSettings, NotifyLevel, ReadState, UnreadChannel, UnreadSetting,
+    CHANNEL_FAVORITED, ChannelLatest, GuildUnreads, MuteSettings, NotifyLevel, ReadState,
+    UnreadChannel, UnreadSetting,
 };
 pub use search::{
     AuthorType, SEARCH_MAX_OFFSET, SEARCH_PAGE_SIZE, SearchFilters, SearchHas, SearchHit,
@@ -89,7 +90,8 @@ pub(super) use message::{RawPins, author_member, convert_message, convert_reacti
 pub(super) use presence::{RawActivity, convert_activities};
 pub(super) use read_state::{
     RawChannelUnread, RawGuildChannel, RawGuildSettings, RawReadState, convert_channel_unreads,
-    convert_guild_channels, convert_mute_settings, convert_read_states, versioned_list,
+    convert_guild_channels, convert_mute_settings, convert_read_states, dm_override_flags,
+    versioned_list,
 };
 pub(super) use search::{RawSearch, convert_search};
 pub(super) use settings::{RawSettingsProto, encode_status_settings, parse_user_settings};

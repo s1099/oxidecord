@@ -204,6 +204,8 @@ pub enum GatewayEvent {
     },
     LatestMessages(Vec<ChannelLatest>),
     MuteSettings(Vec<MuteSettings>),
+    /// Replaces every DM override's flags, by channel.
+    DmOverrideFlags(Vec<(Id<ChannelMarker>, u64)>),
     /// Discord accepted a command run from here and handed it to the app.
     InteractionCreated {
         nonce: u64,

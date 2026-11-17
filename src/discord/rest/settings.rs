@@ -2,6 +2,8 @@
 
 use std::collections::HashMap;
 
+use twilight_model::id::{Id, marker::ChannelMarker};
+
 use twilight_http::request::{Method, RequestBuilder};
 use twilight_http::response::marker::EmptyBody;
 
@@ -65,6 +67,26 @@ pub async fn save_frecency(items: HashMap<u64, FrecencyItem>, now_ms: u64) -> Re
         let request = RequestBuilder::raw(Method::Patch, "users/@me/settings-proto/2".to_owned())
             .json(&serde_json::json!({ "settings": encode_frecency_settings(&items, now_ms) }))
             .build()?;
+        client.request::<EmptyBody>(request).await?;
+        Ok(())
+    })
+    .await
+}
+
+/// Sets one DM's override flags (`PATCH /users/@me/guilds/@me/settings`, the
+/// DMs' stand-in guild), as Discord's client pins and unpins a conversation.
+/// Overrides merge by channel, but `flags` is replaced whole.
+pub async fn save_dm_override_flags(
+    channel_id: Id<ChannelMarker>,
+    flags: u64,
+) -> Result<(), String> {
+    request(move |client| async move {
+        let request =
+            RequestBuilder::raw(Method::Patch, "users/@me/guilds/%40me/settings".to_owned())
+                .json(&serde_json::json!({
+                    "channel_overrides": { channel_id.to_string(): { "flags": flags } }
+                }))
+                .build()?;
         client.request::<EmptyBody>(request).await?;
         Ok(())
     })

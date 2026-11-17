@@ -20,7 +20,7 @@ use crate::discord::model::{
     convert_member_list_update, convert_message, convert_modal, convert_mute_settings,
     convert_reaction_emoji, convert_read_states, convert_role, convert_sticker,
     convert_stream_server, convert_thread, convert_voice_server, convert_voice_state,
-    parse_user_settings,
+    dm_override_flags, parse_user_settings,
 };
 use crate::discord::{Membership, NotifyLevel};
 
@@ -41,8 +41,14 @@ pub(super) fn dispatch(
                 *self_id = Some(ready.user.id);
                 let mut voice_states = Vec::new();
                 let mut roles = Vec::new();
+                let dm_flags = ready
+                    .user_guild_settings
+                    .iter()
+                    .find_map(dm_override_flags)
+                    .unwrap_or_default();
                 let mut unreads = vec![
                     GatewayEvent::ReadStates(convert_read_states(ready.read_state)),
+                    GatewayEvent::DmOverrideFlags(dm_flags),
                     GatewayEvent::MuteSettings(
                         ready
                             .user_guild_settings
@@ -561,9 +567,12 @@ pub(super) fn dispatch(
             .unwrap_or_default(),
         "USER_GUILD_SETTINGS_UPDATE" => serde_json::from_str::<RawGuildSettings>(data)
             .map(|settings| {
-                vec![GatewayEvent::MuteSettings(vec![convert_mute_settings(
+                let dm_flags = dm_override_flags(&settings).map(GatewayEvent::DmOverrideFlags);
+                let mut events = vec![GatewayEvent::MuteSettings(vec![convert_mute_settings(
                     settings,
-                )])]
+                )])];
+                events.extend(dm_flags);
+                events
             })
             .unwrap_or_default(),
         "INTERACTION_CREATE" | "INTERACTION_SUCCESS" | "INTERACTION_FAILURE" => {

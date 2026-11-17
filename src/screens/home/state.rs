@@ -78,6 +78,8 @@ pub(super) struct DmList {
     pub loaded: bool,
     /// Refetch after a message arrived in a conversation the list lacks.
     pub refreshing: bool,
+    /// Each DM override's flags; `CHANNEL_FAVORITED` among them pins the conversation.
+    pub override_flags: HashMap<Id<ChannelMarker>, u64>,
 }
 
 /// What's known of each guild beyond the guild itself, by guild id.

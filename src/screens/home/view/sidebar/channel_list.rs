@@ -399,7 +399,7 @@ impl HomeScreen {
 }
 
 /// Disabled with nothing to clear, as in Discord.
-fn mark_read_item(
+pub(super) fn mark_read_item(
     menu: PopupMenu,
     screen: WeakEntity<HomeScreen>,
     channel_id: Id<ChannelMarker>,

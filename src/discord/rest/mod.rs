@@ -45,7 +45,9 @@ pub use message::{
     delete_message, edit_message, fetch_messages, fetch_pins, fetch_reactors, search_messages,
     send_message, toggle_reaction, trigger_typing,
 };
-pub use settings::{fetch_frecency, fetch_user_settings, save_frecency, save_status};
+pub use settings::{
+    fetch_frecency, fetch_user_settings, save_dm_override_flags, save_frecency, save_status,
+};
 pub use sticker::fetch_sticker_packs;
 pub use thread::{
     ThreadSearch, fetch_thread, search_threads, set_thread_archived, set_thread_joined,
