@@ -24,9 +24,9 @@ use crate::platform::runtime;
 
 use super::model::{
     ActivityInstance, Channel, ChannelLatest, CommandChoice, DmMember, GuildAppearance, GuildEmoji,
-    GuildMember, GuildUnreads, MemberListUpdate, Membership, Message, MuteSettings, NotifyLevel,
-    Presence, PresenceStatus, ReactionEmoji, ReadState, Role, Sticker, StreamServerInfo, Thread,
-    VoiceServerInfo, VoiceUserState,
+    GuildFolders, GuildMember, GuildUnreads, MemberListUpdate, Membership, Message, MuteSettings,
+    NotifyLevel, Presence, PresenceStatus, ReactionEmoji, ReadState, Role, Sticker,
+    StreamServerInfo, Thread, VoiceServerInfo, VoiceUserState,
 };
 
 pub use identify::system_locale;
@@ -244,6 +244,10 @@ pub enum GatewayEvent {
     },
     /// The user left or was removed, or the guild was deleted.
     GuildRemoved(Id<GuildMarker>),
+    /// A guild came in after `READY`: newly joined, or back from an outage.
+    GuildAvailable(Id<GuildMarker>),
+    /// The rail's order changed, from this or another client.
+    GuildFolders(GuildFolders),
 }
 
 pub enum ReactionChange {

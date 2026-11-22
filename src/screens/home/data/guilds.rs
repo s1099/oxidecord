@@ -61,7 +61,7 @@ impl HomeScreen {
             let _ = this.update(cx, |this, cx| {
                 match result {
                     Ok(settings) => {
-                        this.guild_folders = Some(settings.guild_folders);
+                        this.guild_folders = Some(settings.guild_folders.unwrap_or_default());
                         // A status picked while this was in flight wins.
                         if this.presence_status.is_none() {
                             this.apply_presence_status(settings.status.unwrap_or_default());

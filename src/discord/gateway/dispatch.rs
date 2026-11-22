@@ -317,6 +317,7 @@ pub(super) fn dispatch(
                 let presences = GatewayEvent::Presences(convert_presences(guild.presences));
                 let activities = guild_activities(guild.id, guild.activity_instances);
                 let threads = joined_threads(guild.id, guild.threads);
+                let joined = GatewayEvent::GuildAvailable(guild.id);
                 std::iter::once(voice)
                     .chain(std::iter::once(presences))
                     .chain(activities)
@@ -329,6 +330,7 @@ pub(super) fn dispatch(
                     .chain(guild_emojis(guild.id, guild.emojis))
                     .chain(guild_stickers(guild.id, guild.stickers))
                     .chain(guild_roles(guild.id, guild.roles, guild.members))
+                    .chain(std::iter::once(joined))
                     .collect()
             })
             .unwrap_or_default(),
@@ -539,8 +541,12 @@ pub(super) fn dispatch(
         "USER_SETTINGS_PROTO_UPDATE" => serde_json::from_str::<SettingsProtoUpdatePayload>(data)
             .ok()
             .filter(|update| update.settings.kind == 1)
-            .and_then(|update| parse_user_settings(&update.settings.proto).ok()?.status)
-            .map(|status| vec![GatewayEvent::StatusSettings(status)])
+            .and_then(|update| parse_user_settings(&update.settings.proto).ok())
+            .map(|settings| {
+                let status = settings.status.map(GatewayEvent::StatusSettings);
+                let folders = settings.guild_folders.map(GatewayEvent::GuildFolders);
+                status.into_iter().chain(folders).collect()
+            })
             .unwrap_or_default(),
         "MESSAGE_ACK" => serde_json::from_str::<MessageAckPayload>(data)
             .map(|ack| {

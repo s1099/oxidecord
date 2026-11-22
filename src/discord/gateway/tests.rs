@@ -764,3 +764,13 @@ fn poll_votes_say_which_answer_and_which_way() {
         [GatewayEvent::PollVote { user_id, answer_id: 3, add: false, .. }] if *user_id == Id::new(2)
     ));
 }
+
+#[test]
+fn joining_a_guild_announces_it() {
+    let events = dispatch_json("GUILD_CREATE", r#"{"id": "10"}"#);
+
+    assert!(matches!(
+        events.as_slice(),
+        [.., GatewayEvent::GuildAvailable(guild_id)] if *guild_id == Id::new(10)
+    ));
+}

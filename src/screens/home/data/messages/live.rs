@@ -438,6 +438,18 @@ impl HomeScreen {
             discord::GatewayEvent::GuildRemoved(guild_id) => {
                 self.remove_guild(guild_id, window, cx);
             }
+            discord::GatewayEvent::GuildAvailable(guild_id) => {
+                // The list carries the user's permissions, which the gateway's
+                // guild would need its roles worked through to give.
+                if !self.loading && self.guilds.iter().all(|guild| guild.id != guild_id) {
+                    self.load_guilds(cx);
+                }
+            }
+            discord::GatewayEvent::GuildFolders(folders) => {
+                self.guild_folders = Some(folders);
+                self.rebuild_rail();
+                cx.notify();
+            }
             discord::GatewayEvent::MemberList(update) => {
                 self.apply_member_list_update(update, cx);
             }

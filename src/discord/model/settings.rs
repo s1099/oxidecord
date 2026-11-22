@@ -20,7 +20,8 @@ pub(in crate::discord) struct RawSettingsProto {
 
 #[derive(Debug, Default, Clone)]
 pub struct UserSettings {
-    pub guild_folders: GuildFolders,
+    /// `None` when absent, as in a partial update that didn't touch it.
+    pub guild_folders: Option<GuildFolders>,
     /// `None` when never picked; Discord treats it as online.
     pub status: Option<PresenceStatus>,
 }
@@ -96,7 +97,7 @@ pub(in crate::discord) fn parse_user_settings(settings: &str) -> Result<UserSett
     for (number, value) in Fields::new(&bytes) {
         match (number, value) {
             (11, Value::Bytes(bytes)) => parsed.status = parse_status(bytes),
-            (14, Value::Bytes(bytes)) => parsed.guild_folders = parse_folders_message(bytes),
+            (14, Value::Bytes(bytes)) => parsed.guild_folders = Some(parse_folders_message(bytes)),
             _ => {}
         }
     }
