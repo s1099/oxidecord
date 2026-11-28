@@ -28,6 +28,8 @@ impl HomeScreen {
             .w_full()
             .px_2()
             .pb(px(INSET + 2.))
+            // Opaque so the rail's icons, scrolled past its end, don't peek through the margin.
+            .bg(theme.sidebar)
             .child(
                 v_flex()
                     .w_full()
