@@ -25,8 +25,8 @@ use crate::platform::runtime;
 use super::model::{
     ActivityInstance, Channel, ChannelLatest, CommandChoice, DmMember, GuildAppearance, GuildEmoji,
     GuildFolders, GuildMember, GuildUnreads, MemberListUpdate, Membership, Message, MuteSettings,
-    NotifyLevel, Presence, PresenceStatus, ReactionEmoji, ReadState, Role, Sticker,
-    StreamServerInfo, Thread, VoiceServerInfo, VoiceUserState,
+    NotifyLevel, Presence, PresenceStatus, ReactionEmoji, ReadState, Relationship,
+    RelationshipKind, Role, Sticker, StreamServerInfo, Thread, VoiceServerInfo, VoiceUserState,
 };
 
 pub use identify::system_locale;
@@ -166,12 +166,21 @@ pub enum GatewayEvent {
     MemberList(MemberListUpdate),
     Presences(Vec<Presence>),
     StatusSettings(PresenceStatus),
-    /// Replaces who the user has blocked.
-    BlockedUsers(Vec<Id<UserMarker>>),
-    Blocked {
-        user_id: Id<UserMarker>,
-        blocked: bool,
+    /// Replaces every friend, friend request and block.
+    Relationships(Vec<Relationship>),
+    /// A new relationship, or one whose kind changed: a request accepted, a friend blocked.
+    /// `notify` when Discord's client would announce it.
+    RelationshipAdd {
+        relationship: Relationship,
+        notify: bool,
     },
+    /// A change that keeps the kind, such as a friend's nickname.
+    RelationshipUpdate {
+        user_id: Id<UserMarker>,
+        kind: Option<RelationshipKind>,
+        nickname: Option<String>,
+    },
+    RelationshipRemove(Id<UserMarker>),
     /// Follows `Ready`, which clears what an earlier session knew.
     ReadStates(Vec<ReadState>),
     /// The user read a channel up to a message, here or on another client.

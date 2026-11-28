@@ -12,8 +12,8 @@ use twilight_model::util::Timestamp;
 
 use crate::discord::model::{
     Presence, PresenceStatus, RawActivity, RawActivityInstance, RawChannelUnread, RawChoice,
-    RawEmoji, RawGuildChannel, RawGuildSettings, RawMember, RawReadState, RawRole, RawSticker,
-    RawVoiceState, convert_activities, versioned_list,
+    RawEmoji, RawGuildChannel, RawGuildSettings, RawMember, RawReadState, RawRelationship,
+    RawRelationshipUser, RawRole, RawSticker, RawVoiceState, convert_activities, versioned_list,
 };
 
 /// `STREAM_CREATE`, of which only what a connection needs is read.
@@ -88,21 +88,9 @@ pub(super) struct ReadyPayload {
     pub(super) merged_presences: Option<MergedPresences>,
     #[serde(default, deserialize_with = "skip_invalid")]
     pub(super) relationships: Vec<RawRelationship>,
-}
-
-/// One of `READY`'s `relationships`, or a `RELATIONSHIP_*` dispatch. `id` is
-/// the other user's.
-#[derive(Deserialize)]
-pub(super) struct RawRelationship {
-    pub(super) id: Id<UserMarker>,
-    #[serde(rename = "type", default)]
-    kind: u8,
-}
-
-impl RawRelationship {
-    pub(super) fn is_block(&self) -> bool {
-        self.kind == 2
-    }
+    /// Where relationships find their user when the session deduplicates user objects.
+    #[serde(default, deserialize_with = "skip_invalid")]
+    pub(super) users: Vec<RawRelationshipUser>,
 }
 
 /// Presences gathered in one place, from `READY` or `READY_SUPPLEMENTAL`

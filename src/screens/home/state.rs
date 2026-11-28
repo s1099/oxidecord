@@ -27,6 +27,7 @@ use super::composer::{Autocomplete, EditingMessage, ReplyTarget, Typist};
 use super::data::attachments::PendingAttachment;
 use super::data::gif::LoadedGifs;
 use super::folders::RailEntry;
+use super::friends::Friends;
 use super::history_cache::HistoryCache;
 use super::media::VideoPlayback;
 use super::member_list_cache::MemberListCache;
@@ -235,8 +236,8 @@ pub struct HomeScreen {
     pub(super) gateway: Option<discord::GatewaySender>,
     /// From whichever of `READY` or `GET /users/@me` lands first; voice needs it to identify.
     pub(super) self_user_id: Option<Id<UserMarker>>,
-    /// Their messages raise no notification.
-    pub(super) blocked_users: HashSet<Id<UserMarker>>,
+    /// Friends, requests and blocks; blocked users' messages raise no notification.
+    pub(super) friends: Friends,
     /// Started with the gateway, whose messages it announces.
     pub(super) notifier: Option<crate::platform::notify::Notifier>,
     /// Expands the message toolbar's hidden actions inline, as in Discord.
@@ -492,7 +493,7 @@ impl HomeScreen {
             activity_error: None,
             gateway: None,
             self_user_id: None,
-            blocked_users: HashSet::new(),
+            friends: Friends::new(window, cx),
             notifier: None,
             shift_held: false,
             hovered_message: None,

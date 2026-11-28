@@ -83,7 +83,7 @@ impl HomeScreen {
         if incoming.silent
             || message.system.is_some()
             || Some(message.author_id) == self.self_user_id
-            || self.blocked_users.contains(&message.author_id)
+            || self.friends.is_blocked(message.author_id)
             || self.presence_status == Some(discord::PresenceStatus::DoNotDisturb)
             || prefs::with(|prefs| prefs.notifications_off)
         {
@@ -338,6 +338,13 @@ impl HomeScreen {
     fn open_notification(&mut self, id: ToastId, window: &mut Window, cx: &mut Context<Self>) {
         #[cfg(windows)]
         crate::platform::tray::show(window);
+        // A relationship's toast names the user where a message's names its id.
+        if id.channel == 0 {
+            if let Some(user_id) = Id::new_checked(id.message) {
+                self.open_relationship_toast(user_id, window, cx);
+            }
+            return;
+        }
         let (Some(channel_id), Some(message_id)) =
             (Id::new_checked(id.channel), Id::new_checked(id.message))
         else {

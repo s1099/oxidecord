@@ -14,6 +14,7 @@ mod composer;
 mod data;
 mod emoji;
 mod folders;
+mod friends;
 mod history_cache;
 mod media;
 mod member_list_cache;

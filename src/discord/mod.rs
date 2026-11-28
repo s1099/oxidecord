@@ -15,8 +15,8 @@ pub use gateway::{
 #[cfg(test)]
 pub use model::StickerFormat;
 pub use model::{
-    Activity, ActivityEmoji, ActivityKind, GameInfo, Presence, ProfileConnection, connection_label,
-    widget_tag_label,
+    Activity, ActivityEmoji, ActivityKind, GameInfo, Presence, ProfileConnection, Relationship,
+    RelationshipKind, connection_label, widget_tag_label,
 };
 pub use model::{
     ActivityApp, ActivityInstance, AppCommand, AuthorType, Block, CHANNEL_FAVORITED, Channel,
@@ -60,6 +60,9 @@ pub use rest::{
 pub use rest::{
     ThreadSearch, fetch_thread, search_threads, set_thread_archived, set_thread_joined,
     start_thread, start_thread_from_message,
+};
+pub use rest::{
+    add_friend, block_user, remove_relationship, send_friend_request, set_friend_nickname,
 };
 pub use rest::{end_poll, vote_poll};
 pub use token::{

@@ -178,12 +178,22 @@ Entry format:
 - **Animated images copy their first frame** — only PNG and a bitmap go on the clipboard,
   as Discord's own "Copy Image" does. `src/platform/clipboard.rs:89`
 
+## Friends
+
+- **Friend nicknames only show on the Friends page** — Discord shows a friend's nickname in
+  place of their name in the DM list and the conversation too; here only the Friends page and
+  its menus use it. `src/discord/model/relationship.rs:52`
+- **Spam requests sit with the rest** — Discord files requests it flagged as spam in a
+  separate box; here they're listed under Pending, only left out of the badge.
+  `src/screens/home/view/friends.rs:172`
+- **No artwork in the empty states** — Discord's Wumpus illustrations aren't shipped, so the
+  text sits under a faded friends glyph. `src/screens/home/view/friends.rs:782`
+- **Relationship toasts reuse message toast ids** — a toast with channel `0` stands for a
+  relationship, its message id carrying the user, rather than `ToastId` gaining a kind.
+  `src/screens/home/data/notifications.rs:342`
+
 ## Profile popout
 
-- **No friend button** — Discord's card shows the friendship state (and add/accept) beside
-  the menu, but the gateway handling only keeps blocks out of `RELATIONSHIP_*`, so the card
-  can't tell a friend from a stranger. The full profile lacks it too.
-  `src/screens/home/view/profile/card.rs:231`
 - **Messaging from the card overwrites a draft** — the text is sent through the composer, so
   anything already typed in that DM's composer is replaced. `src/screens/home/data/profile.rs:357`
 - **Stale cache** — a profile is fetched once per user and server and kept for the session,

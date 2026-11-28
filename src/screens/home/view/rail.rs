@@ -88,6 +88,7 @@ impl HomeScreen {
                                     .text_color(white()),
                             ),
                     )
+                    .children(rail_badge(self.friends.incoming_count() as u32, cx))
                     .tooltip(tooltip::text("Direct Messages"))
                     .on_click(cx.listener(|this, _, window, cx| {
                         this.open_direct_messages(window, cx);

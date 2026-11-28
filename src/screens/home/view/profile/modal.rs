@@ -18,7 +18,8 @@ use gpui_kit::*;
 use twilight_model::id::{Id, marker::UserMarker};
 
 use super::card::{render_badges, render_roles};
-use crate::discord::{self, ActivityEmoji, ActivityKind, UserProfile};
+use crate::discord::{self, ActivityEmoji, ActivityKind, RelationshipKind, UserProfile};
+use crate::screens::home::view::friends::{friend_button, relationship_items};
 use crate::screens::home::view::markdown::MarkdownOptions;
 use crate::screens::home::view::user_panel::status_indicator;
 use crate::screens::home::view::{avatar, bot_tag};
@@ -219,6 +220,7 @@ impl HomeScreen {
             );
 
         let user_id = modal.user_id;
+        let kind = self.friends.kind(user_id);
         let actions = (!is_self).then(|| {
             h_flex()
                 .gap(px(8.))
@@ -232,7 +234,20 @@ impl HomeScreen {
                             this.message_user(user_id, window, cx);
                         })),
                 )
-                .child(render_modal_menu(user_id, profile))
+                .children(friend_button(
+                    "profile-modal-friend",
+                    user_id,
+                    kind,
+                    true,
+                    cx.entity().downgrade(),
+                ))
+                .child(render_modal_menu(
+                    user_id,
+                    profile,
+                    modal.name.clone(),
+                    kind,
+                    cx.entity().downgrade(),
+                ))
         });
 
         let body = match (profile, &modal.error) {
@@ -949,25 +964,34 @@ fn render_connections(connections: &[discord::ProfileConnection], cx: &App) -> i
         }))
 }
 
-fn render_modal_menu(user_id: Id<UserMarker>, profile: Option<&UserProfile>) -> impl IntoElement {
+fn render_modal_menu(
+    user_id: Id<UserMarker>,
+    profile: Option<&UserProfile>,
+    name: String,
+    kind: Option<RelationshipKind>,
+    screen: WeakEntity<HomeScreen>,
+) -> impl IntoElement {
     let username = profile.map(|profile| profile.username.clone());
+    let name = profile.map_or(name, |profile| profile.display_name().to_owned());
     Button::new("profile-modal-more")
         .icon(IconName::Ellipsis)
         .small()
         .tooltip("More")
         .dropdown_menu_with_anchor(Anchor::TopLeft, move |menu, _, _| {
-            menu.when_some(username.clone(), |menu, username| {
-                menu.item(
-                    PopupMenuItem::new("Copy Username").on_click(move |_, _, cx| {
-                        cx.write_to_clipboard(ClipboardItem::new_string(username.clone()));
+            relationship_items(menu, screen.clone(), user_id, name.clone(), kind)
+                .separator()
+                .when_some(username.clone(), |menu, username| {
+                    menu.item(
+                        PopupMenuItem::new("Copy Username").on_click(move |_, _, cx| {
+                            cx.write_to_clipboard(ClipboardItem::new_string(username.clone()));
+                        }),
+                    )
+                })
+                .item(
+                    PopupMenuItem::new("Copy User ID").on_click(move |_, _, cx| {
+                        cx.write_to_clipboard(ClipboardItem::new_string(user_id.to_string()));
                     }),
                 )
-            })
-            .item(
-                PopupMenuItem::new("Copy User ID").on_click(move |_, _, cx| {
-                    cx.write_to_clipboard(ClipboardItem::new_string(user_id.to_string()));
-                }),
-            )
         })
 }
 

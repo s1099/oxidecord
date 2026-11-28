@@ -3,6 +3,7 @@
 pub(super) mod components;
 mod composer;
 mod content;
+mod friends;
 mod image_viewer;
 mod markdown;
 mod member_list;
@@ -60,6 +61,7 @@ impl Render for HomeScreen {
         self.sync_at_bottom(cx);
 
         self.sync_member_list();
+        self.friends.wide = window.viewport_size().width >= px(friends::ACTIVE_NOW_MIN_WINDOW);
         self.sync_search_scope(window, cx);
 
         // Modifier changes don't repaint on their own, so nudge the screen when shift toggles

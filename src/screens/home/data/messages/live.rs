@@ -171,15 +171,25 @@ impl HomeScreen {
                 self.presence_status = Some(status);
                 cx.notify();
             }
-            discord::GatewayEvent::BlockedUsers(users) => {
-                self.blocked_users = users.into_iter().collect();
+            discord::GatewayEvent::Relationships(relationships) => {
+                self.friends.replace(relationships);
+                cx.notify();
             }
-            discord::GatewayEvent::Blocked { user_id, blocked } => {
-                if blocked {
-                    self.blocked_users.insert(user_id);
-                } else {
-                    self.blocked_users.remove(&user_id);
-                }
+            discord::GatewayEvent::RelationshipAdd {
+                relationship,
+                notify,
+            } => self.handle_relationship_add(relationship, notify, window, cx),
+            discord::GatewayEvent::RelationshipUpdate {
+                user_id,
+                kind,
+                nickname,
+            } => {
+                self.friends.update(user_id, kind, nickname);
+                cx.notify();
+            }
+            discord::GatewayEvent::RelationshipRemove(user_id) => {
+                self.friends.relationships.remove(&user_id);
+                cx.notify();
             }
             discord::GatewayEvent::Message(incoming) => {
                 // Most messages land in channels already unread, changing nothing on screen.

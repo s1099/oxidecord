@@ -12,6 +12,7 @@ pub(super) mod commands;
 pub(super) mod components;
 pub(super) mod dms;
 pub(super) mod emoji;
+pub(super) mod friends;
 pub(super) mod gif;
 pub(super) mod guild_menu;
 pub(super) mod guilds;

@@ -65,13 +65,11 @@
 
 | Feature | Status | Notes |
 |---|---|---|
-| Friends list (online, all, pending, blocked) | Missing | |
-| Sending, accepting and removing friend requests | Missing | |
-| Blocking and ignoring users | Missing | |
+| Blocking and ignoring users | Partial | Blocking and unblocking work from the Friends page, profiles and menus, and blocked users' messages don't notify. Their messages still show in full where Discord collapses them behind "blocked message", and ignoring isn't offered |
 | Starting a new DM or group DM | Missing | Only existing DMs are listed |
 | Group DM management (add or remove members, rename, change icon, leave) | Missing | |
 | Closing (hiding) a DM from the list | Missing | |
-| Active Now panel | Missing | |
+| Active Now panel | Partial | On the Friends page, listing friends' games, music and streams. Friends in voice channels aren't shown |
 | Avatar decorations, profile effects, nameplates | Missing | |
 | Game collection and other profile widgets | Partial | The full profile shows the game widgets read-only; `application` widgets, the wishlist and editing your own board aren't there |
 

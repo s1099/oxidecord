@@ -16,6 +16,10 @@ use super::{header, header_actions, header_content, pane};
 impl HomeScreen {
     pub(super) fn render_dm_content(&self, cx: &Context<Self>) -> AnyElement {
         let Some(dm) = self.selected_dm_info().cloned() else {
+            // A DM still loading after a click has no info yet; only nothing open is Friends.
+            if self.selected_channel.is_none() {
+                return self.render_friends(cx);
+            }
             return pane(
                 v_flex()
                     .flex_1()

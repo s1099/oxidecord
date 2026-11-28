@@ -774,3 +774,70 @@ fn joining_a_guild_announces_it() {
         [.., GatewayEvent::GuildAvailable(guild_id)] if *guild_id == Id::new(10)
     ));
 }
+
+#[test]
+fn ready_relationships_find_deduplicated_users() {
+    let events = dispatch_json(
+        "READY",
+        r#"{
+            "user": {"id": "1"},
+            "relationships": [
+                {"id": "2", "type": 1, "nickname": "Pal",
+                 "user": {"id": "2", "username": "two"}},
+                {"id": "3", "type": 3, "user_id": "3"},
+                {"id": "4", "type": 5, "user": {"id": "4", "username": "four"}}
+            ],
+            "users": [{"id": "3", "username": "three", "global_name": "Three"}]
+        }"#,
+    );
+    let relationships = events
+        .iter()
+        .find_map(|event| match event {
+            GatewayEvent::Relationships(relationships) => Some(relationships),
+            _ => None,
+        })
+        .expect("READY should carry the relationships");
+    assert_eq!(relationships.len(), 2);
+    let friend = relationships
+        .iter()
+        .find(|r| r.user_id == Id::new(2))
+        .unwrap();
+    assert_eq!(friend.kind, RelationshipKind::Friend);
+    assert_eq!(friend.display_name(), "Pal");
+    let request = relationships
+        .iter()
+        .find(|r| r.user_id == Id::new(3))
+        .unwrap();
+    assert_eq!(request.kind, RelationshipKind::Incoming);
+    assert_eq!(request.name, "Three");
+}
+
+#[test]
+fn relationship_dispatches_convert() {
+    let added = dispatch_json(
+        "RELATIONSHIP_ADD",
+        r#"{"id": "2", "type": 3, "should_notify": true,
+            "user": {"id": "2", "username": "two"}}"#,
+    );
+    assert!(matches!(
+        added.as_slice(),
+        [GatewayEvent::RelationshipAdd { relationship, notify: true }]
+            if relationship.kind == RelationshipKind::Incoming
+    ));
+
+    let updated = dispatch_json(
+        "RELATIONSHIP_UPDATE",
+        r#"{"id": "2", "type": 1, "nickname": "Pal"}"#,
+    );
+    assert!(matches!(
+        updated.as_slice(),
+        [GatewayEvent::RelationshipUpdate { kind: Some(RelationshipKind::Friend), nickname: Some(nickname), .. }]
+            if nickname == "Pal"
+    ));
+
+    let removed = dispatch_json("RELATIONSHIP_REMOVE", r#"{"id": "2", "type": 1}"#);
+    assert!(matches!(
+        removed.as_slice(),
+        [GatewayEvent::RelationshipRemove(id)] if *id == Id::new(2)
+    ));
+}

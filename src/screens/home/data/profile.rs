@@ -318,7 +318,7 @@ impl HomeScreen {
 
     /// Runs `then` with the DM channel shared with `user_id`, creating it first
     /// if this is the first conversation between the two.
-    fn with_dm(
+    pub(in crate::screens::home) fn with_dm(
         &mut self,
         user_id: Id<UserMarker>,
         window: &mut Window,

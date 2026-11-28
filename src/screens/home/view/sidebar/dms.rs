@@ -130,6 +130,52 @@ impl HomeScreen {
             })
     }
 
+    /// Opens the Friends page, badged with the requests waiting on the user.
+    fn render_friends_row(&self, cx: &Context<Self>) -> impl IntoElement {
+        let theme = cx.theme();
+        let selected = self.on_friends_page();
+        let pending = self.friends.incoming_count() as u32;
+        h_flex()
+            .id("friends-nav")
+            .h(px(44.))
+            .px_2()
+            .gap_3()
+            .items_center()
+            .rounded(radius::ITEM)
+            .cursor_pointer()
+            .font_weight(FontWeight::MEDIUM)
+            .text_color(if selected {
+                theme.sidebar_accent_foreground
+            } else {
+                theme::secondary_text(cx)
+            })
+            .hover(|this| {
+                this.bg(theme.sidebar_accent)
+                    .text_color(theme.sidebar_accent_foreground)
+            })
+            .when(selected, |this| {
+                this.bg(theme.sidebar_accent).lit(
+                    Level::Raised,
+                    Finish::Subtle,
+                    px(44.),
+                    radius::ITEM,
+                    cx,
+                )
+            })
+            .child(
+                div()
+                    .size(px(32.))
+                    .flex()
+                    .flex_shrink_0()
+                    .items_center()
+                    .justify_center()
+                    .child(Icon::default().path("icons/friends.svg").size_5()),
+            )
+            .child(div().flex_1().truncate().child("Friends"))
+            .children(mention_badge(pending, cx))
+            .on_click(cx.listener(|this, _, window, cx| this.show_friends(window, cx)))
+    }
+
     pub(in crate::screens::home) fn render_dm_sidebar(
         &self,
         cx: &mut Context<Self>,
@@ -150,10 +196,11 @@ impl HomeScreen {
             .px_2()
             .py_2()
             .gap(px(2.))
+            .child(self.render_friends_row(cx))
             .child(
                 div()
                     .px_2()
-                    .pt_1()
+                    .pt_3()
                     .pb_1()
                     .text_xs()
                     .font_weight(FontWeight::SEMIBOLD)

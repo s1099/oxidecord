@@ -20,6 +20,7 @@ mod message;
 mod poll;
 mod presence;
 mod read_state;
+mod relationship;
 mod search;
 mod settings;
 mod sticker;
@@ -61,6 +62,7 @@ pub use read_state::{
     CHANNEL_FAVORITED, ChannelLatest, GuildUnreads, MuteSettings, NotifyLevel, ReadState,
     UnreadChannel, UnreadSetting,
 };
+pub use relationship::{Relationship, RelationshipKind};
 pub use search::{
     AuthorType, SEARCH_MAX_OFFSET, SEARCH_PAGE_SIZE, SearchFilters, SearchHas, SearchHit,
     SearchResponse, SearchScope, SearchSort,
@@ -95,6 +97,7 @@ pub(super) use read_state::{
     convert_guild_channels, convert_mute_settings, convert_read_states, dm_override_flags,
     versioned_list,
 };
+pub(super) use relationship::{RawRelationship, RawRelationshipUser, convert_relationship};
 pub(super) use search::{RawSearch, convert_search};
 pub(super) use settings::{RawSettingsProto, encode_status_settings, parse_user_settings};
 pub(super) use sticker::{RawSticker, RawStickerPacks, convert_sticker, convert_sticker_packs};

@@ -13,14 +13,14 @@ use twilight_model::channel::message::MessageFlags;
 
 use crate::discord::model::{
     RawActivityInstance, RawEmoji, RawGuildChannel, RawGuildSettings, RawMember,
-    RawMemberListUpdate, RawModal, RawRole, RawSticker, RawVoiceServer, RawVoiceState,
-    StreamServerInfo, author_member, boost_upload_limit, convert_activity_instance,
-    convert_call_voice_states, convert_channel_unreads, convert_guild_appearance,
-    convert_guild_channels, convert_guild_emoji, convert_guild_voice_states,
-    convert_member_list_update, convert_message, convert_modal, convert_mute_settings,
-    convert_reaction_emoji, convert_read_states, convert_role, convert_sticker,
-    convert_stream_server, convert_thread, convert_voice_server, convert_voice_state,
-    dm_override_flags, parse_user_settings,
+    RawMemberListUpdate, RawModal, RawRelationship, RawRelationshipUser, RawRole, RawSticker,
+    RawVoiceServer, RawVoiceState, StreamServerInfo, author_member, boost_upload_limit,
+    convert_activity_instance, convert_call_voice_states, convert_channel_unreads,
+    convert_guild_appearance, convert_guild_channels, convert_guild_emoji,
+    convert_guild_voice_states, convert_member_list_update, convert_message, convert_modal,
+    convert_mute_settings, convert_reaction_emoji, convert_read_states, convert_relationship,
+    convert_role, convert_sticker, convert_stream_server, convert_thread, convert_voice_server,
+    convert_voice_state, dm_override_flags, parse_user_settings,
 };
 use crate::discord::{Membership, NotifyLevel};
 
@@ -97,14 +97,10 @@ pub(super) fn dispatch(
                 }
                 // `Ready` goes first: the member roles that follow are only
                 // kept for the signed-in user, whom it names.
-                let blocked = GatewayEvent::BlockedUsers(
-                    ready
-                        .relationships
-                        .iter()
-                        .filter(|relationship| relationship.is_block())
-                        .map(|relationship| relationship.id)
-                        .collect(),
-                );
+                let relationships = GatewayEvent::Relationships(ready_relationships(
+                    ready.relationships,
+                    ready.users,
+                ));
                 let ready = GatewayEvent::Ready {
                     user_id: ready.user.id,
                     session_id: ready.session_id,
@@ -112,7 +108,7 @@ pub(super) fn dispatch(
                 };
                 let presences = GatewayEvent::Presences(convert_presences(presences));
                 std::iter::once(ready)
-                    .chain(std::iter::once(blocked))
+                    .chain(std::iter::once(relationships))
                     .chain(unreads)
                     .chain(std::iter::once(presences))
                     .chain(roles)
@@ -566,23 +562,27 @@ pub(super) fn dispatch(
                 .map(|channels| vec![GatewayEvent::LatestMessages(channels)])
                 .unwrap_or_default()
         }
-        // A friend request or friendship replaces a block, so any add says
-        // whether the user is blocked now.
-        "RELATIONSHIP_ADD" | "RELATIONSHIP_UPDATE" => serde_json::from_str::<RawRelationship>(data)
-            .map(|relationship| {
-                vec![GatewayEvent::Blocked {
-                    user_id: relationship.id,
-                    blocked: relationship.is_block(),
+        "RELATIONSHIP_ADD" => serde_json::from_str::<RawRelationship>(data)
+            .ok()
+            .and_then(|raw| {
+                let notify = raw.should_notify;
+                Some(vec![GatewayEvent::RelationshipAdd {
+                    relationship: convert_relationship(raw)?,
+                    notify,
+                }])
+            })
+            .unwrap_or_default(),
+        "RELATIONSHIP_UPDATE" => serde_json::from_str::<RawRelationship>(data)
+            .map(|raw| {
+                vec![GatewayEvent::RelationshipUpdate {
+                    user_id: raw.id,
+                    kind: raw.kind(),
+                    nickname: raw.nickname(),
                 }]
             })
             .unwrap_or_default(),
         "RELATIONSHIP_REMOVE" => serde_json::from_str::<RawRelationship>(data)
-            .map(|relationship| {
-                vec![GatewayEvent::Blocked {
-                    user_id: relationship.id,
-                    blocked: false,
-                }]
-            })
+            .map(|raw| vec![GatewayEvent::RelationshipRemove(raw.id)])
             .unwrap_or_default(),
         "USER_GUILD_SETTINGS_UPDATE" => serde_json::from_str::<RawGuildSettings>(data)
             .map(|settings| {
@@ -635,6 +635,24 @@ pub(super) fn dispatch(
         }
         _ => Vec::new(),
     }
+}
+
+/// A session that deduplicates user objects sends relationships without their user,
+/// listing everyone once in `users` instead.
+fn ready_relationships(
+    relationships: Vec<RawRelationship>,
+    users: Vec<RawRelationshipUser>,
+) -> Vec<crate::discord::model::Relationship> {
+    let users: HashMap<_, _> = users.into_iter().map(|user| (user.id, user)).collect();
+    relationships
+        .into_iter()
+        .filter_map(|mut raw| {
+            if raw.user.is_none() {
+                raw.user = users.get(&raw.id).cloned();
+            }
+            convert_relationship(raw)
+        })
+        .collect()
 }
 
 fn guild_activities(

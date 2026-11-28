@@ -14,7 +14,8 @@ use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 use twilight_model::id::{Id, marker::GuildMarker};
 
-use crate::discord::{self, UserProfile};
+use crate::discord::{self, RelationshipKind, UserProfile};
+use crate::screens::home::view::friends::{friend_button, relationship_items};
 use crate::screens::home::view::markdown::MarkdownOptions;
 use crate::screens::home::view::user_panel::status_indicator;
 use crate::screens::home::view::{avatar, bot_tag};
@@ -142,14 +143,35 @@ impl HomeScreen {
                     }),
             )
             .when(!popup.webhook, |this| {
+                let kind = (!is_self).then(|| self.friends.kind(popup.user_id));
+                let friend = kind
+                    .and_then(|kind| {
+                        friend_button(
+                            "profile-friend",
+                            popup.user_id,
+                            kind,
+                            false,
+                            cx.entity().downgrade(),
+                        )
+                    })
+                    .map(|button| {
+                        // Dimmed like the menu beside it, so it reads over any banner.
+                        div()
+                            .rounded_full()
+                            .bg(black().opacity(0.45))
+                            .child(button.ghost().rounded_full().text_color(white()))
+                    });
                 this.child(
-                    div()
+                    h_flex()
                         .absolute()
                         .top(px(10.))
                         .right(px(10.))
+                        .gap(px(6.))
+                        .children(friend)
                         .child(render_more_menu(
                             popup,
                             profile,
+                            kind,
                             cx.entity().downgrade(),
                             cx,
                         )),
@@ -229,13 +251,19 @@ impl HomeScreen {
     }
 }
 
+/// `kind` is `None` for the user's own card, which has no friend items.
 fn render_more_menu(
     popup: &ProfilePopup,
     profile: Option<&UserProfile>,
+    kind: Option<Option<RelationshipKind>>,
     screen: WeakEntity<HomeScreen>,
     cx: &App,
 ) -> impl IntoElement {
     let user_id = popup.user_id;
+    let name = profile.map_or_else(
+        || popup.name.clone(),
+        |profile| profile.display_name().to_owned(),
+    );
     let username = profile.map(|profile| profile.username.clone());
     let created_at = profile.map(|profile| profile.created_at.clone());
 
@@ -252,14 +280,14 @@ fn render_more_menu(
                 .text_color(white())
                 .tooltip("More")
                 .dropdown_menu_with_anchor(Anchor::TopRight, move |menu, _, _| {
-                    let screen = screen.clone();
+                    let full_screen = screen.clone();
                     menu.when_some(created_at.clone(), |menu, created_at| {
                         menu.label(format!("Member since {created_at}")).separator()
                     })
                     .item(
                         PopupMenuItem::new("View Full Profile").on_click(move |_, window, cx| {
-                            let _ =
-                                screen.update(cx, |this, cx| this.expand_profile(None, window, cx));
+                            let _ = full_screen
+                                .update(cx, |this, cx| this.expand_profile(None, window, cx));
                         }),
                     )
                     .when_some(username.clone(), |menu, username| {
@@ -268,6 +296,16 @@ fn render_more_menu(
                                 cx.write_to_clipboard(ClipboardItem::new_string(username.clone()));
                             }),
                         )
+                    })
+                    .when_some(kind, |menu, kind| {
+                        relationship_items(
+                            menu.separator(),
+                            screen.clone(),
+                            user_id,
+                            name.clone(),
+                            kind,
+                        )
+                        .separator()
                     })
                     .item(
                         PopupMenuItem::new("Copy User ID").on_click(move |_, _, cx| {
