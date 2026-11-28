@@ -181,7 +181,7 @@ impl HomeScreen {
                                         Button::new("emoji-picker")
                                             .glyph(
                                                 Icon::default()
-                                                    .path("icons/smile.svg")
+                                                    .path("icons/smile-thin.svg")
                                                     .size(PICKER_ICON),
                                             )
                                             .ghost()
@@ -255,7 +255,7 @@ impl HomeScreen {
 
 /// The picker buttons' icons, as glyphs since `icon` forces 14px, where the GIF
 /// badge's letters are too small to read.
-const PICKER_ICON: Pixels = px(20.);
+const PICKER_ICON: Pixels = px(18.);
 
 /// Roomier than a medium input's 32px, like Discord's.
 const COMPOSER_LINE_HEIGHT: Pixels = px(44.);
