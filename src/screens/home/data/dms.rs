@@ -119,7 +119,7 @@ impl HomeScreen {
                         this.dms.list = dms;
                         cx.notify();
                     }
-                    Err(err) => eprintln!("refreshing the DM list failed: {err}"),
+                    Err(err) => log::error!("refreshing the DM list failed: {err}"),
                 }
             });
         })
@@ -198,7 +198,7 @@ impl HomeScreen {
             let Err(err) = discord::save_dm_override_flags(channel_id, flags).await else {
                 return;
             };
-            eprintln!("pinning a DM failed: {err}");
+            log::error!("pinning a DM failed: {err}");
             let _ = this.update(cx, |this, cx| {
                 // A newer toggle or update since owns the value now.
                 if this.dms.override_flags.get(&channel_id) != Some(&flags) {

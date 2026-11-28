@@ -146,7 +146,7 @@ impl ScreenCapture {
                 let _ = events.unbounded_send(event);
             });
         if let Err(err) = spawned {
-            eprintln!("couldn't start the capture thread: {err}");
+            log::error!("couldn't start the capture thread: {err}");
         }
 
         Self { control }

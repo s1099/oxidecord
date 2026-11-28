@@ -42,7 +42,7 @@ pub fn init(cx: &mut App) {
         match serde_json::from_str::<ThemeSet>(source) {
             // A file is a set: often a light and a dark variant, each its own theme.
             Ok(set) => presets.extend(set.themes.into_iter().map(Rc::new)),
-            Err(err) => eprintln!("ignoring invalid preset theme {file}: {err}"),
+            Err(err) => log::error!("ignoring invalid preset theme {file}: {err}"),
         }
     }
 

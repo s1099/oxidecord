@@ -342,7 +342,7 @@ impl HomeScreen {
             let result = discord::save_favorite_gifs(favorites).await;
             let _ = this.update(cx, |this, _| this.favorite_gifs.flush = None);
             if let Err(err) = result {
-                eprintln!("failed to save favorite GIFs: {err}");
+                log::error!("failed to save favorite GIFs: {err}");
             }
         }));
     }

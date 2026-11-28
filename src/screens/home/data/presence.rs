@@ -23,7 +23,7 @@ impl HomeScreen {
 
         cx.spawn(async move |_, _| {
             if let Err(err) = discord::save_status(status).await {
-                eprintln!("failed to save status: {err}");
+                log::error!("failed to save status: {err}");
             }
         })
         .detach();

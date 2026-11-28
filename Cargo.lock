@@ -6413,6 +6413,7 @@ dependencies = [
  "image",
  "keyring",
  "lb-wry",
+ "log",
  "opus2",
  "percent-encoding",
  "rasterlottie",

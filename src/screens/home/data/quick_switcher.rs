@@ -31,7 +31,7 @@ impl HomeScreen {
                     this.set_favorite_gifs(favorite_gifs, cx);
                 }
                 // Ranks by this session's uses alone, and never saves them over Discord's.
-                Err(err) => eprintln!("failed to load frecency: {err}"),
+                Err(err) => log::error!("failed to load frecency: {err}"),
             });
         })
         .detach();
@@ -56,7 +56,7 @@ impl HomeScreen {
                 return;
             };
             if let Err(err) = discord::save_frecency(items, now_ms()).await {
-                eprintln!("failed to save frecency: {err}");
+                log::error!("failed to save frecency: {err}");
             }
         }));
     }

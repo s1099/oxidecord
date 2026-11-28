@@ -134,7 +134,7 @@ async fn run(
             },
             event = captured.next() => match event {
                 Some(CaptureEvent::Started { width, height }) => {
-                    eprintln!("screen share: live at {width}x{height}, {} fps", settings.fps);
+                    log::error!("screen share: live at {width}x{height}, {} fps", settings.fps);
                     signalling
                         .announce_video(ready.ssrcs, (width, height), settings.fps, settings.bitrate)
                         .await?;
@@ -145,7 +145,7 @@ async fn run(
                 Some(CaptureEvent::Frame(frame)) => {
                     let ready_now = signalling.dave.is_ready();
                     if ready_now && !was_ready {
-                        eprintln!("screen share: encryption ready, sending video");
+                        log::error!("screen share: encryption ready, sending video");
                         if !frame.keyframe {
                             capture.request_keyframe();
                         }

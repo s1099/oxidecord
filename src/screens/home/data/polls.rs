@@ -95,7 +95,7 @@ impl HomeScreen {
             let Err(err) = request.await else {
                 return;
             };
-            eprintln!("poll vote failed: {err}");
+            log::error!("poll vote failed: {err}");
             let _ = this.update(cx, |this, cx| {
                 if let Some(poll) = this.poll_mut(message_id) {
                     poll.set_own_votes(&before);

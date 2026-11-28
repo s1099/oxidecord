@@ -21,7 +21,7 @@ pub fn deny_permissions(webview: &wry::WebView) {
             .webview()
             .add_PermissionRequested(&handler, &mut token)
     } {
-        eprintln!("failed to block a webview's permission prompts: {err}");
+        log::error!("failed to block a webview's permission prompts: {err}");
     }
 }
 

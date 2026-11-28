@@ -71,7 +71,7 @@ impl Encoder {
             match Self::hardware(&activate, &manager, context, size, settings) {
                 Ok(encoder) => return Ok(encoder),
                 Err(err) => {
-                    eprintln!("skipping hardware encoder {}: {err}", name_of(&activate));
+                    log::error!("skipping hardware encoder {}: {err}", name_of(&activate));
                     unsafe {
                         let _ = activate.ShutdownObject();
                     }
@@ -82,7 +82,7 @@ impl Encoder {
         for activate in encoders(MFT_ENUM_FLAG_SYNCMFT | MFT_ENUM_FLAG_SORTANDFILTER, None) {
             match Self::software(&activate, device, context, size, settings) {
                 Ok(encoder) => return Ok(encoder),
-                Err(err) => eprintln!("skipping encoder {}: {err}", name_of(&activate)),
+                Err(err) => log::error!("skipping encoder {}: {err}", name_of(&activate)),
             }
         }
 
@@ -123,7 +123,7 @@ impl Encoder {
             _manager: Some(manager.clone()),
         };
         encoder.begin()?;
-        eprintln!("streaming with hardware encoder {}", name_of(activate));
+        log::error!("streaming with hardware encoder {}", name_of(activate));
         Ok(encoder)
     }
 
@@ -166,7 +166,7 @@ impl Encoder {
             _manager: None,
         };
         encoder.begin().context("Couldn't start the encoder")?;
-        eprintln!("streaming with software encoder {}", name_of(activate));
+        log::error!("streaming with software encoder {}", name_of(activate));
         Ok(encoder)
     }
 

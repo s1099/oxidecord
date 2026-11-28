@@ -69,6 +69,10 @@ older than the installed Visual Studio, build through Ninja: `CMAKE_GENERATOR=Ni
   since the gateway doesn't say), `video/` (inline video playback, decoded by the OS), `capture/` (screen capture and H.264 encoding for
   Go Live, also by the OS), `h264/` (decoding a watched stream, also by the OS), and
   `lottie.rs` (Lottie stickers, rasterized on the CPU by rasterlottie and looped like a GIF).
+- `platform/logging.rs` — errors (`log::error!`/`warn!`, gpui's included) and panics with a
+  backtrace, appended to `oxidecord.log` beside `prefs.json`; moved to `oxidecord.old.log`
+  at startup once past 1 MB. Report failures with `log::error!`, not `eprintln!`, which a
+  release build has no console for.
 - `platform/prefs.rs` — user preferences persisted to `prefs.json` in the config dir (theme,
   input and output devices, collapsed channel categories and the last open channel per guild). Reads/writes never fail — a bad file
   reads as defaults. Use `prefs::update` to change one field without clobbering the rest; it

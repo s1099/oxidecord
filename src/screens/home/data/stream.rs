@@ -238,7 +238,7 @@ impl HomeScreen {
     }
 
     fn report_stream_error(&mut self, error: String, cx: &mut Context<Self>) {
-        eprintln!("screen share: {error}");
+        log::error!("screen share: {error}");
         if let Some(call) = &mut self.voice {
             call.share_error = Some(error);
         }

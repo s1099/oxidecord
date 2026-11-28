@@ -102,7 +102,7 @@ pub fn start(
             }
         });
     if let Err(err) = spawned {
-        eprintln!("couldn't start the stream decoder: {err}");
+        log::error!("couldn't start the stream decoder: {err}");
     }
 
     (LiveDecoder { control }, DecoderInput { frames })

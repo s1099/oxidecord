@@ -293,7 +293,7 @@ impl ModalDialog {
         cx.notify();
         cx.spawn(async move |this, cx| {
             if let Err(err) = discord::submit_modal(submission).await {
-                eprintln!("modal submission failed: {err}");
+                log::error!("modal submission failed: {err}");
                 let _ = this.update(cx, |this, cx| {
                     this.failed("Something went wrong. Try again.".into(), cx);
                 });

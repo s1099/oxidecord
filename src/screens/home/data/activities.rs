@@ -42,7 +42,7 @@ impl HomeScreen {
                 let state = match shelf {
                     Ok(apps) => ShelfState::Loaded(Arc::new(apps)),
                     Err(err) => {
-                        eprintln!("failed to fetch the activity shelf: {err}");
+                        log::error!("failed to fetch the activity shelf: {err}");
                         ShelfState::Failed
                     }
                 };
@@ -194,7 +194,7 @@ impl HomeScreen {
 
     fn fail_activity(&mut self, error: String, cx: &mut Context<Self>) {
         // Only a call's panel shows it, and a text channel's activity has none.
-        eprintln!("{error}");
+        log::error!("{error}");
         self.end_activity(cx);
         self.activity_error = Some(error);
         cx.notify();
@@ -470,7 +470,7 @@ impl HomeScreen {
                 )
                 .await
                 {
-                    eprintln!("failed to leave the activity: {err}");
+                    log::error!("failed to leave the activity: {err}");
                 }
             })
             .detach();

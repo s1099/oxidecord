@@ -197,7 +197,9 @@ impl HomeScreen {
                     Ok((messages, latest)) => {
                         this.show_opening_page(messages, latest, unread_after, window, cx);
                     }
-                    Err(err) if refreshing => eprintln!("refreshing a conversation failed: {err}"),
+                    Err(err) if refreshing => {
+                        log::error!("refreshing a conversation failed: {err}")
+                    }
                     Err(err) => this.messages_error = Some(err),
                 }
                 this.ack_open_conversation(cx);

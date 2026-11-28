@@ -395,7 +395,7 @@ impl Signalling {
                     self.note_seq(envelope.seq);
                     self.handle_json(envelope).await?;
                 }
-                Err(err) => eprintln!("unreadable stream gateway message: {err}"),
+                Err(err) => log::error!("unreadable stream gateway message: {err}"),
             }
         }
         Ok(Signal::Nothing)
@@ -519,7 +519,7 @@ impl Signalling {
                 if let Some(session) = &mut self.dave.session
                     && let Err(err) = session.set_external_sender(payload)
                 {
-                    eprintln!("DAVE: couldn't set the external sender: {err}");
+                    log::error!("DAVE: couldn't set the external sender: {err}");
                 }
             }
             op::MLS_PROPOSALS => {
@@ -544,7 +544,7 @@ impl Signalling {
                         self.send_binary(op::MLS_COMMIT_WELCOME, &message).await?;
                     }
                     Ok(None) => {}
-                    Err(err) => eprintln!(
+                    Err(err) => log::error!(
                         "DAVE: couldn't process proposals ({} connected): {err}",
                         members.len()
                     ),
@@ -579,7 +579,7 @@ impl Signalling {
                     }
                     Err(err) => {
                         // The group moved on without us; rejoin with a fresh key package.
-                        eprintln!("DAVE: couldn't join the group: {err}");
+                        log::error!("DAVE: couldn't join the group: {err}");
                         self.send_json(
                             op::MLS_INVALID_COMMIT_WELCOME,
                             json!({ "transition_id": transition_id }),
@@ -679,7 +679,7 @@ impl Dave {
     fn execute(&mut self, transition_id: u16) {
         match self.pending.remove(&transition_id) {
             Some(version) => self.protocol_version = version,
-            None => eprintln!("DAVE: asked to execute unknown transition {transition_id}"),
+            None => log::error!("DAVE: asked to execute unknown transition {transition_id}"),
         }
     }
 
@@ -705,7 +705,7 @@ impl Dave {
         match session.decrypt(sender, media, &frame) {
             Ok(frame) => Some(frame),
             Err(err) => {
-                eprintln!("DAVE: couldn't decrypt a frame: {err}");
+                log::error!("DAVE: couldn't decrypt a frame: {err}");
                 None
             }
         }
@@ -724,7 +724,7 @@ impl Dave {
         match session.encrypt(MediaType::VIDEO, Codec::H264, frame) {
             Ok(frame) => Some(frame),
             Err(err) => {
-                eprintln!("DAVE: couldn't encrypt a frame: {err}");
+                log::error!("DAVE: couldn't encrypt a frame: {err}");
                 None
             }
         }

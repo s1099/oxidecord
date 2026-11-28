@@ -411,7 +411,7 @@ impl HomeScreen {
         }
         cx.spawn(async move |_, _| {
             if let Err(err) = discord::stop_ringing(channel_id).await {
-                eprintln!("declining the call failed: {err}");
+                log::error!("declining the call failed: {err}");
             }
         })
         .detach();

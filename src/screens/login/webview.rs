@@ -86,7 +86,7 @@ impl LoginWebview {
                             let token = msg.body().trim_matches('"');
                             let saved = discord::save_token(token);
                             if let Err(err) = &saved {
-                                eprintln!("failed to save token to the credential store: {err}");
+                                log::error!("failed to save token to the credential store: {err}");
                             }
 
                             let window_handle_inner = window_handle_capture;

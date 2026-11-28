@@ -101,7 +101,7 @@ pub fn open_activity_window(
             activity = Some(view.downgrade());
             cx.new(|cx| gpui_kit::component::Root::new(view, window, cx))
         })
-        .inspect_err(|err| eprintln!("failed to open the activity window: {err}"))
+        .inspect_err(|err| log::error!("failed to open the activity window: {err}"))
         .ok()?;
     Some((handle.into(), activity?))
 }
@@ -206,7 +206,7 @@ impl ActivityWindow {
                         cx.notify();
                     });
                 }
-                Ok(Err(err)) => eprintln!("failed to build the activity webview: {err}"),
+                Ok(Err(err)) => log::error!("failed to build the activity webview: {err}"),
                 Err(_) => {}
             }
         })
@@ -269,7 +269,7 @@ impl ActivityWindow {
             .read(cx)
             .evaluate_script(&format!("window.__oxidecordReceive({message})"))
         {
-            eprintln!("failed to answer the activity: {err}");
+            log::error!("failed to answer the activity: {err}");
         }
     }
 
@@ -311,7 +311,7 @@ impl ActivityWindow {
 
     fn self_user_loaded(&mut self, user: Result<Value, String>, cx: &mut Context<Self>) {
         let user = user.unwrap_or_else(|err| {
-            eprintln!("failed to fetch the user for an activity: {err}");
+            log::error!("failed to fetch the user for an activity: {err}");
             json!({ "id": self.context.self_id.to_string() })
         });
         self.users.insert(self.context.self_id, user.clone());

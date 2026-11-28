@@ -264,7 +264,7 @@ impl HomeScreen {
 
         cx.spawn(async move |this, cx| {
             if let Err(err) = discord::set_thread_joined(thread_id, joined).await {
-                eprintln!("joining or leaving a thread failed: {err}");
+                log::error!("joining or leaving a thread failed: {err}");
                 let _ = this.update(cx, |this, cx| {
                     this.threads.set_membership(thread_id, previous);
                     this.sync_thread_unread(thread_id);
@@ -587,7 +587,7 @@ impl HomeScreen {
                     }
                 };
                 if let Err(err) = sent {
-                    eprintln!("sending a new thread's first message failed: {err}");
+                    log::error!("sending a new thread's first message failed: {err}");
                 }
                 let thread_id = thread.id;
                 this.store_thread(thread);

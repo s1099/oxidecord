@@ -266,7 +266,7 @@ impl HomeScreen {
     }
 
     fn report_watch_error(&mut self, error: String, cx: &mut Context<Self>) {
-        eprintln!("watching a stream: {error}");
+        log::error!("watching a stream: {error}");
         if let Some(call) = &mut self.voice {
             call.watch_error = Some(error);
         }

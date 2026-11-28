@@ -619,7 +619,7 @@ pub(super) fn dispatch(
         }
         "INTERACTION_MODAL_CREATE" => serde_json::from_str::<RawModal>(data)
             .map(|modal| vec![GatewayEvent::Modal(convert_modal(modal))])
-            .inspect_err(|err| eprintln!("unreadable INTERACTION_MODAL_CREATE: {err}"))
+            .inspect_err(|err| log::error!("unreadable INTERACTION_MODAL_CREATE: {err}"))
             .unwrap_or_default(),
         "APPLICATION_COMMAND_AUTOCOMPLETE_RESPONSE" => {
             serde_json::from_str::<AutocompletePayload>(data)

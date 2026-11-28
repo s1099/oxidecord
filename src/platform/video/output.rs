@@ -93,7 +93,7 @@ where
                 spread(&scratch, out, channels);
             },
             // Usually the device going away mid-playback.
-            |err| eprintln!("video audio stream error: {err}"),
+            |err| log::error!("video audio stream error: {err}"),
             None,
         )
         .ok()?;

@@ -153,7 +153,7 @@ pub fn write_image(image: &CopiedImage, _: &mut App) {
 
     unsafe {
         if let Err(err) = OpenClipboard(None) {
-            eprintln!("failed to open the clipboard: {err}");
+            log::error!("failed to open the clipboard: {err}");
             return;
         }
         let png = RegisterClipboardFormatW(windows::core::w!("PNG"));
@@ -162,7 +162,7 @@ pub fn write_image(image: &CopiedImage, _: &mut App) {
             .and_then(|()| set(CF_DIB.0 as u32, &image.dib));
         let _ = CloseClipboard();
         if let Err(err) = result {
-            eprintln!("failed to copy the image: {err}");
+            log::error!("failed to copy the image: {err}");
         }
     }
 }

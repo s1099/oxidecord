@@ -116,7 +116,7 @@ impl HomeScreen {
         cx.notify();
         cx.spawn(async move |this, cx| {
             if let Err(err) = discord::interact_component(interaction).await {
-                eprintln!("component interaction failed: {err}");
+                log::error!("component interaction failed: {err}");
                 let _ = this.update(cx, |this, cx| {
                     this.component_interaction_failed(nonce, false, cx)
                 });

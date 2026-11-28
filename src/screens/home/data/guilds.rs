@@ -68,7 +68,7 @@ impl HomeScreen {
                         }
                     }
                     Err(err) => {
-                        eprintln!("failed to load user settings: {err}");
+                        log::error!("failed to load user settings: {err}");
                         return;
                     }
                 }
@@ -185,7 +185,7 @@ impl HomeScreen {
                         this.channels_loading = false;
                         cx.notify();
                     }
-                    Err(err) => eprintln!("refreshing a guild's channels failed: {err}"),
+                    Err(err) => log::error!("refreshing a guild's channels failed: {err}"),
                 }
             });
         })

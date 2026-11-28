@@ -57,7 +57,7 @@ pub fn open_login_window(app: WeakEntity<AppScreen>, main_window: AnyWindowHandl
         let webview = cx.new(|cx| LoginWebview::new(app, main_window, window, cx));
         cx.new(|cx| gpui_kit::component::Root::new(webview, window, cx))
     }) {
-        eprintln!("failed to open the login window: {err}");
+        log::error!("failed to open the login window: {err}");
     }
 }
 

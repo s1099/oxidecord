@@ -41,7 +41,7 @@ pub fn install(window: AnyWindowHandle, activations: UnboundedReceiver<()>, cx: 
             })
             .detach();
         }
-        Err(err) => eprintln!("tray icon failed: {err}"),
+        Err(err) => log::error!("tray icon failed: {err}"),
     }
 
     let mut requests = futures::stream::select(requests, activations.map(|()| Request::Show));

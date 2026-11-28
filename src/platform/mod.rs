@@ -1,5 +1,5 @@
 //! Host-facing plumbing: audio-device helpers, the Tokio runtime, the HTTP
-//! client, prefs, the updater, desktop notifications, OS screen capture and
+//! client, prefs, the error log, the updater, desktop notifications, OS screen capture and
 //! video decoders, a Lottie rasterizer, embedded webview setup, and on Windows the single-instance guard, tray icon and
 //! taskbar call buttons.
 
@@ -10,6 +10,7 @@ pub mod h264;
 pub mod http;
 #[cfg(windows)]
 pub mod instance;
+pub mod logging;
 pub mod lottie;
 pub mod notify;
 pub mod prefs;

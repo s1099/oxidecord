@@ -80,7 +80,7 @@ impl HomeScreen {
         cx.notify();
         cx.spawn(async move |_, _| {
             if let Err(err) = discord::ack_bulk(acks).await {
-                eprintln!("marking read failed: {err}");
+                log::error!("marking read failed: {err}");
             }
         })
         .detach();

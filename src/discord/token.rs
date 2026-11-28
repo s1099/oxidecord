@@ -105,7 +105,7 @@ fn read_stored_token(id: Id<UserMarker>) -> Option<String> {
         Ok(token) => Some(token),
         Err(keyring::Error::NoEntry) => None,
         Err(err) => {
-            eprintln!("failed to read token from the credential store: {err}");
+            log::error!("failed to read token from the credential store: {err}");
             None
         }
     }
@@ -114,7 +114,7 @@ fn read_stored_token(id: Id<UserMarker>) -> Option<String> {
 fn delete_stored_token(id: Id<UserMarker>) {
     match keyring_entry(id).and_then(|entry| entry.delete_credential()) {
         Ok(()) | Err(keyring::Error::NoEntry) => {}
-        Err(err) => eprintln!("failed to remove token from the credential store: {err}"),
+        Err(err) => log::error!("failed to remove token from the credential store: {err}"),
     }
 }
 
@@ -150,7 +150,7 @@ fn write_index(index: &Index) {
         return;
     }
     if let Err(err) = fs::write(path, contents) {
-        eprintln!("failed to save the account list: {err}");
+        log::error!("failed to save the account list: {err}");
     }
 }
 
@@ -166,7 +166,7 @@ fn migrate_legacy(mut index: Index) -> Index {
         return index;
     };
     if let Err(err) = keyring_entry(id).and_then(|entry| entry.set_password(&token)) {
-        eprintln!("failed to move the saved token: {err}");
+        log::error!("failed to move the saved token: {err}");
         return index;
     }
     _ = entry.delete_credential();

@@ -194,7 +194,7 @@ impl HomeScreen {
                             note.update(cx, |note, cx| note.set_value(text.clone(), window, cx));
                             modal.saved_note = Some(text);
                         }
-                        Err(err) => eprintln!("failed to load note: {err}"),
+                        Err(err) => log::error!("failed to load note: {err}"),
                     }
                     cx.notify();
                 });
@@ -238,7 +238,7 @@ impl HomeScreen {
         let user_id = modal.user_id;
         cx.spawn(async move |_, _| {
             if let Err(err) = discord::save_user_note(user_id, note).await {
-                eprintln!("failed to save note: {err}");
+                log::error!("failed to save note: {err}");
             }
         })
         .detach();
@@ -265,7 +265,7 @@ impl HomeScreen {
                     cx.notify();
                 }
                 Err(err) => {
-                    eprintln!("failed to load games: {err}");
+                    log::error!("failed to load games: {err}");
                     // Worth asking again the next time a profile shows them.
                     for id in wanted {
                         this.requested_games.remove(&id);

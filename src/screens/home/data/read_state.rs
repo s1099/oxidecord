@@ -161,7 +161,7 @@ impl HomeScreen {
             };
             for (channel_id, message_id) in acks {
                 if let Err(err) = discord::ack_message(channel_id, message_id, false, 0).await {
-                    eprintln!("acking channel {channel_id} failed: {err}");
+                    log::error!("acking channel {channel_id} failed: {err}");
                 }
             }
         }));
@@ -207,7 +207,7 @@ impl HomeScreen {
 
         cx.spawn(async move |_, _| {
             if let Err(err) = discord::ack_message(channel_id, before, true, mentions).await {
-                eprintln!("marking channel {channel_id} unread failed: {err}");
+                log::error!("marking channel {channel_id} unread failed: {err}");
             }
         })
         .detach();

@@ -22,6 +22,8 @@ use crate::screens::home::{
 };
 
 fn main() {
+    platform::logging::init();
+
     // The app is its own update helper: with this flag it swaps the binary and exits.
     if std::env::args().any(|arg| arg == platform::updater::APPLY_UPDATE_ARG) {
         platform::updater::apply_update();

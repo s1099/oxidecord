@@ -114,7 +114,7 @@ where
             config,
             move |data: &[T], _: &_| push_capture(data, device_channels, &capture),
             // Usually the device vanishing mid-call.
-            |err| eprintln!("microphone stream error: {err}"),
+            |err| log::error!("microphone stream error: {err}"),
             None,
         )
         .ok()
@@ -167,7 +167,7 @@ where
         .build_output_stream(
             config,
             move |data: &mut [T], _: &_| render.render(data),
-            |err| eprintln!("speaker stream error: {err}"),
+            |err| log::error!("speaker stream error: {err}"),
             None,
         )
         .ok()

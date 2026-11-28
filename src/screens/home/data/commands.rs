@@ -157,7 +157,7 @@ impl HomeScreen {
                     let state = match result {
                         Ok(index) => IndexState::Loaded(Arc::new(index)),
                         Err(err) => {
-                            eprintln!("failed to fetch the command index {scope:?}: {err}");
+                            log::error!("failed to fetch the command index {scope:?}: {err}");
                             IndexState::Failed
                         }
                     };

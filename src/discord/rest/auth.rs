@@ -37,7 +37,7 @@ pub fn remove_account(id: Id<UserMarker>) {
         }
         .await;
         if let Err(err) = result {
-            eprintln!("failed to revoke the session on logout: {err}");
+            log::error!("failed to revoke the session on logout: {err}");
         }
     });
 }

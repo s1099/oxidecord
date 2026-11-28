@@ -46,13 +46,13 @@ fn run(requests: Receiver<Request>, clicks: UnboundedSender<ToastId>) {
         _ = CoInitializeEx(None, COINIT_MULTITHREADED);
     }
     if let Err(err) = register_app_id() {
-        eprintln!("notification registration failed: {err}");
+        log::error!("notification registration failed: {err}");
     }
     let notifier = match ToastNotificationManager::CreateToastNotifierWithId(&HSTRING::from(APP_ID))
     {
         Ok(notifier) => notifier,
         Err(err) => {
-            eprintln!("notifications unavailable: {err}");
+            log::error!("notifications unavailable: {err}");
             return;
         }
     };
@@ -78,7 +78,7 @@ fn run(requests: Receiver<Request>, clicks: UnboundedSender<ToastId>) {
                             take_down(&notifier, &oldest);
                         }
                     }
-                    Err(err) => eprintln!("toast failed: {err}"),
+                    Err(err) => log::error!("toast failed: {err}"),
                 }
             }
             // Asking the history about channels never toasted would be a COM

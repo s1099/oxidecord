@@ -230,14 +230,14 @@ impl HomeScreen {
             .await;
             let bytes = match bytes {
                 Ok(Ok(bytes)) => bytes,
-                Ok(Err(err)) => return eprintln!("failed to download the image to copy: {err}"),
-                Err(err) => return eprintln!("failed to download the image to copy: {err}"),
+                Ok(Err(err)) => return log::error!("failed to download the image to copy: {err}"),
+                Err(err) => return log::error!("failed to download the image to copy: {err}"),
             };
             let Some(image) = cx
                 .background_spawn(async move { clipboard::prepare_copy(&bytes) })
                 .await
             else {
-                return eprintln!("failed to decode the image to copy");
+                return log::error!("failed to decode the image to copy");
             };
             cx.update(|cx| clipboard::write_image(&image, cx));
         })

@@ -17,7 +17,7 @@ pub fn claim() -> Option<Instance> {
     let event = match unsafe { CreateEventW(None, false, false, w!("Local\\Oxidecord.Activate")) } {
         Ok(event) => event,
         Err(err) => {
-            eprintln!("single-instance event failed: {err}");
+            log::error!("single-instance event failed: {err}");
             return Some(Instance(None));
         }
     };
