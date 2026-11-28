@@ -2,6 +2,23 @@
 
 /// Lucide icons gpui-kit-assets doesn't bundle. `currentColor` strokes, so they tint with text.
 pub(super) const EXTRA_ICONS: &[(&str, &str)] = &[
+    // Not Lucide: a GIF badge, letters drawn as strokes so no font is needed.
+    (
+        "icons/gif.svg",
+        r#"<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect width="22" height="16" x="1" y="4" rx="2.5"/><path d="M9.5 9.5a2 2 0 0 0-1.8-1H6.5a2 2 0 0 0-2 2v3a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2V12h-2"/><path d="M12.5 8.5v7"/><path d="M15.5 15.5v-7h4"/><path d="M15.5 12h3"/></svg>"#,
+    ),
+    (
+        "icons/star.svg",
+        r#"<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.24 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.24 8.91 8.26 12 2"/></svg>"#,
+    ),
+    (
+        "icons/star-fill.svg",
+        r#"<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.24 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.24 8.91 8.26 12 2"/></svg>"#,
+    ),
+    (
+        "icons/trending-up.svg",
+        r#"<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>"#,
+    ),
     // Not Lucide: Discord's threads glyph, a hash with a speech bubble at its corner.
     (
         "icons/threads.svg",

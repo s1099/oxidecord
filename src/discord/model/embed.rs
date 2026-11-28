@@ -92,6 +92,8 @@ pub struct EmbedMedia {
 #[derive(Clone)]
 pub struct EmbedGif {
     pub url: String,
+    /// The original, unproxied, which a favorite saves as Discord's client does.
+    pub source: String,
     /// For when the poster has no dimensions.
     pub width: Option<u32>,
     pub height: Option<u32>,
@@ -323,8 +325,10 @@ fn gif_for(embed: &twilight_model::channel::message::Embed) -> Option<EmbedGif> 
     if embed.kind != "gifv" && !animated {
         return None;
     }
+    let url = video.proxy_url.clone().or_else(|| video.url.clone())?;
     Some(EmbedGif {
-        url: video.proxy_url.clone().or_else(|| video.url.clone())?,
+        source: video.url.clone().unwrap_or_else(|| url.clone()),
+        url,
         width: video.width.map(|w| w as u32),
         height: video.height.map(|h| h as u32),
     })

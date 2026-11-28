@@ -46,8 +46,8 @@ pub(super) struct StreamDeletePayload {
     pub(super) reason: Option<String>,
 }
 
-/// `USER_SETTINGS_PROTO_UPDATE`, of which only the `PreloadedUserSettings`
-/// kind (type 1) is read. A partial update carries just the fields that
+/// `USER_SETTINGS_PROTO_UPDATE`, of which the `PreloadedUserSettings` (type 1)
+/// and `FrecencyUserSettings` (type 2) kinds are read. A partial update carries just the fields that
 /// changed, so a missing status means it didn't change, not that it's gone.
 #[derive(Deserialize)]
 pub(super) struct SettingsProtoUpdatePayload {

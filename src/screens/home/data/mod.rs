@@ -14,6 +14,7 @@ pub(super) mod dms;
 pub(super) mod emoji;
 pub(super) mod friends;
 pub(super) mod gif;
+mod gif_picker;
 pub(super) mod guild_menu;
 pub(super) mod guilds;
 pub(super) mod image_viewer;

@@ -137,6 +137,38 @@ impl HomeScreen {
         );
     }
 
+    /// Sends `url` as a message of its own, as the reply if one is being written,
+    /// leaving what's typed in the composer.
+    pub(in crate::screens::home) fn send_link(
+        &mut self,
+        url: String,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(channel_id) = self.selected_channel else {
+            return;
+        };
+        let reply_to = self.replying_to.as_ref().map(|target| target.message_id);
+        let mention_author = self
+            .replying_to
+            .as_ref()
+            .is_none_or(|target| target.mention && Some(target.author_id) != self.self_user_id);
+        self.replying_to = None;
+        self.post_message(
+            Outgoing {
+                channel_id,
+                content: url,
+                reply_to,
+                mention_author,
+                stickers: Vec::new(),
+                poll: None,
+                attachments: Vec::new(),
+            },
+            window,
+            cx,
+        );
+    }
+
     /// Sends a poll as a message of its own, leaving the composer as it is.
     pub(in crate::screens::home) fn send_poll(
         &mut self,

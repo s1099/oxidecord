@@ -15,6 +15,7 @@ mod data;
 mod emoji;
 mod folders;
 mod friends;
+mod gifs;
 mod history_cache;
 mod media;
 mod member_list_cache;
@@ -59,8 +60,8 @@ pub const SEARCH_CONTEXT: &str = "MessageSearch";
 
 use composer::{Autocomplete, EditingMessage, ReplyTarget};
 use popups::{
-    EmojiPicker, EmojiTarget, ImageViewer, PinsPopup, ProfileModal, ProfilePopup, ProfileTab,
-    StickerPicker, ThreadsPopup,
+    EmojiPicker, EmojiTarget, GifPicker, ImageViewer, PinsPopup, ProfileModal, ProfilePopup,
+    ProfileTab, StickerPicker, ThreadsPopup,
 };
 use state::View;
 

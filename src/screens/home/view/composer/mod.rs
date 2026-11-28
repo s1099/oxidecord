@@ -5,6 +5,7 @@
 mod attachments;
 mod autocomplete;
 mod emoji_picker;
+mod gif_picker;
 mod poll_dialog;
 mod reply_banner;
 mod sticker_picker;
@@ -135,8 +136,33 @@ impl HomeScreen {
                                     .items_center()
                                     .pr_1()
                                     .child(
+                                        Button::new("gif-picker")
+                                            .glyph(
+                                                Icon::default()
+                                                    .path("icons/gif.svg")
+                                                    .size(PICKER_ICON),
+                                            )
+                                            .ghost()
+                                            .small()
+                                            .selected(self.gif_picker.is_some())
+                                            .tooltip("Select GIF")
+                                            .on_click(cx.listener(
+                                                |this, event: &ClickEvent, window, cx| {
+                                                    this.toggle_gif_picker(
+                                                        event.position(),
+                                                        window,
+                                                        cx,
+                                                    );
+                                                },
+                                            )),
+                                    )
+                                    .child(
                                         Button::new("sticker-picker")
-                                            .icon(Icon::default().path("icons/sticker.svg"))
+                                            .glyph(
+                                                Icon::default()
+                                                    .path("icons/sticker.svg")
+                                                    .size(PICKER_ICON),
+                                            )
                                             .ghost()
                                             .small()
                                             .selected(self.sticker_picker.is_some())
@@ -153,7 +179,11 @@ impl HomeScreen {
                                     )
                                     .child(
                                         Button::new("emoji-picker")
-                                            .icon(Icon::default().path("icons/smile.svg"))
+                                            .glyph(
+                                                Icon::default()
+                                                    .path("icons/smile.svg")
+                                                    .size(PICKER_ICON),
+                                            )
                                             .ghost()
                                             .small()
                                             .selected(self.emoji_picker.as_ref().is_some_and(
@@ -222,6 +252,10 @@ impl HomeScreen {
             .into_any_element()
     }
 }
+
+/// The picker buttons' icons, as glyphs since `icon` forces 14px, where the GIF
+/// badge's letters are too small to read.
+const PICKER_ICON: Pixels = px(20.);
 
 /// Roomier than a medium input's 32px, like Discord's.
 const COMPOSER_LINE_HEIGHT: Pixels = px(44.);

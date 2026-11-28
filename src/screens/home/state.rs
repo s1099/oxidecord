@@ -28,12 +28,13 @@ use super::data::attachments::PendingAttachment;
 use super::data::gif::LoadedGifs;
 use super::folders::RailEntry;
 use super::friends::Friends;
+use super::gifs::{FavoriteGifState, GifHome};
 use super::history_cache::HistoryCache;
 use super::media::VideoPlayback;
 use super::member_list_cache::MemberListCache;
 use super::popups::{
-    EmojiPicker, ImageViewer, PinsPopup, ProfileModal, ProfilePopup, Reactors, StickerPicker,
-    ThreadsPopup,
+    EmojiPicker, GifPicker, ImageViewer, PinsPopup, ProfileModal, ProfilePopup, Reactors,
+    StickerPicker, ThreadsPopup,
 };
 use super::quick_switcher::Frecency;
 use super::search::{SearchNames, SearchPanel, SearchSuggestions};
@@ -263,6 +264,9 @@ pub struct HomeScreen {
     pub(super) reactors: HashMap<(Id<MessageMarker>, discord::ReactionEmoji), Reactors>,
     pub(super) emoji_picker: Option<EmojiPicker>,
     pub(super) sticker_picker: Option<StickerPicker>,
+    pub(super) gif_picker: Option<GifPicker>,
+    pub(super) gif_home: GifHome,
+    pub(super) favorite_gifs: FavoriteGifState,
     pub(super) sticker_packs: StickerPacks,
     pub(super) pins_popup: Option<PinsPopup>,
     pub(super) threads: Threads,
@@ -509,6 +513,9 @@ impl HomeScreen {
             reactors: HashMap::new(),
             emoji_picker: None,
             sticker_picker: None,
+            gif_picker: None,
+            gif_home: GifHome::default(),
+            favorite_gifs: FavoriteGifState::default(),
             sticker_packs: StickerPacks::default(),
             pins_popup: None,
             threads: Threads::default(),

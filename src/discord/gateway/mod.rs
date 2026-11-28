@@ -23,10 +23,11 @@ use twilight_model::id::{
 use crate::platform::runtime;
 
 use super::model::{
-    ActivityInstance, Channel, ChannelLatest, CommandChoice, DmMember, GuildAppearance, GuildEmoji,
-    GuildFolders, GuildMember, GuildUnreads, MemberListUpdate, Membership, Message, MuteSettings,
-    NotifyLevel, Presence, PresenceStatus, ReactionEmoji, ReadState, Relationship,
-    RelationshipKind, Role, Sticker, StreamServerInfo, Thread, VoiceServerInfo, VoiceUserState,
+    ActivityInstance, Channel, ChannelLatest, CommandChoice, DmMember, FavoriteGifs,
+    GuildAppearance, GuildEmoji, GuildFolders, GuildMember, GuildUnreads, MemberListUpdate,
+    Membership, Message, MuteSettings, NotifyLevel, Presence, PresenceStatus, ReactionEmoji,
+    ReadState, Relationship, RelationshipKind, Role, Sticker, StreamServerInfo, Thread,
+    VoiceServerInfo, VoiceUserState,
 };
 
 pub use identify::system_locale;
@@ -166,6 +167,8 @@ pub enum GatewayEvent {
     MemberList(MemberListUpdate),
     Presences(Vec<Presence>),
     StatusSettings(PresenceStatus),
+    /// Every favorite GIF, saved from another client.
+    FavoriteGifs(FavoriteGifs),
     /// Replaces every friend, friend request and block.
     Relationships(Vec<Relationship>),
     /// A new relationship, or one whose kind changed: a request accepted, a friend blocked.

@@ -12,6 +12,7 @@ mod component;
 mod embed;
 mod emoji;
 mod frecency;
+mod gif;
 mod guild;
 mod link;
 mod markdown;
@@ -42,9 +43,12 @@ pub use component::{
     Button, ButtonAction, ButtonStyle, Component, InputKind, Media, MediaItem, Modal, ModalField,
     ModalInput, Select, SelectKind, SelectOption, SelectValue,
 };
-pub use embed::{Embed, EmbedAuthor, EmbedField, EmbedFooter, EmbedLayout, EmbedMedia, EmbedVideo};
+pub use embed::{
+    Embed, EmbedAuthor, EmbedField, EmbedFooter, EmbedGif, EmbedLayout, EmbedMedia, EmbedVideo,
+};
 pub use emoji::GuildEmoji;
 pub use frecency::FrecencyItem;
+pub use gif::{FavoriteGif, FavoriteGifs, Gif, GifCategory, GifFormat};
 pub use guild::{Guild, GuildAppearance, GuildMember, Role};
 pub use link::MessageLink;
 pub use markdown::{Block, Inline, List, Markdown, Mention};
@@ -88,6 +92,10 @@ pub(super) use command::{RawChoice, RawCommandIndex, convert_command_index};
 pub(super) use component::{RawModal, convert_modal};
 pub(super) use emoji::{RawEmoji, convert_guild_emoji};
 pub(super) use frecency::{encode_frecency_settings, parse_frecency_settings};
+pub(super) use gif::{
+    RawTenorCategories, RawTenorResults, convert_tenor_category, convert_tenor_gif,
+    encode_favorite_gifs, parse_favorite_gifs,
+};
 pub(super) use guild::{RawMember, RawRole, convert_guild, convert_guild_appearance, convert_role};
 pub(super) use member_list::{RawMemberListUpdate, convert_member_list_update};
 pub(super) use message::{RawPins, author_member, convert_message, convert_reaction_emoji};

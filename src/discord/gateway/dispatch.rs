@@ -20,7 +20,7 @@ use crate::discord::model::{
     convert_guild_voice_states, convert_member_list_update, convert_message, convert_modal,
     convert_mute_settings, convert_reaction_emoji, convert_read_states, convert_relationship,
     convert_role, convert_sticker, convert_stream_server, convert_thread, convert_voice_server,
-    convert_voice_state, dm_override_flags, parse_user_settings,
+    convert_voice_state, dm_override_flags, parse_favorite_gifs, parse_user_settings,
 };
 use crate::discord::{Membership, NotifyLevel};
 
@@ -536,12 +536,19 @@ pub(super) fn dispatch(
             .unwrap_or_default(),
         "USER_SETTINGS_PROTO_UPDATE" => serde_json::from_str::<SettingsProtoUpdatePayload>(data)
             .ok()
-            .filter(|update| update.settings.kind == 1)
-            .and_then(|update| parse_user_settings(&update.settings.proto).ok())
-            .map(|settings| {
-                let status = settings.status.map(GatewayEvent::StatusSettings);
-                let folders = settings.guild_folders.map(GatewayEvent::GuildFolders);
-                status.into_iter().chain(folders).collect()
+            .map(|update| match update.settings.kind {
+                1 => parse_user_settings(&update.settings.proto)
+                    .map(|settings| {
+                        let status = settings.status.map(GatewayEvent::StatusSettings);
+                        let folders = settings.guild_folders.map(GatewayEvent::GuildFolders);
+                        status.into_iter().chain(folders).collect()
+                    })
+                    .unwrap_or_default(),
+                2 => parse_favorite_gifs(&update.settings.proto)
+                    .map(GatewayEvent::FavoriteGifs)
+                    .into_iter()
+                    .collect(),
+                _ => Vec::new(),
             })
             .unwrap_or_default(),
         "MESSAGE_ACK" => serde_json::from_str::<MessageAckPayload>(data)

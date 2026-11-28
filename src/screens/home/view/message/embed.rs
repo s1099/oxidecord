@@ -337,6 +337,7 @@ impl HomeScreen {
                     .size_full()
                     .rounded(px(4.)),
                 )
+                .children(self.render_gif_star(id, embed, gif, (width, height), cx))
                 .into_any_element(),
             _ => media.into_any_element(),
         };
@@ -392,6 +393,66 @@ impl HomeScreen {
                         ),
                 )
             })
+    }
+
+    /// Saves a GIF someone sent as a favorite, keyed by its page as the picker's are.
+    fn render_gif_star(
+        &self,
+        id: MediaKey,
+        embed: &discord::Embed,
+        gif: &discord::EmbedGif,
+        (width, height): (f32, f32),
+        cx: &Context<Self>,
+    ) -> Option<AnyElement> {
+        let url = embed.url.clone()?;
+        let favorite = self.is_favorite_gif(&url);
+        let saved = discord::FavoriteGif {
+            url,
+            src: gif.source.clone(),
+            format: discord::GifFormat::Video,
+            width: gif.width.unwrap_or(width as u32),
+            height: gif.height.unwrap_or(height as u32),
+            order: 0,
+        };
+        let theme = cx.theme();
+        Some(
+            div()
+                .id(id.element_id("embed-gif-star"))
+                .absolute()
+                .top(px(4.))
+                // Clear of the debug copy button, which takes the corner.
+                .right(px(if cfg!(debug_assertions) { 40. } else { 4. }))
+                .size(px(28.))
+                .flex()
+                .items_center()
+                .justify_center()
+                .rounded(px(6.))
+                .bg(black().opacity(0.6))
+                .hover(|this| this.bg(black().opacity(0.8)))
+                .cursor_pointer()
+                .text_color(if favorite { theme.warning } else { white() })
+                .invisible()
+                .group_hover(id.group(), |this| this.visible())
+                .child(
+                    gpui_kit::component::Icon::default()
+                        .path(if favorite {
+                            "icons/star-fill.svg"
+                        } else {
+                            "icons/star.svg"
+                        })
+                        .size(px(16.)),
+                )
+                .tooltip(crate::ui::tooltip::text(if favorite {
+                    "Remove from Favorites"
+                } else {
+                    "Add to Favorites"
+                }))
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    cx.stop_propagation();
+                    this.toggle_favorite_gif(saved.clone(), cx);
+                }))
+                .into_any_element(),
+        )
     }
 
     /// Discord's mosaic: two side by side, three as one tall beside two short, four in a

@@ -24,10 +24,11 @@ impl HomeScreen {
         cx.spawn(async move |this, cx| {
             let result = discord::fetch_frecency().await;
             let _ = this.update(cx, |this, cx| match result {
-                Ok(items) => {
+                Ok((items, favorite_gifs)) => {
                     if this.frecency.set_loaded(items) {
                         this.schedule_frecency_flush(cx);
                     }
+                    this.set_favorite_gifs(favorite_gifs, cx);
                 }
                 // Ranks by this session's uses alone, and never saves them over Discord's.
                 Err(err) => eprintln!("failed to load frecency: {err}"),

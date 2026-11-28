@@ -72,6 +72,22 @@ Entry format:
   opens the option list, and Enter then takes the option instead of sending.
   `src/screens/home/commands.rs:207`
 
+## GIF picker
+
+- **Only the first page of results** — a search or trending shows Tenor's first 50 and
+  doesn't fetch more on scrolling to the end, though v1 returns a `next` position for it.
+  `src/discord/rest/tenor.rs:15`
+- **Favorites stay "loading" if settings fail** — favorites come with the frecency fetch,
+  and when that fails nothing says so; the Favorites page shows "Loading GIFs…" and stars do
+  nothing for the session. `src/screens/home/data/quick_switcher.rs:34`
+- **Category stills are a guessed URL** — Tenor's featured categories only give an animated
+  GIF, so the tile asks for the PNG Tenor serves at the same path under its preview size code;
+  a change to Tenor's URLs would leave the tiles blank. `src/discord/model/gif.rs:273`
+- **No GIF frecency** — Discord's client records sent GIFs and suggests GIFs as you type;
+  neither is done here. `src/screens/home/data/gif_picker.rs:283`
+- **Favorites have no poster** — a favorite saves only its media URL, so its tile is blank
+  until the clip decodes. `src/screens/home/gifs.rs:90`
+
 ## Stickers
 
 - **Recently used stickers are local** — kept in `prefs.json`, not synced through Discord's

@@ -1,5 +1,5 @@
 //! The state behind the screen's popouts and overlays: profile cards, pins,
-//! the image viewer, the emoji and sticker pickers, and who reacted.
+//! the image viewer, the emoji, sticker and GIF pickers, and who reacted.
 
 use std::collections::HashSet;
 use std::rc::Rc;
@@ -14,7 +14,9 @@ use twilight_model::id::{
 use crate::discord;
 use crate::ui::smooth_scroll::SmoothScroll;
 
+use super::data::gif::LoadedGifs;
 use super::emoji::{PickerEmoji, PickerLayout, SectionKind};
+use super::gifs::{GifPage, GifRow};
 use super::stickers::PickerLayout as StickerLayout;
 
 pub(super) struct ProfilePopup {
@@ -145,6 +147,25 @@ pub(super) struct EmojiPicker {
     pub hovered: Option<PickerEmoji>,
     pub scroll: SmoothScroll,
     pub rail_scroll: ScrollHandle,
+    pub _search_changed: Subscription,
+}
+
+pub(super) struct GifPicker {
+    /// Window coordinates of the opening click.
+    pub position: Point<Pixels>,
+    pub search: Entity<InputState>,
+    pub page: GifPage,
+    /// Tenor's answer to the last search, with what was searched.
+    pub results: Option<(String, Result<Vec<discord::Gif>, String>)>,
+    /// Debounces typing, and is dropped to cancel a search overtaken by the next.
+    pub searching: Option<Task<()>>,
+    /// Rebuilt when the page, the search or the favorites change, not per frame.
+    pub rows: Rc<Vec<GifRow>>,
+    pub list: ListState,
+    pub scroll: SmoothScroll,
+    /// The picker's own, released when it closes rather than with the conversation's.
+    pub clips: LoadedGifs,
+    pub images: Entity<RetainAllImageCache>,
     pub _search_changed: Subscription,
 }
 

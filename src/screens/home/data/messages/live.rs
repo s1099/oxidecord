@@ -171,6 +171,9 @@ impl HomeScreen {
                 self.presence_status = Some(status);
                 cx.notify();
             }
+            discord::GatewayEvent::FavoriteGifs(favorites) => {
+                self.set_favorite_gifs(favorites, cx);
+            }
             discord::GatewayEvent::Relationships(relationships) => {
                 self.friends.replace(relationships);
                 cx.notify();

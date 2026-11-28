@@ -13,6 +13,7 @@ mod message;
 mod relationship;
 mod settings;
 mod sticker;
+mod tenor;
 mod thread;
 mod user;
 
@@ -50,9 +51,11 @@ pub use relationship::{
     add_friend, block_user, remove_relationship, send_friend_request, set_friend_nickname,
 };
 pub use settings::{
-    fetch_frecency, fetch_user_settings, save_dm_override_flags, save_frecency, save_status,
+    fetch_frecency, fetch_user_settings, save_dm_override_flags, save_favorite_gifs, save_frecency,
+    save_status,
 };
 pub use sticker::fetch_sticker_packs;
+pub use tenor::{fetch_gif_categories, search_gifs, trending_gifs};
 pub use thread::{
     ThreadSearch, fetch_thread, search_threads, set_thread_archived, set_thread_joined,
     start_thread, start_thread_from_message,

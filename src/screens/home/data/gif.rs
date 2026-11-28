@@ -147,13 +147,22 @@ fn release(source: &GifSource, window: &mut Window, cx: &mut App) {
     cx.remove_asset::<GifLoader>(source);
 }
 
+/// Releases every clip in `loaded` from the sprite atlas and the asset cache, which
+/// would otherwise hold the frames all session.
+pub(in crate::screens::home) fn release_all(
+    loaded: &LoadedGifs,
+    window: &mut Window,
+    cx: &mut App,
+) {
+    for (source, _) in loaded.borrow_mut().drain() {
+        release(&source, window, cx);
+    }
+}
+
 impl HomeScreen {
-    /// Releases every clip loaded for the conversation being left, from the sprite
-    /// atlas and the asset cache, which would otherwise hold the frames all session.
+    /// Releases every clip loaded for the conversation being left.
     pub(in crate::screens::home) fn release_gifs(&mut self, window: &mut Window, cx: &mut App) {
-        for (source, _) in self.gifs.borrow_mut().drain() {
-            release(&source, window, cx);
-        }
+        release_all(&self.gifs, window, cx);
     }
 }
 

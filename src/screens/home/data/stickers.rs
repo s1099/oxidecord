@@ -72,7 +72,9 @@ impl HomeScreen {
         picker.layout = Rc::new(picker_rows(sections, &query));
         picker.list.reset(picker.layout.rows.len());
         picker.hovered = None;
-        picker.scroll.jump_to(px(0.));
+        // `reset` leaves the list at its top. A seek there would land at the bottom: the
+        // setter goes by measured height, and a just-reset list's rows all measure zero.
+        picker.scroll.sync();
         cx.notify();
     }
 
