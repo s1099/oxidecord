@@ -10,7 +10,7 @@ use gpui_kit::*;
 use twilight_model::id::{Id, marker::MessageMarker};
 
 use crate::discord;
-use crate::screens::home::{EmojiTarget, HomeScreen, ReplyTarget};
+use crate::screens::home::{CopySelection, EmojiTarget, HomeScreen, ReplyTarget};
 
 #[derive(Clone)]
 pub(super) struct MessageMenu {
@@ -219,6 +219,23 @@ impl HomeScreen {
                 .map(|message| MessageMenu::new(this, message))
             else {
                 return popup;
+            };
+            // Right-clicking keeps the selection, so offer to copy just that.
+            let popup = if this.has_text_selection() {
+                let screen = screen.clone();
+                popup
+                    .item(PopupMenuItem::new("Copy").icon(IconName::Copy).on_click(
+                        move |_, window, cx| {
+                            if let Some(screen) = screen.upgrade() {
+                                screen.update(cx, |this, cx| {
+                                    this.on_copy_selection(&CopySelection, window, cx)
+                                });
+                            }
+                        },
+                    ))
+                    .separator()
+            } else {
+                popup
             };
             entity.update(cx, |this, cx| {
                 this.message_menu = Some(message_id);
